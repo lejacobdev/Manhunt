@@ -3,14 +3,15 @@
 A native iOS clone of a real-world GPS manhunt game: hunters chase runners
 across a real, publicly-accessible play area, with live radar, a compass
 bearing to the nearest threat, six power-ups, three game modes, a
-friends/social layer, and a Dynamic Island / Live Activity threat readout.
+friends/social layer, a Dynamic Island / Live Activity threat readout, and a
+full Apple Watch companion app with its own complication.
 
 This repo has three deployable pieces:
 
 | Path              | What it is                                                        |
 |--------------------|--------------------------------------------------------------------|
 | `backend/`         | Node/TypeScript API + Socket.IO real-time server + Postgres schema |
-| `ios/HuntingGame/` | Native SwiftUI app (iOS 16.2+) plus a Live Activity widget extension |
+| `ios/HuntingGame/` | Native SwiftUI app (iOS 16.2+), a Live Activity widget extension, and a watchOS companion app + complication |
 | `build_ipa.sh`     | CLI-only pipeline that produces an unsigned, sideloadable `.ipa`   |
 
 Nothing here is a placeholder — the backend type-checks clean end to end
@@ -113,19 +114,21 @@ Any Node-friendly host works: a plain VPS with pm2, Render, Railway, Fly.io,
 or a container platform — there's no framework-specific lock-in here, it's
 just Express + Socket.IO + Prisma.
 
-### Deploying to a bare server by IP (Docker Compose)
+### Deploying to a server (Docker Compose)
 
-If you've got a VPS with just a root login and an IP address — no domain,
-no manual nginx/certbot setup — `docker-compose.yml` at the repo root spins
-up Postgres, the backend, and [Caddy](https://caddyserver.com) (which gets
-you a real, trusted HTTPS certificate automatically, including for the
-Socket.IO WebSocket upgrade) with one command.
+`docker-compose.yml` at the repo root spins up Postgres, the backend, and
+[Caddy](https://caddyserver.com) (which gets you a real, trusted HTTPS
+certificate automatically, including for the Socket.IO WebSocket upgrade)
+with one command. This is what runs the shared production backend at
+**lejacob.eu**, which is the one and only backend every build of the app
+talks to (`APIClient.baseURL` / `SocketService.serverURL` are hardcoded to
+`https://lejacob.eu` — there's no per-developer backend to stand up unless
+you're working on the server itself).
 
-A bare IP can't get a Let's Encrypt certificate on its own — Let's Encrypt
-validates a hostname, not an IP — so this uses
-[sslip.io](https://sslip.io), a free wildcard DNS service that resolves
-`<ip-with-dashes>.sslip.io` straight back to your server. No DNS records to
-configure, no domain to buy.
+Prerequisite: a DNS **A record** for your domain (or subdomain) pointing at
+the server's IP. If you don't own a domain, [sslip.io](https://sslip.io)
+gives you a free one that resolves `<ip-with-dashes>.sslip.io` straight back
+to your server — no DNS records to configure at all.
 
 On the server (tested against a fresh Ubuntu/Debian VPS; adjust package
 manager commands if yours differs):
@@ -140,8 +143,9 @@ cd manhunt
 
 # 3. Configure
 cp .env.example .env
-nano .env   # set POSTGRES_PASSWORD, JWT_SECRET (openssl rand -base64 48),
-            # and DOMAIN — e.g. for IP 31.214.141.29, DOMAIN=31-214-141-29.sslip.io
+nano .env   # set POSTGRES_PASSWORD, JWT_SECRET (openssl rand -base64 48);
+            # DOMAIN is already set to lejacob.eu — only change it if you're
+            # standing up a separate/staging instance under a different name
 
 # 4. Open the firewall for HTTP/HTTPS (Caddy needs 80 for the ACME challenge, 443 to serve)
 ufw allow 80/tcp && ufw allow 443/tcp
@@ -153,14 +157,17 @@ docker compose up -d --build
 Caddy requests its certificate on first boot — give it 10-30 seconds, then:
 
 ```bash
-curl https://<your-domain-from-.env>/health
+curl https://lejacob.eu/health
 # {"ok":true,"service":"hunting-game-backend"}
 ```
 
-That HTTPS URL is what you put in `APIClient.baseURL` and
-`SocketService.serverURL` in the iOS app (already defaulted to
-`https://31-214-141-29.sslip.io` in this repo — change it if your IP or
-`DOMAIN` differs).
+If lejacob.eu already has another web server (nginx, an existing reverse
+proxy, another Caddy instance, etc.) bound to ports 80/443, stop it first —
+Caddy needs those ports free to request and serve the certificate.
+
+Only touch `APIClient.baseURL` / `SocketService.serverURL` in the iOS app if
+you're deliberately pointing a build at a different backend (e.g. a local
+dev/staging server) — the shipped default is `https://lejacob.eu`.
 
 Useful follow-up commands:
 
@@ -216,16 +223,33 @@ npx prisma migrate dev --name describe_your_change
 
 ## 4. iOS app setup
 
-```bash
-cd ios/HuntingGame
-xcodegen generate
-open HuntingGame.xcodeproj
-```
+### Getting the project open in Xcode
 
-XcodeGen reads `project.yml` and generates the `.xcodeproj` — it is
-intentionally **not** committed to the repo, so `xcodegen generate` is a
-required first step any time you pull changes that touch `project.yml` or
-add/remove Swift files.
+You can import the repo straight from Xcode's UI — no terminal needed for
+this part: **Xcode → File → Clone Repository...** (or the "Clone an existing
+project" option on the Welcome screen), paste
+`https://github.com/lejacobdev/manhunt.git`, and click through like any
+other git clone.
+
+Xcode won't have anything to open immediately after, though — the
+`.xcodeproj` is generated from `project.yml` via XcodeGen rather than
+committed to git (a committed generated project file is a well-known source
+of noisy merge conflicts every time a Swift file is added or removed). To
+turn that into an open project, either:
+
+- **One click:** in Finder, double-click **`setup.command`** at the repo
+  root. It installs XcodeGen via Homebrew if you don't have it, generates
+  the project, and opens it in Xcode automatically.
+- **Or from a terminal:**
+  ```bash
+  cd ios/HuntingGame
+  xcodegen generate
+  open HuntingGame.xcodeproj
+  ```
+
+Either way, re-run `xcodegen generate` (or double-click `setup.command`
+again) any time you pull changes that touch `project.yml` or add/remove
+Swift files — that's what keeps the generated project in sync.
 
 ### Point the app at your backend
 
@@ -284,7 +308,66 @@ built into iOS — see `ADATheme.swift`.
 
 ---
 
-## 5. Building the sideloadable IPA
+## 5. Apple Watch companion app
+
+The Watch app is a separate target (`HuntingGameWatch`, plus a
+`HuntingGameWatchWidgets` complication extension) embedded automatically
+into the iPhone `.app`/`.ipa` — `xcodegen generate` and `build_ipa.sh` both
+already produce it, nothing extra to run.
+
+**Architecture:** the phone stays the single source of truth. It owns the
+JWT session and the live Socket.IO connection; the Watch never talks to the
+backend directly. Instead:
+
+- The phone (`GameViewModel` → `PhoneConnectivityManager`) pushes a
+  lightweight `WatchGameSnapshot` — role, arrest code, nearest-hunter
+  distance/bearing, inventory, visible runners (if hunting) — to the Watch
+  over `WCSession.updateApplicationContext`, throttled to roughly once every
+  1.5s plus immediately on state transitions (caught, infected).
+- The Watch (`WatchConnectivityManager`) renders that snapshot
+  (`WatchGameView`) and sends action intents back — use a power-up, attempt
+  a catch with a target + arrest code — via `sendMessage`
+  (`transferUserInfo` as a queued fallback if the phone isn't immediately
+  reachable). The phone receives these and forwards them into the same
+  `usePowerUp`/`socket.attemptCatch` calls the in-app UI uses.
+- A watch face complication (`HuntingGameComplication`, all three accessory
+  families — circular, rectangular, inline) reads the same snapshot from a
+  shared App Group container (`group.com.huntinggame.app.watch`) that the
+  Watch app writes to on every update, then calls
+  `WidgetCenter.shared.reloadAllTimelines()`. The complication extension has
+  no network or WatchConnectivity access of its own by design — it's a pure,
+  cheap reader of already-synced state.
+- Haptics on the Watch go through `WKInterfaceDevice.play(_:)`
+  (`WatchHaptics.swift`) rather than CoreHaptics, which doesn't exist on
+  watchOS — a discrete proximity pulse fires once nearest-hunter distance
+  drops under 25m, cooldown-limited the same way as the phone's version.
+
+**Running it:** pair a physical Apple Watch with your test iPhone (or use
+the paired Watch Simulator in Xcode — Simulator supports WatchConnectivity
+between an iPhone simulator and a paired Watch simulator, though not real
+GPS/haptics). Build and run the `HuntingGame` scheme as usual; Xcode installs
+the embedded Watch app alongside it. First launch: give the Watch app a
+few seconds after joining a game on the phone for the first
+`updateApplicationContext` to land.
+
+**Signing note:** the complication needs an **App Group** capability
+(`group.com.huntinggame.app.watch`) on both `HuntingGameWatch` and
+`HuntingGameWatchWidgets`, already declared in each target's
+`.entitlements` file. With **Automatically manage signing** and a personal
+(free) Apple ID team, Xcode registers App Groups for local device/simulator
+builds automatically — if it complains, open each Watch-related target's
+Signing & Capabilities tab and confirm the App Group is checked/created
+under your team.
+
+**Known gap:** there's no watch app icon bundled (`ASSETCATALOG_COMPILER_APPICON_NAME`
+is intentionally left unset for the Watch targets) — fine for local
+dev/testing, but add a proper `AppIcon.appiconset` with the watchOS-required
+sizes under `Watch/HuntingGameWatch/Resources/` before any App Store
+submission.
+
+---
+
+## 6. Building the sideloadable IPA
 
 From the repo root, on a Mac with Xcode installed:
 
@@ -321,7 +404,7 @@ The output is **unsigned**. Options:
 
 ---
 
-## 6. End-to-end smoke test
+## 7. End-to-end smoke test
 
 1. Backend running locally or deployed, `APIClient`/`SocketService` pointed
    at it.
@@ -341,7 +424,7 @@ The output is **unsigned**. Options:
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|

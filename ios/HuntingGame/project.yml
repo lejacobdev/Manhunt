@@ -35,6 +35,8 @@ targets:
       - package: SocketIO
       - target: HuntingGameWidgets
         embed: true
+      - target: HuntingGameWatch
+        embed: true
     info:
       path: Info.plist
       properties:
@@ -80,6 +82,57 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.widgets
         INFOPLIST_KEY_CFBundleDisplayName: Hunting Game Widgets
+        SKIP_INSTALL: YES
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+
+  HuntingGameWatch:
+    type: application
+    platform: watchOS
+    deploymentTarget: "9.0"
+    sources:
+      - path: Watch/HuntingGameWatch
+      - path: Shared
+    dependencies:
+      - target: HuntingGameWatchWidgets
+        embed: true
+    info:
+      path: Watch/HuntingGameWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Hunting Game
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.huntinggame.app
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    entitlements:
+      path: Watch/HuntingGameWatch/HuntingGameWatch.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp
+        SKIP_INSTALL: YES
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+
+  HuntingGameWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    deploymentTarget: "9.0"
+    sources:
+      - path: WatchWidgets/HuntingGameWatchWidgets
+      - path: Shared
+    info:
+      path: WatchWidgets/HuntingGameWatchWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Hunting Game Radar
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: WatchWidgets/HuntingGameWatchWidgets/HuntingGameWatchWidgets.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp.watchkitextension.widgets
         SKIP_INSTALL: YES
         CODE_SIGNING_REQUIRED: NO
         CODE_SIGNING_ALLOWED: NO

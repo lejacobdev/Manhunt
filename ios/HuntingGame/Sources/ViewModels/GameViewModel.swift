@@ -21,6 +21,8 @@ final class GameViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var invisibilityTimer: Timer?
+    private var watchSyncTimer: Timer?
+    private let watchConnectivity = PhoneConnectivityManager.shared
     private var lastSentAt: Date = .distantPast
     private let minSendInterval: TimeInterval = 2.0
 
@@ -45,13 +47,54 @@ final class GameViewModel: ObservableObject {
         locationManager.requestAuthorizationAndStart()
         socket.connect(roomCode: roomCode, gamePlayerId: gamePlayerId)
         LiveActivityManager.shared.start(gameCode: roomCode, role: role)
+
+        watchConnectivity.onAction = { [weak self] action in
+            self?.handleWatchAction(action)
+        }
+        watchSyncTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.pushWatchSnapshot() }
+        }
+        pushWatchSnapshot()
     }
 
     func stop() {
         locationManager.stop()
         socket.disconnect()
         invisibilityTimer?.invalidate()
+        watchSyncTimer?.invalidate()
+        watchConnectivity.onAction = nil
+        watchConnectivity.sendIdle()
         LiveActivityManager.shared.end()
+    }
+
+    // MARK: - Watch companion
+
+    private func pushWatchSnapshot() {
+        let snapshot = WatchGameSnapshot(
+            isActive: !isCaught,
+            gameCode: roomCode,
+            roleRaw: role.rawValue,
+            arrestCode: arrestCode,
+            isCaught: isCaught,
+            nearestDistanceMeters: nearestHunterDistance,
+            nearestBearingDegrees: nearestHunterBearing,
+            inventoryRaw: inventory.map(\.rawValue),
+            isRadarJammed: isRadarJammed,
+            visibleRunners: visibleRunners.map { WatchRunnerBlip(id: $0.id, username: $0.username) },
+            updatedAt: Date()
+        )
+        watchConnectivity.send(snapshot)
+    }
+
+    private func handleWatchAction(_ action: WatchActionMessage) {
+        switch action.type {
+        case .usePowerUp:
+            guard let raw = action.powerUpTypeRaw, let type = PowerUpType(rawValue: raw) else { return }
+            usePowerUp(type)
+        case .attemptCatch:
+            guard let target = action.targetRunnerId, let code = action.arrestCode else { return }
+            socket.attemptCatch(runnerId: target, arrestCode: code)
+        }
     }
 
     private func bindLocation() {
@@ -79,6 +122,7 @@ final class GameViewModel: ObservableObject {
                     self.isCaught = true
                     HapticsEngine.shared.catchFailed()
                     LiveActivityManager.shared.markCaught()
+                    self.pushWatchSnapshot()
                 } else if event.hunterId == self.gamePlayerId {
                     HapticsEngine.shared.catchSucceeded()
                 }
@@ -100,6 +144,7 @@ final class GameViewModel: ObservableObject {
                 if event.runnerId == self.gamePlayerId {
                     self.role = .hunter
                     self.isCaught = false
+                    self.pushWatchSnapshot()
                 }
             }
             .store(in: &cancellables)

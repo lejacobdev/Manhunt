@@ -8,8 +8,8 @@ import SocketIO
 final class SocketService: ObservableObject {
     static let shared = SocketService()
 
-    /// Point this at the same host as APIClient.baseURL.
-    var serverURL = URL(string: "https://31-214-141-29.sslip.io")!
+    /// The shared production backend — must match APIClient.baseURL.
+    var serverURL = URL(string: "https://lejacob.eu")!
 
     @Published var players: [PlayerState] = []
     @Published var compass: CompassUpdate?
