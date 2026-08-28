@@ -113,6 +113,67 @@ Any Node-friendly host works: a plain VPS with pm2, Render, Railway, Fly.io,
 or a container platform — there's no framework-specific lock-in here, it's
 just Express + Socket.IO + Prisma.
 
+### Deploying to a bare server by IP (Docker Compose)
+
+If you've got a VPS with just a root login and an IP address — no domain,
+no manual nginx/certbot setup — `docker-compose.yml` at the repo root spins
+up Postgres, the backend, and [Caddy](https://caddyserver.com) (which gets
+you a real, trusted HTTPS certificate automatically, including for the
+Socket.IO WebSocket upgrade) with one command.
+
+A bare IP can't get a Let's Encrypt certificate on its own — Let's Encrypt
+validates a hostname, not an IP — so this uses
+[sslip.io](https://sslip.io), a free wildcard DNS service that resolves
+`<ip-with-dashes>.sslip.io` straight back to your server. No DNS records to
+configure, no domain to buy.
+
+On the server (tested against a fresh Ubuntu/Debian VPS; adjust package
+manager commands if yours differs):
+
+```bash
+# 1. Install Docker
+curl -fsSL https://get.docker.com | sh
+
+# 2. Get the code
+git clone https://github.com/lejacobdev/manhunt.git
+cd manhunt
+
+# 3. Configure
+cp .env.example .env
+nano .env   # set POSTGRES_PASSWORD, JWT_SECRET (openssl rand -base64 48),
+            # and DOMAIN — e.g. for IP 31.214.141.29, DOMAIN=31-214-141-29.sslip.io
+
+# 4. Open the firewall for HTTP/HTTPS (Caddy needs 80 for the ACME challenge, 443 to serve)
+ufw allow 80/tcp && ufw allow 443/tcp
+
+# 5. Build and start everything
+docker compose up -d --build
+```
+
+Caddy requests its certificate on first boot — give it 10-30 seconds, then:
+
+```bash
+curl https://<your-domain-from-.env>/health
+# {"ok":true,"service":"hunting-game-backend"}
+```
+
+That HTTPS URL is what you put in `APIClient.baseURL` and
+`SocketService.serverURL` in the iOS app (already defaulted to
+`https://31-214-141-29.sslip.io` in this repo — change it if your IP or
+`DOMAIN` differs).
+
+Useful follow-up commands:
+
+```bash
+docker compose logs -f backend   # tail the server logs
+docker compose ps                # check container health
+docker compose pull && docker compose up -d --build   # redeploy after a git pull
+```
+
+Data persists in named Docker volumes (`postgres_data`, `caddy_data`,
+`caddy_config`) across restarts and redeploys — `docker compose down`
+leaves them intact; only `docker compose down -v` destroys them.
+
 ### Database schema reference
 
 The Prisma schema (`backend/prisma/schema.prisma`) defines: `User`,

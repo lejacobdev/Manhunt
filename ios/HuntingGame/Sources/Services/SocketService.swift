@@ -9,7 +9,7 @@ final class SocketService: ObservableObject {
     static let shared = SocketService()
 
     /// Point this at the same host as APIClient.baseURL.
-    var serverURL = URL(string: "https://api.huntinggame.local")!
+    var serverURL = URL(string: "https://31-214-141-29.sslip.io")!
 
     @Published var players: [PlayerState] = []
     @Published var compass: CompassUpdate?

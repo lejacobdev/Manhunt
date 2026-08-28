@@ -1,0 +1,7 @@
+{$DOMAIN} {
+	# Caddy proxies both the REST API and the Socket.IO WebSocket upgrade
+	# transparently — no special config needed for the /socket.io/ path.
+	reverse_proxy backend:4000
+
+	encode gzip
+}

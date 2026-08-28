@@ -19,8 +19,8 @@ enum APIError: Error, LocalizedError {
 final class APIClient {
     static let shared = APIClient()
 
-    /// Point this at your deployed backend (see backend/.env.example for the paired server config).
-    var baseURL = URL(string: "https://api.huntinggame.local")!
+    /// Point this at your deployed backend (see docker-compose.yml / .env.example for the paired server config).
+    var baseURL = URL(string: "https://31-214-141-29.sslip.io")!
 
     private let session = URLSession(configuration: .default)
     private let decoder: JSONDecoder = {
