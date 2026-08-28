@@ -1,0 +1,18 @@
+# Node / backend
+backend/node_modules/
+backend/dist/
+backend/.env
+*.log
+
+# iOS / Xcode
+ios/HuntingGame/HuntingGame.xcodeproj/
+ios/HuntingGame/.build/
+ios/HuntingGame/DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# IPA build output
+build/
+
+# macOS
+.DS_Store

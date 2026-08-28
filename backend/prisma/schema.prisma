@@ -1,0 +1,159 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum PlayerRole {
+  HUNTER
+  RUNNER
+  SUPERVISOR
+  SPECTATOR
+}
+
+enum GameStatus {
+  LOBBY
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum GameMode {
+  STANDARD
+  INFECTION
+  SQUAD
+}
+
+enum PowerUpType {
+  INVISIBILITY_10MIN
+  GHOST_DECOY
+  EMP_JAMMER
+  THERMAL_VISION
+  ADRENALINE
+  SAFE_ZONE_FLARE
+}
+
+enum FriendStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+model User {
+  id           String       @id @default(uuid())
+  username     String
+  userTag      String
+  passwordHash String
+  avatarUrl    String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  sentRequests Friendship[] @relation("SentRequests")
+  recvRequests Friendship[] @relation("RecvRequests")
+  players      GamePlayer[]
+
+  @@unique([username, userTag])
+  @@index([username])
+}
+
+model Friendship {
+  id         String       @id @default(uuid())
+  senderId   String
+  receiverId String
+  status     FriendStatus @default(PENDING)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  sender   User @relation("SentRequests", fields: [senderId], references: [id])
+  receiver User @relation("RecvRequests", fields: [receiverId], references: [id])
+
+  @@unique([senderId, receiverId])
+  @@index([receiverId, status])
+}
+
+model GameSession {
+  id        String     @id @default(uuid())
+  code      String     @unique
+  status    GameStatus @default(LOBBY)
+  mode      GameMode   @default(STANDARD)
+  hostId    String
+  settings  Json
+  startedAt DateTime?
+  endedAt   DateTime?
+  createdAt DateTime   @default(now())
+
+  players  GamePlayer[]
+  powerUps PowerUpSpawn[]
+  events   GameEvent[]
+  logs     LocationLog[]
+
+  @@index([code])
+  @@index([status])
+}
+
+model PowerUpSpawn {
+  id          String      @id @default(uuid())
+  sessionId   String
+  type        PowerUpType
+  latitude    Float
+  longitude   Float
+  isCollected Boolean     @default(false)
+  collectedBy String?
+  spawnedAt   DateTime    @default(now())
+  expiresAt   DateTime
+
+  session GameSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, isCollected])
+}
+
+model GamePlayer {
+  id           String      @id @default(uuid())
+  sessionId    String
+  userId       String
+  role         PlayerRole
+  squad        String?
+  isCaught     Boolean     @default(false)
+  caughtAt     DateTime?
+  arrestCode   String
+  batteryLevel Int         @default(100)
+  inventory    Json        @default("[]")
+  activeBuffs  Json        @default("{}")
+  joinedAt     DateTime    @default(now())
+
+  session GameSession @relation(fields: [sessionId], references: [id])
+  user    User        @relation(fields: [userId], references: [id])
+
+  @@unique([sessionId, userId])
+  @@index([sessionId, role])
+}
+
+model LocationLog {
+  id        String   @id @default(uuid())
+  sessionId String
+  playerId  String
+  latitude  Float
+  longitude Float
+  accuracy  Float
+  speed     Float?
+  timestamp DateTime @default(now())
+
+  session GameSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, playerId, timestamp])
+}
+
+model GameEvent {
+  id        String   @id @default(uuid())
+  sessionId String
+  type      String
+  payload   Json
+  timestamp DateTime @default(now())
+
+  session GameSession @relation(fields: [sessionId], references: [id])
+
+  @@index([sessionId, type])
+}
