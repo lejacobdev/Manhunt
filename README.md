@@ -114,27 +114,43 @@ Any Node-friendly host works: a plain VPS with pm2, Render, Railway, Fly.io,
 or a container platform — there's no framework-specific lock-in here, it's
 just Express + Socket.IO + Prisma.
 
-### Deploying with Apache (what runs api.lejacob.eu)
+### Deploying with Apache behind Cloudflare (what runs api.lejacob.eu)
 
 `docker-compose.yml` at the repo root runs Postgres and the backend in
 Docker, with the backend bound to **127.0.0.1 only** on `BACKEND_PORT`
 (default `8420`) — never exposed to the public internet directly. Apache,
-running on the host (not in Docker), owns ports 80/443, terminates TLS, and
-reverse-proxies `api.lejacob.eu` to that loopback port. This is what every
-build of the app talks to — `APIClient.baseURL` / `SocketService.serverURL`
-are hardcoded to `https://api.lejacob.eu`; there's no per-developer backend
-to stand up unless you're working on the server itself.
+running on the host (not in Docker), owns ports 80/443 and reverse-proxies
+`api.lejacob.eu` to that loopback port. This is what every build of the app
+talks to — `APIClient.baseURL` / `SocketService.serverURL` are hardcoded to
+`https://api.lejacob.eu`; there's no per-developer backend to stand up
+unless you're working on the server itself.
 
-Prerequisite: a DNS **A record** for `api.lejacob.eu` pointing at the
-server's IP (already done per your setup).
+Traffic path: **client → Cloudflare (public TLS) → this server on 80/443 →
+Apache → `127.0.0.1:8420`**. Two things enforce that Cloudflare is the only
+way in:
+
+- **Cloudflare Origin CA certificate** on Apache's `:443` vhost instead of a
+  Let's Encrypt one — issued free from the Cloudflare dashboard, trusted
+  only by Cloudflare's edge, valid up to 15 years, no renewal automation to
+  babysit.
+- **An IP allowlist** (`deploy/apache/cloudflare-ips.conf`, `Include`d into
+  both vhosts) restricting Apache to Cloudflare's published ranges (plus
+  `127.0.0.1` for local health checks) — this is what actually closes the
+  direct-origin-IP bypass; the Origin CA cert alone doesn't stop someone
+  from hitting your IP directly over plain HTTP or an untrusted cert.
+
+Prerequisites: a DNS record for `api.lejacob.eu` proxied through Cloudflare
+(orange cloud, not grey/DNS-only), and Cloudflare's SSL/TLS mode set to
+**Full (strict)** — required for Cloudflare to actually validate the Origin
+CA cert rather than accept anything.
 
 On the server (Ubuntu/Debian; adjust package manager commands if yours differs):
 
 ```bash
-# 1. Install Docker, Apache, and Certbot
+# 1. Install Docker and Apache
 curl -fsSL https://get.docker.com | sh
-apt update && apt install -y apache2 certbot python3-certbot-apache
-a2enmod proxy proxy_http proxy_wstunnel rewrite ssl headers
+apt update && apt install -y apache2
+a2enmod proxy proxy_http proxy_wstunnel rewrite ssl headers authz_host
 
 # 2. Get the code
 git clone https://github.com/lejacobdev/manhunt.git
@@ -144,7 +160,7 @@ cd manhunt
 cp .env.example .env
 nano .env   # set POSTGRES_PASSWORD, JWT_SECRET (openssl rand -base64 48);
             # BACKEND_PORT defaults to 8420 — only change it if that's
-            # already in use, and keep it in sync with step 5 below
+            # already in use, and keep it in sync with step 6 below
 
 # 4. Start Postgres + the backend (loopback-only, nothing public yet)
 docker compose up -d --build
@@ -152,48 +168,53 @@ curl http://127.0.0.1:8420/health   # sanity check from the server itself
 # {"ok":true,"service":"hunting-game-backend"}
 ```
 
-Now bring up Apache in front of it. Certbot needs a plain HTTP vhost to
-exist *before* it can issue a certificate, so bootstrap in this order:
+Get the Origin CA cert from the Cloudflare dashboard (**SSL/TLS → Origin
+Server → Create Certificate**; accept the defaults, it'll cover
+`api.lejacob.eu`), then:
 
 ```bash
-# 5. A minimal HTTP-only vhost first, just so certbot has something to find
-cat > /etc/apache2/sites-available/api.lejacob.eu.conf <<'EOF'
-<VirtualHost *:80>
-    ServerName api.lejacob.eu
-</VirtualHost>
-EOF
-a2ensite api.lejacob.eu
-systemctl reload apache2
+# 5. Install the cert + key, and Cloudflare's origin CA root for the chain
+# (download the root from https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/#download-the-cloudflare-origin-ca-root-certificate)
+mkdir -p /etc/cloudflare
+nano /etc/cloudflare/origin.pem                # paste the certificate
+nano /etc/cloudflare/origin.key                # paste the private key
+nano /etc/cloudflare/origin_ca_rsa_root.pem     # paste the origin CA root
+chmod 600 /etc/cloudflare/origin.key
 
-# 6. Open the firewall for HTTP/HTTPS (not 8420 — that stays loopback-only)
-ufw allow 80/tcp && ufw allow 443/tcp
-
-# 7. Get the certificate
-certbot certonly --apache -d api.lejacob.eu
-
-# 8. Now install the real vhost — REST API, WebSocket upgrade for
-# Socket.IO, and the cert from step 7 — and reload
+# 6. Install the IP allowlist + vhost, and enable
+cp deploy/apache/cloudflare-ips.conf /etc/apache2/cloudflare-ips.conf
 cp deploy/apache/api.lejacob.eu.conf /etc/apache2/sites-available/api.lejacob.eu.conf
 sed -i 's/\${BACKEND_PORT}/8420/g' /etc/apache2/sites-available/api.lejacob.eu.conf
+a2ensite api.lejacob.eu
 apache2ctl configtest && systemctl reload apache2
+
+# 7. Firewall — 80/443 need to accept Cloudflare's traffic; Apache's own
+# IP allowlist (step 6) is what actually rejects anyone else that reaches them
+ufw allow 80/tcp && ufw allow 443/tcp
 ```
 
-Verify from outside the server:
+Verify from your own machine (not the server):
 
 ```bash
 curl https://api.lejacob.eu/health
 # {"ok":true,"service":"hunting-game-backend"}
 ```
 
-`deploy/apache/api.lejacob.eu.conf` in the repo is the source of truth for
-that vhost — if you tweak it, re-run step 8's `cp`/`sed`/reload rather than
-hand-editing `/etc/apache2/sites-available` only, or the next redeploy will
-silently overwrite your change back.
+If that hangs or 403s, check in order: Cloudflare's proxy status is orange
+(not grey/DNS-only) for the `api` record, SSL/TLS mode is Full (strict),
+and `tail -f /var/log/apache2/api_lejacob_ssl_error.log` on the server for
+the actual rejection reason (a wrong cert path or a stale IP range are the
+two usual suspects).
 
-Certificate renewal: certbot installs a systemd timer (`certbot.timer`)
-automatically — `systemctl status certbot.timer` to confirm it's active.
-Nothing else to do; renewed certs are picked up on Apache's next reload,
-which certbot's renewal hook also triggers.
+`deploy/apache/api.lejacob.eu.conf` and `cloudflare-ips.conf` in the repo
+are the source of truth — if you tweak either, re-run step 6's
+`cp`/`sed`/reload rather than hand-editing `/etc/apache2/...` only, or the
+next redeploy will silently overwrite your change back. Cloudflare does
+occasionally rotate its IP ranges (rare, but it happens) — re-sync
+`cloudflare-ips.conf` from
+[cloudflare.com/ips-v4](https://www.cloudflare.com/ips-v4/) /
+[ips-v6](https://www.cloudflare.com/ips-v6/) if requests start getting
+403'd for no obvious reason.
 
 Useful follow-up commands:
 
@@ -201,18 +222,17 @@ Useful follow-up commands:
 docker compose logs -f backend             # tail the backend's own logs
 docker compose ps                          # container health
 docker compose pull && docker compose up -d --build   # redeploy after a git pull
-tail -f /var/log/apache2/api.lejacob.eu-ssl-error.log  # proxy-level errors
+tail -f /var/log/apache2/api_lejacob_ssl_error.log     # proxy-level errors
 ```
 
 Data persists in the named Docker volume `postgres_data` across restarts
 and redeploys — `docker compose down` leaves it intact; only
 `docker compose down -v` destroys it.
 
-If you'd rather not manage Apache yourself, `docker-compose.yml` still works
-fine standing entirely on its own — just publish the backend on `0.0.0.0`
-instead of `127.0.0.1` in the `ports:` line and put any TLS-terminating
-proxy of your choice (Caddy, nginx, your PaaS's built-in HTTPS) in front of
-it the same way.
+If you'd rather not run Cloudflare in front, the same Apache/Docker split
+still works with a plain Let's Encrypt cert instead — swap the `SSLEngine`
+block in `api.lejacob.eu.conf` for `certbot --apache -d api.lejacob.eu` and
+drop the IP allowlist (or replace it with your own).
 
 ### Database schema reference
 
