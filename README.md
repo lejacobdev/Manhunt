@@ -306,13 +306,17 @@ turn that into an open project, either:
 - **Or from a terminal:**
   ```bash
   cd ios/HuntingGame
+  cp -n Config.xcconfig.example Config.xcconfig   # first time only — see "Signing for a device run" below
   xcodegen generate
   open HuntingGame.xcodeproj
   ```
 
 Either way, re-run `xcodegen generate` (or double-click `setup.command`
 again) any time you pull changes that touch `project.yml` or add/remove
-Swift files — that's what keeps the generated project in sync.
+Swift files — that's what keeps the generated project in sync. Unlike
+older versions of this repo, this no longer touches your code signing
+setup (see below) — that now lives in the gitignored `Config.xcconfig`,
+which `xcodegen generate` only references, not overwrites.
 
 ### Point the app at your backend
 
@@ -328,17 +332,50 @@ physical device due to ATS and the fact that your phone isn't your laptop).
 
 ### Signing for a device run
 
-`project.yml` ships with `CODE_SIGNING_ALLOWED: NO` at the project level —
-that's what makes `build_ipa.sh` able to produce an unsigned IPA from the
-CLI without a Developer account attached. To run the app from Xcode on your
-own device instead:
+Every target defaults to `CODE_SIGN_STYLE: Automatic`, and the team ID
+comes from `Config.xcconfig` — a **gitignored, local-only** file, not
+something baked into `project.yml`. This matters because XcodeGen rebuilds
+the entire `.xcodeproj` from scratch on every `xcodegen generate`; a team
+picked by hand in Xcode's Signing & Capabilities UI lives inside the
+`.xcodeproj` itself and would otherwise get silently wiped out on the next
+regenerate, eventually producing an unsigned build that installd rejects
+with *"No code signature found."* Putting the team ID in an xcconfig file
+instead means it survives regeneration, since XcodeGen only references that
+file's path rather than copying its contents in.
 
-1. Select the `HuntingGame` target → **Signing & Capabilities**.
-2. Check **Automatically manage signing** and pick your personal team.
-   (Xcode will override the project-level `CODE_SIGNING_ALLOWED=NO` for a
-   local run/debug build; it only affects the `xcodebuild archive` path
-   `build_ipa.sh` uses.)
-3. Build & run (⌘R) onto your connected iPhone.
+One-time setup (skip if you used `setup.command`, which does this for you):
+
+```bash
+cd ios/HuntingGame
+cp Config.xcconfig.example Config.xcconfig
+```
+
+Edit `Config.xcconfig` and set `DEVELOPMENT_TEAM` to your real Apple
+Developer Team ID (Xcode → Settings → Accounts → your Apple ID → your team;
+or https://developer.apple.com/account/#/membership — a free personal team
+works fine for local device testing). Then:
+
+```bash
+xcodegen generate
+open HuntingGame.xcodeproj
+```
+
+In Xcode, confirm each of the four targets — `HuntingGame`,
+`HuntingGameWidgets`, `HuntingGameWatch`, `HuntingGameWatchWidgets` — shows
+your team under **Signing & Capabilities** with **Automatically manage
+signing** checked (it should already, now that `Config.xcconfig` supplies
+the team everywhere). All four matter, not just the main app target — the
+app embeds the other three, and installd verifies every embedded binary's
+signature; one unsigned extension fails the whole install.
+
+Build & run (⌘R) onto your connected iPhone. From here, regenerating the
+project after future `git pull`s no longer touches your signing setup —
+that's the whole point of moving it into `Config.xcconfig`.
+
+The CLI unsigned-archive path (`build_ipa.sh`) is unaffected by any of this
+— it passes `CODE_SIGNING_ALLOWED=NO` directly to `xcodebuild archive`,
+which overrides the project's signing settings regardless of what's in
+`Config.xcconfig`.
 
 ### Live Activity / Dynamic Island
 
@@ -498,3 +535,5 @@ The output is **unsigned**. Options:
 | Live Activity never appears | Confirm iOS 16.2+, a physical device, Live Activities enabled in Settings, and that you joined as a **runner** (hunters don't get one by design) |
 | `xcodebuild archive` fails immediately | Make sure you're on macOS with Xcode command line tools installed (`xcode-select --install`); `build_ipa.sh` checks for both and exits early with a clear message if either is missing |
 | Background location stops after a while | `NSLocationAlwaysAndWhenInUseUsageDescription` + `UIBackgroundModes: [location]` are already set in `project.yml` — if you're testing via Xcode's debugger, background execution can still be throttled by the debugger itself; test with a real, detached install for accurate behavior |
+| Install fails: "No code signature found" (`MIInstallerErrorDomain` Code 13) | `Config.xcconfig` is missing or has the placeholder `DEVELOPMENT_TEAM` still in it — copy `Config.xcconfig.example` to `Config.xcconfig`, set your real Team ID, `xcodegen generate` again, and confirm all four targets show a team under Signing & Capabilities (see "Signing for a device run") |
+| `xcodegen generate` fails referencing Config.xcconfig | You skipped the one-time `cp Config.xcconfig.example Config.xcconfig` step — `setup.command` does this automatically, the manual path needs it done once by hand |

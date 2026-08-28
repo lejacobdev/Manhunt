@@ -35,6 +35,12 @@ log "Cleaning previous builds..."
 rm -rf "${BUILD_DIR}"
 mkdir -p "${IPA_DIR}"
 
+if [[ ! -f "${IOS_DIR}/Config.xcconfig" ]]; then
+  log "No Config.xcconfig found — creating one from the template (DEVELOPMENT_TEAM"
+  log "doesn't matter for this unsigned archive path, but xcodegen needs the file to exist)."
+  cp "${IOS_DIR}/Config.xcconfig.example" "${IOS_DIR}/Config.xcconfig"
+fi
+
 if [[ ! -d "${IOS_DIR}/${APP_NAME}.xcodeproj" ]]; then
   log "No .xcodeproj found — generating one from project.yml via XcodeGen..."
   if ! command -v xcodegen >/dev/null 2>&1; then

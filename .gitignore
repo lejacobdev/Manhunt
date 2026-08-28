@@ -9,6 +9,7 @@ backend/.env
 ios/HuntingGame/HuntingGame.xcodeproj/
 ios/HuntingGame/.build/
 ios/HuntingGame/DerivedData/
+ios/HuntingGame/Config.xcconfig
 *.xcuserstate
 xcuserdata/
 

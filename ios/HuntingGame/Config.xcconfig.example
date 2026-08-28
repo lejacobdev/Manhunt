@@ -1,0 +1,12 @@
+// Copy this file to Config.xcconfig (already gitignored) and fill in your
+// own Apple Developer Team ID. This is what makes signing survive
+// `xcodegen generate` — XcodeGen regenerates the whole .xcodeproj from
+// project.yml on every run, which would otherwise wipe out a team you'd
+// only picked by hand in Xcode's Signing & Capabilities UI. This file isn't
+// touched by regeneration, so setting it here is a one-time step.
+//
+// Find your Team ID at https://developer.apple.com/account/#/membership,
+// or in Xcode: Settings -> Accounts -> (your Apple ID) -> (your team).
+// A free personal team works fine for local device testing.
+
+DEVELOPMENT_TEAM = YOUR_TEAM_ID_HERE

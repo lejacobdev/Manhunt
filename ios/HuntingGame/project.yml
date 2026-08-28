@@ -5,14 +5,28 @@ options:
     iOS: "16.2" # ActivityKit's ActivityContent-based request/update API requires 16.2+
   createIntermediateGroups: true
 
+# DEVELOPMENT_TEAM lives in Config.xcconfig (gitignored, not this repo) so
+# your team selection survives `xcodegen generate` regenerating the whole
+# .xcodeproj — copy Config.xcconfig.example to Config.xcconfig and fill in
+# your Team ID once; see README "Signing for a device run".
+configFiles:
+  Debug: Config.xcconfig
+  Release: Config.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_TEAM: ""
-    CODE_SIGN_STYLE: Manual
-    CODE_SIGN_IDENTITY: ""
-    CODE_SIGNING_REQUIRED: NO
-    CODE_SIGNING_ALLOWED: NO
+    # Automatic signing is the default for every target so a normal Xcode
+    # device run/install just works once you pick a team in Signing &
+    # Capabilities — do NOT force this to Manual/disabled here. The CLI
+    # unsigned-archive path (build_ipa.sh) doesn't need it disabled at the
+    # project level either: it passes CODE_SIGNING_ALLOWED=NO directly to
+    # `xcodebuild archive`, which overrides whatever's baked into the
+    # project regardless. Disabling it here previously meant every
+    # `xcodegen generate` silently wiped out whatever signing config you'd
+    # set by hand in Xcode, producing an unsigned .app that installd
+    # rejects with "No code signature found."
+    CODE_SIGN_STYLE: Automatic
     ENABLE_BITCODE: NO
     TARGETED_DEVICE_FAMILY: "1,2"
 
@@ -87,8 +101,6 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.widgets
         INFOPLIST_KEY_CFBundleDisplayName: Hunting Game Widgets
         SKIP_INSTALL: YES
-        CODE_SIGNING_REQUIRED: NO
-        CODE_SIGNING_ALLOWED: NO
 
   HuntingGameWatch:
     type: application
@@ -116,8 +128,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp
         SKIP_INSTALL: YES
-        CODE_SIGNING_REQUIRED: NO
-        CODE_SIGNING_ALLOWED: NO
 
   HuntingGameWatchWidgets:
     type: app-extension
@@ -140,5 +150,3 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp.watchkitextension.widgets
         SKIP_INSTALL: YES
-        CODE_SIGNING_REQUIRED: NO
-        CODE_SIGNING_ALLOWED: NO

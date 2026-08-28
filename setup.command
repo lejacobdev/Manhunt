@@ -36,6 +36,14 @@ if ! command -v xcodegen >/dev/null 2>&1; then
   fi
 fi
 
+CONFIG_XCCONFIG="${IOS_DIR}/Config.xcconfig"
+NEEDS_TEAM_ID=0
+if [[ ! -f "${CONFIG_XCCONFIG}" ]]; then
+  echo "==> First run: creating Config.xcconfig from the template..."
+  cp "${IOS_DIR}/Config.xcconfig.example" "${CONFIG_XCCONFIG}"
+  NEEDS_TEAM_ID=1
+fi
+
 echo "==> Generating HuntingGame.xcodeproj from project.yml..."
 (cd "${IOS_DIR}" && xcodegen generate)
 
@@ -43,9 +51,18 @@ echo "==> Opening in Xcode..."
 open "${PROJECT_PATH}"
 
 echo "=========================================================================="
-echo "Done. Once Xcode opens:"
-echo "  1. Select the HuntingGame target -> Signing & Capabilities"
-echo "  2. Check 'Automatically manage signing' and pick your personal team"
-echo "  3. Plug in your iPhone, select it as the run destination, and hit Run"
+if [[ "${NEEDS_TEAM_ID}" -eq 1 ]]; then
+  echo "IMPORTANT: edit ios/HuntingGame/Config.xcconfig and set DEVELOPMENT_TEAM"
+  echo "to your real Apple Developer Team ID (Xcode -> Settings -> Accounts, or"
+  echo "https://developer.apple.com/account/#/membership), then re-run this"
+  echo "script (or re-run 'xcodegen generate') to pick it up. Without this,"
+  echo "Xcode will show no team selected and installs to a device will fail."
+  echo ""
+fi
+echo "Once Xcode is open:"
+echo "  1. Confirm each of the 4 targets (HuntingGame, HuntingGameWidgets,"
+echo "     HuntingGameWatch, HuntingGameWatchWidgets) shows your team under"
+echo "     Signing & Capabilities -> Automatically manage signing"
+echo "  2. Plug in your iPhone, select it as the run destination, and hit Run"
 echo "See README.md for the full walkthrough (backend, Watch app, sideloading)."
 echo "=========================================================================="
