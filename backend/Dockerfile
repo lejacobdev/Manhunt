@@ -1,5 +1,10 @@
 FROM node:20-alpine AS build
 WORKDIR /app
+# Prisma's engine binaries link against OpenSSL and fail to even start
+# without it — node:20-alpine doesn't ship it. Installing it here (before
+# `prisma generate`) lets Prisma correctly detect the real OpenSSL version
+# and fetch the matching engine, instead of guessing and getting it wrong.
+RUN apk add --no-cache openssl
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
@@ -9,6 +14,9 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
+# Needed again in the runtime stage: the engine binary generated above
+# needs libssl present at runtime, not just at generate-time.
+RUN apk add --no-cache openssl
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
