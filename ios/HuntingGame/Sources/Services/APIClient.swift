@@ -20,7 +20,7 @@ final class APIClient {
     static let shared = APIClient()
 
     /// The shared production backend, serving every player.
-    var baseURL = URL(string: "https://lejacob.eu")!
+    var baseURL = URL(string: "https://api.lejacob.eu")!
 
     private let session = URLSession(configuration: .default)
     private let decoder: JSONDecoder = {

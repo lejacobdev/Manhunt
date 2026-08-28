@@ -21,6 +21,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # Bound to loopback only — never reachable from outside this machine.
+    # Apache (running on the host, not in Docker) terminates TLS on 80/443
+    # and reverse-proxies api.lejacob.eu here. See deploy/apache/api.lejacob.eu.conf.
+    ports:
+      - "127.0.0.1:${BACKEND_PORT}:4000"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       JWT_SECRET: ${JWT_SECRET}
@@ -30,22 +35,5 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN}
       NODE_ENV: production
 
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      DOMAIN: ${DOMAIN}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - backend
-
 volumes:
   postgres_data:
-  caddy_data:
-  caddy_config:

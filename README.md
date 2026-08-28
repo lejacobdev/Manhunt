@@ -114,72 +114,105 @@ Any Node-friendly host works: a plain VPS with pm2, Render, Railway, Fly.io,
 or a container platform — there's no framework-specific lock-in here, it's
 just Express + Socket.IO + Prisma.
 
-### Deploying to a server (Docker Compose)
+### Deploying with Apache (what runs api.lejacob.eu)
 
-`docker-compose.yml` at the repo root spins up Postgres, the backend, and
-[Caddy](https://caddyserver.com) (which gets you a real, trusted HTTPS
-certificate automatically, including for the Socket.IO WebSocket upgrade)
-with one command. This is what runs the shared production backend at
-**lejacob.eu**, which is the one and only backend every build of the app
-talks to (`APIClient.baseURL` / `SocketService.serverURL` are hardcoded to
-`https://lejacob.eu` — there's no per-developer backend to stand up unless
-you're working on the server itself).
+`docker-compose.yml` at the repo root runs Postgres and the backend in
+Docker, with the backend bound to **127.0.0.1 only** on `BACKEND_PORT`
+(default `8420`) — never exposed to the public internet directly. Apache,
+running on the host (not in Docker), owns ports 80/443, terminates TLS, and
+reverse-proxies `api.lejacob.eu` to that loopback port. This is what every
+build of the app talks to — `APIClient.baseURL` / `SocketService.serverURL`
+are hardcoded to `https://api.lejacob.eu`; there's no per-developer backend
+to stand up unless you're working on the server itself.
 
-Prerequisite: a DNS **A record** for your domain (or subdomain) pointing at
-the server's IP. If you don't own a domain, [sslip.io](https://sslip.io)
-gives you a free one that resolves `<ip-with-dashes>.sslip.io` straight back
-to your server — no DNS records to configure at all.
+Prerequisite: a DNS **A record** for `api.lejacob.eu` pointing at the
+server's IP (already done per your setup).
 
-On the server (tested against a fresh Ubuntu/Debian VPS; adjust package
-manager commands if yours differs):
+On the server (Ubuntu/Debian; adjust package manager commands if yours differs):
 
 ```bash
-# 1. Install Docker
+# 1. Install Docker, Apache, and Certbot
 curl -fsSL https://get.docker.com | sh
+apt update && apt install -y apache2 certbot python3-certbot-apache
+a2enmod proxy proxy_http proxy_wstunnel rewrite ssl headers
 
 # 2. Get the code
 git clone https://github.com/lejacobdev/manhunt.git
 cd manhunt
 
-# 3. Configure
+# 3. Configure secrets
 cp .env.example .env
 nano .env   # set POSTGRES_PASSWORD, JWT_SECRET (openssl rand -base64 48);
-            # DOMAIN is already set to lejacob.eu — only change it if you're
-            # standing up a separate/staging instance under a different name
+            # BACKEND_PORT defaults to 8420 — only change it if that's
+            # already in use, and keep it in sync with step 5 below
 
-# 4. Open the firewall for HTTP/HTTPS (Caddy needs 80 for the ACME challenge, 443 to serve)
-ufw allow 80/tcp && ufw allow 443/tcp
-
-# 5. Build and start everything
+# 4. Start Postgres + the backend (loopback-only, nothing public yet)
 docker compose up -d --build
-```
-
-Caddy requests its certificate on first boot — give it 10-30 seconds, then:
-
-```bash
-curl https://lejacob.eu/health
+curl http://127.0.0.1:8420/health   # sanity check from the server itself
 # {"ok":true,"service":"hunting-game-backend"}
 ```
 
-If lejacob.eu already has another web server (nginx, an existing reverse
-proxy, another Caddy instance, etc.) bound to ports 80/443, stop it first —
-Caddy needs those ports free to request and serve the certificate.
+Now bring up Apache in front of it. Certbot needs a plain HTTP vhost to
+exist *before* it can issue a certificate, so bootstrap in this order:
 
-Only touch `APIClient.baseURL` / `SocketService.serverURL` in the iOS app if
-you're deliberately pointing a build at a different backend (e.g. a local
-dev/staging server) — the shipped default is `https://lejacob.eu`.
+```bash
+# 5. A minimal HTTP-only vhost first, just so certbot has something to find
+cat > /etc/apache2/sites-available/api.lejacob.eu.conf <<'EOF'
+<VirtualHost *:80>
+    ServerName api.lejacob.eu
+</VirtualHost>
+EOF
+a2ensite api.lejacob.eu
+systemctl reload apache2
+
+# 6. Open the firewall for HTTP/HTTPS (not 8420 — that stays loopback-only)
+ufw allow 80/tcp && ufw allow 443/tcp
+
+# 7. Get the certificate
+certbot certonly --apache -d api.lejacob.eu
+
+# 8. Now install the real vhost — REST API, WebSocket upgrade for
+# Socket.IO, and the cert from step 7 — and reload
+cp deploy/apache/api.lejacob.eu.conf /etc/apache2/sites-available/api.lejacob.eu.conf
+sed -i 's/\${BACKEND_PORT}/8420/g' /etc/apache2/sites-available/api.lejacob.eu.conf
+apache2ctl configtest && systemctl reload apache2
+```
+
+Verify from outside the server:
+
+```bash
+curl https://api.lejacob.eu/health
+# {"ok":true,"service":"hunting-game-backend"}
+```
+
+`deploy/apache/api.lejacob.eu.conf` in the repo is the source of truth for
+that vhost — if you tweak it, re-run step 8's `cp`/`sed`/reload rather than
+hand-editing `/etc/apache2/sites-available` only, or the next redeploy will
+silently overwrite your change back.
+
+Certificate renewal: certbot installs a systemd timer (`certbot.timer`)
+automatically — `systemctl status certbot.timer` to confirm it's active.
+Nothing else to do; renewed certs are picked up on Apache's next reload,
+which certbot's renewal hook also triggers.
 
 Useful follow-up commands:
 
 ```bash
-docker compose logs -f backend   # tail the server logs
-docker compose ps                # check container health
+docker compose logs -f backend             # tail the backend's own logs
+docker compose ps                          # container health
 docker compose pull && docker compose up -d --build   # redeploy after a git pull
+tail -f /var/log/apache2/api.lejacob.eu-ssl-error.log  # proxy-level errors
 ```
 
-Data persists in named Docker volumes (`postgres_data`, `caddy_data`,
-`caddy_config`) across restarts and redeploys — `docker compose down`
-leaves them intact; only `docker compose down -v` destroys them.
+Data persists in the named Docker volume `postgres_data` across restarts
+and redeploys — `docker compose down` leaves it intact; only
+`docker compose down -v` destroys it.
+
+If you'd rather not manage Apache yourself, `docker-compose.yml` still works
+fine standing entirely on its own — just publish the backend on `0.0.0.0`
+instead of `127.0.0.1` in the `ports:` line and put any TLS-terminating
+proxy of your choice (Caddy, nginx, your PaaS's built-in HTTPS) in front of
+it the same way.
 
 ### Database schema reference
 
