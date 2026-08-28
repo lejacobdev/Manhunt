@@ -29,6 +29,7 @@ targets:
     sources:
       - path: Sources
       - path: Shared
+      - path: LiveActivityShared
     resources:
       - path: Resources
     dependencies:
@@ -72,6 +73,7 @@ targets:
     sources:
       - path: Widgets/HuntingGameWidgets
       - path: Shared
+      - path: LiveActivityShared
     info:
       path: Widgets/HuntingGameWidgets/Info.plist
       properties:
