@@ -170,7 +170,7 @@ curl http://127.0.0.1:8420/health   # sanity check from the server itself
 
 Get the Origin CA cert from the Cloudflare dashboard (**SSL/TLS → Origin
 Server → Create Certificate**; accept the defaults, it'll cover
-`api.lejacob.eu`), then:
+`api.lejacob.eu`), then install it and the vhost:
 
 ```bash
 # 5. Install the cert + key, and Cloudflare's origin CA root for the chain
@@ -181,17 +181,26 @@ nano /etc/cloudflare/origin.key                # paste the private key
 nano /etc/cloudflare/origin_ca_rsa_root.pem     # paste the origin CA root
 chmod 600 /etc/cloudflare/origin.key
 
-# 6. Install the IP allowlist + vhost, and enable
-cp deploy/apache/cloudflare-ips.conf /etc/apache2/cloudflare-ips.conf
-cp deploy/apache/api.lejacob.eu.conf /etc/apache2/sites-available/api.lejacob.eu.conf
-sed -i 's/\${BACKEND_PORT}/8420/g' /etc/apache2/sites-available/api.lejacob.eu.conf
-a2ensite api.lejacob.eu
-apache2ctl configtest && systemctl reload apache2
+# 6. Install Apache, the IP allowlist, and the vhost, then enable + reload —
+# deploy/bootstrap-apache.sh does exactly the manual steps from here down
+# (a2enmod, copy the two conf templates in with BACKEND_PORT substituted,
+# a2ensite, configtest, reload) so there's one idempotent script instead of
+# a sequence to retype by hand on every redeploy.
+sudo ./deploy/bootstrap-apache.sh
 
 # 7. Firewall — 80/443 need to accept Cloudflare's traffic; Apache's own
-# IP allowlist (step 6) is what actually rejects anyone else that reaches them
+# IP allowlist (from the script above) is what actually rejects anyone else
+# that reaches them
 ufw allow 80/tcp && ufw allow 443/tcp
 ```
+
+`bootstrap-apache.sh` reads `BACKEND_PORT` straight out of your `.env` (falling
+back to `8420` if unset), so it stays in sync automatically — no separate
+`sed` step to remember. Safe to re-run any time you change either
+`deploy/apache/*.conf` template or `.env`'s `BACKEND_PORT`; it always
+overwrites the installed copies rather than leaving stale ones in place. If
+the Cloudflare cert/key aren't in place yet it warns and exits cleanly
+without touching Apache's running config — drop the certs in and re-run it.
 
 Verify from your own machine (not the server):
 
@@ -207,9 +216,10 @@ the actual rejection reason (a wrong cert path or a stale IP range are the
 two usual suspects).
 
 `deploy/apache/api.lejacob.eu.conf` and `cloudflare-ips.conf` in the repo
-are the source of truth — if you tweak either, re-run step 6's
-`cp`/`sed`/reload rather than hand-editing `/etc/apache2/...` only, or the
-next redeploy will silently overwrite your change back. Cloudflare does
+are the source of truth — if you tweak either, re-run
+`sudo ./deploy/bootstrap-apache.sh` rather than hand-editing
+`/etc/apache2/...` only, or the next redeploy will silently overwrite your
+change back. Cloudflare does
 occasionally rotate its IP ranges (rare, but it happens) — re-sync
 `cloudflare-ips.conf` from
 [cloudflare.com/ips-v4](https://www.cloudflare.com/ips-v4/) /
