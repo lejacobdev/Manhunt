@@ -34,7 +34,7 @@ struct GameView: View {
                     SpatialRadarView(
                         distanceMeters: viewModel.nearestHunterDistance,
                         bearingDegrees: viewModel.nearestHunterBearing,
-                        currentHeading: viewModel.locationManager.currentHeading?.trueHeading ?? 0,
+                        currentHeading: viewModel.currentHeadingDegrees,
                         role: viewModel.role
                     )
                     .transition(.scale.combined(with: .opacity))
@@ -67,7 +67,7 @@ struct GameView: View {
         .animation(ADATheme.controlSpring, value: viewModel.role)
         .onAppear {
             viewModel.start()
-            if let loc = viewModel.locationManager.currentLocation {
+            if let loc = viewModel.currentLocation {
                 mapRegion.center = loc.coordinate
             }
         }
@@ -230,7 +230,21 @@ struct GameView: View {
     }
 
     private var mapAnnotations: [MapBlip] {
-        viewModel.allPlayers.map { MapBlip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role) }
+        // The roster (viewModel.allPlayers) only gets a fresh snapshot on
+        // join/leave — for non-supervisors it's never refreshed afterward,
+        // so it still carries whatever position you were at (lat/lng 0,0)
+        // the moment you joined. Render your own pin from live GPS instead,
+        // and drop the stale roster copy of yourself so there's no ghost
+        // pin sitting at (0,0).
+        var blips = viewModel.allPlayers
+            .filter { $0.id != viewModel.gamePlayerId }
+            .map { MapBlip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role) }
+
+        if let selfCoordinate = viewModel.currentLocation?.coordinate {
+            blips.append(MapBlip(id: viewModel.gamePlayerId, coordinate: selfCoordinate, kind: viewModel.role))
+        }
+
+        return blips
     }
 }
 

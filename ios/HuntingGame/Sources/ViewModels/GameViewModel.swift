@@ -18,6 +18,12 @@ final class GameViewModel: ObservableObject {
     @Published var catchTargetId: String?
     @Published var catchCodeEntry: String = ""
     @Published var showCatchFailure: String?
+    /// Republished from `locationManager` so views that only observe this
+    /// StateObject (not the nested LocationManager) still react live — a
+    /// view can't get change notifications from an object it doesn't hold
+    /// as its own @StateObject/@ObservedObject.
+    @Published var currentLocation: CLLocation?
+    @Published var currentHeadingDegrees: Double = 0
 
     private var cancellables = Set<AnyCancellable>()
     private var invisibilityTimer: Timer?
@@ -26,7 +32,7 @@ final class GameViewModel: ObservableObject {
     private var lastSentAt: Date = .distantPast
     private let minSendInterval: TimeInterval = 2.0
 
-    private let gamePlayerId: String
+    let gamePlayerId: String
     private let roomCode: String
 
     init(gamePlayer: GamePlayer, session: GameSession) {
@@ -98,8 +104,18 @@ final class GameViewModel: ObservableObject {
     }
 
     private func bindLocation() {
+        locationManager.$currentHeading
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] heading in
+                self?.currentHeadingDegrees = heading?.trueHeading ?? 0
+            }
+            .store(in: &cancellables)
+
         locationManager.onLocationUpdate = { [weak self] location in
             guard let self else { return }
+            // Update the self-pin on every fix, independent of the socket send throttle below.
+            self.currentLocation = location
+
             let now = Date()
             guard now.timeIntervalSince(self.lastSentAt) >= self.minSendInterval else { return }
             self.lastSentAt = now
