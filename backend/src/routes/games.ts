@@ -4,6 +4,7 @@ import { AuthedRequest, requireAuth } from '../middleware/auth';
 import { gameService } from '../services/GameService';
 import { overpassSpawner } from '../services/OverpassSpawner';
 import { prisma } from '../lib/prisma';
+import { zodErrorMessage } from '../utils/validation';
 
 export const gamesRouter = Router();
 gamesRouter.use(requireAuth);
@@ -20,7 +21,7 @@ const createSessionSchema = z.object({
 
 gamesRouter.post('/', async (req: AuthedRequest, res) => {
   const parsed = createSessionSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
 
   const session = await gameService.createSession({
     hostId: req.user!.userId,
@@ -42,7 +43,7 @@ gamesRouter.post('/:code/join', async (req: AuthedRequest, res) => {
     return res.status(409).json({ error: 'Game has already started or ended.' });
   }
   const parsed = joinSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
   if (session.mode === 'SQUAD' && !parsed.data.squad) {
     return res.status(400).json({ error: 'Squad name is required to join a SQUAD mode game.' });
   }
@@ -85,7 +86,7 @@ gamesRouter.get('/:code', async (req: AuthedRequest, res) => {
 /** Verifies a proposed play-area boundary actually contains real, public outdoor terrain. */
 gamesRouter.post('/verify-boundary', async (req: AuthedRequest, res) => {
   const parsed = z.object({ boundsPolygon: z.array(pointSchema).min(3) }).safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
 
   const points = await overpassSpawner.generatePublicPowerUpSpawns(parsed.data.boundsPolygon, 3);
   return res.json({ hasPublicAccess: points.length > 0, sampledPoints: points });

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthedRequest, requireAuth } from '../middleware/auth';
+import { zodErrorMessage } from '../utils/validation';
 
 export const friendsRouter = Router();
 friendsRouter.use(requireAuth);
@@ -31,7 +32,7 @@ const sendRequestSchema = z.object({ receiverId: z.string().uuid() });
 
 friendsRouter.post('/requests', async (req: AuthedRequest, res) => {
   const parsed = sendRequestSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
   const senderId = req.user!.userId;
   const { receiverId } = parsed.data;
 

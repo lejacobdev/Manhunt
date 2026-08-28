@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AuthedRequest, requireAuth } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { overpassSpawner } from '../services/OverpassSpawner';
+import { zodErrorMessage } from '../utils/validation';
 
 export const powerUpsRouter = Router();
 powerUpsRouter.use(requireAuth);
@@ -19,7 +20,7 @@ const verifySchema = z.object({ lat: z.number(), lng: z.number() });
 /** Real-world accessibility check for a single coordinate before it's used as a spawn/safe-zone. */
 powerUpsRouter.post('/verify-point', async (req: AuthedRequest, res) => {
   const parsed = verifySchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
   const isPublic = await overpassSpawner.isPointOnPublicLand(parsed.data);
   return res.json({ isPublic });
 });
