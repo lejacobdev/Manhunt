@@ -55,7 +55,14 @@ const lastFix: Map<string, { lat: number; lng: number; timestamp: number }> = ne
 const pendingLogs: Map<string, { playerId: string; lat: number; lng: number; accuracy: number; speed?: number }[]> = new Map();
 
 io.use((socket, next) => {
-  const token = socket.handshake.auth?.token as string | undefined;
+  // The iOS client sends the token three ways for robustness across
+  // socket.io-client-swift versions (auth payload, query param, and the
+  // Authorization header) — accept whichever one actually arrived.
+  const authHeader = socket.handshake.headers.authorization;
+  const token =
+    (socket.handshake.auth?.token as string | undefined) ??
+    (socket.handshake.query?.token as string | undefined) ??
+    (authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined);
   if (!token) return next(new Error('Missing auth token.'));
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as AuthTokenPayload;

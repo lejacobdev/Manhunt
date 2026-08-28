@@ -78,6 +78,8 @@ targets:
       path: Widgets/HuntingGameWidgets/Info.plist
       properties:
         CFBundleDisplayName: Hunting Game Widgets
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
@@ -128,6 +130,8 @@ targets:
       path: WatchWidgets/HuntingGameWatchWidgets/Info.plist
       properties:
         CFBundleDisplayName: Hunting Game Radar
+        CFBundleShortVersionString: "1.0.0"
+        CFBundleVersion: "1"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:

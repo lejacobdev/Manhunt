@@ -49,7 +49,6 @@ final class SocketService: ObservableObject {
         self.manager = manager
         let socket = manager.defaultSocket
         self.socket = socket
-        socket.connectPayload = ["token": token]
 
         registerHandlers(on: socket)
         socket.connect()
