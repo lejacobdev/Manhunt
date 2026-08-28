@@ -2,7 +2,7 @@ name: HuntingGame
 options:
   bundleIdPrefix: com.huntinggame.app
   deploymentTarget:
-    iOS: "16.0"
+    iOS: "16.2" # ActivityKit's ActivityContent-based request/update API requires 16.2+
   createIntermediateGroups: true
 
 settings:
@@ -25,13 +25,16 @@ targets:
   HuntingGame:
     type: application
     platform: iOS
-    deploymentTarget: "16.0"
+    deploymentTarget: "16.2"
     sources:
       - path: Sources
+      - path: Shared
     resources:
       - path: Resources
     dependencies:
       - package: SocketIO
+      - target: HuntingGameWidgets
+        embed: true
     info:
       path: Info.plist
       properties:
@@ -48,6 +51,8 @@ targets:
           - location
           - fetch
           - remote-notification
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
       entitlements:
         path: HuntingGame.entitlements
         properties:
@@ -57,3 +62,24 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+
+  HuntingGameWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "16.2"
+    sources:
+      - path: Widgets/HuntingGameWidgets
+      - path: Shared
+    info:
+      path: Widgets/HuntingGameWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: Hunting Game Widgets
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.widgets
+        INFOPLIST_KEY_CFBundleDisplayName: Hunting Game Widgets
+        SKIP_INSTALL: YES
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO

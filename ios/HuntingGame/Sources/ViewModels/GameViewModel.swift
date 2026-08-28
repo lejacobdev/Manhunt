@@ -41,14 +41,17 @@ final class GameViewModel: ObservableObject {
 
     func start() {
         UIDevice.current.isBatteryMonitoringEnabled = true
+        HapticsEngine.shared.prepareEngine()
         locationManager.requestAuthorizationAndStart()
         socket.connect(roomCode: roomCode, gamePlayerId: gamePlayerId)
+        LiveActivityManager.shared.start(gameCode: roomCode, role: role)
     }
 
     func stop() {
         locationManager.stop()
         socket.disconnect()
         invisibilityTimer?.invalidate()
+        LiveActivityManager.shared.end()
     }
 
     private func bindLocation() {
@@ -74,7 +77,19 @@ final class GameViewModel: ObservableObject {
                 guard let self else { return }
                 if event.runnerId == self.gamePlayerId {
                     self.isCaught = true
+                    HapticsEngine.shared.catchFailed()
+                    LiveActivityManager.shared.markCaught()
+                } else if event.hunterId == self.gamePlayerId {
+                    HapticsEngine.shared.catchSucceeded()
                 }
+            }
+            .store(in: &cancellables)
+
+        socket.$compass
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { update in
+                LiveActivityManager.shared.update(distanceMeters: update.distanceMeters, bearingDegrees: update.bearingDegrees)
             }
             .store(in: &cancellables)
 
@@ -92,7 +107,10 @@ final class GameViewModel: ObservableObject {
         socket.$lastCatchFailure
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] reason in self?.showCatchFailure = reason }
+            .sink { [weak self] reason in
+                self?.showCatchFailure = reason
+                HapticsEngine.shared.catchFailed()
+            }
             .store(in: &cancellables)
     }
 
@@ -118,12 +136,14 @@ final class GameViewModel: ObservableObject {
     }
 
     func collectPowerUp(spawnId: String) {
+        HapticsEngine.shared.powerUpCollected()
         socket.collectPowerUp(spawnId: spawnId)
     }
 
     // MARK: - Catch flow
 
     func beginCatch(on runnerId: String) {
+        HapticsEngine.shared.lightTap()
         catchTargetId = runnerId
         catchCodeEntry = ""
     }

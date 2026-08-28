@@ -3,77 +3,89 @@ import SwiftUI
 struct AuthView: View {
     @StateObject private var viewModel = AuthViewModel()
     @State private var isRegisterMode = true
+    @State private var hasAppeared = false
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 20) {
-                Text("HUNTING GAME")
-                    .font(.system(size: 32, weight: .black, design: .monospaced))
-                    .foregroundColor(.green)
+            ZStack {
+                RadialGradient(
+                    colors: [ADATheme.runnerGreen.opacity(0.12), .clear],
+                    center: .top,
+                    startRadius: 20,
+                    endRadius: 420
+                )
+                .edgesIgnoringSafeArea(.all)
+
+                VStack(spacing: 20) {
+                    VStack(spacing: 6) {
+                        Text("HUNTING GAME")
+                            .font(ADATheme.displayFont(size: 32))
+                            .foregroundColor(.white)
+                            .shadow(color: ADATheme.runnerGreen.opacity(0.5), radius: 16)
+
+                        Text("REAL-WORLD GPS MANHUNT")
+                            .font(ADATheme.telemetryFont(size: 12))
+                            .foregroundColor(.white.opacity(0.4))
+                            .tracking(2)
+                    }
                     .padding(.top, 60)
+                    .opacity(hasAppeared ? 1 : 0)
+                    .offset(y: hasAppeared ? 0 : -12)
 
-                Text("Real-world GPS manhunt")
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundColor(.gray)
+                    Picker("Mode", selection: $isRegisterMode.animation(ADATheme.controlSpring)) {
+                        Text("Register").tag(true)
+                        Text("Login").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .padding(.top, 12)
 
-                Picker("Mode", selection: $isRegisterMode) {
-                    Text("Register").tag(true)
-                    Text("Login").tag(false)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.top, 20)
+                    VStack(spacing: 12) {
+                        ADATextField(placeholder: "Username", text: $viewModel.username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
 
-                VStack(spacing: 12) {
-                    TextField("Username", text: $viewModel.username)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .padding()
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(8)
+                        if !isRegisterMode {
+                            ADATextField(placeholder: "Tag (e.g. 4921)", text: $viewModel.userTag)
+                                .keyboardType(.numberPad)
+                                .transition(.scale.combined(with: .opacity))
+                        }
 
-                    if !isRegisterMode {
-                        TextField("Tag (e.g. 4921)", text: $viewModel.userTag)
-                            .keyboardType(.numberPad)
-                            .padding()
-                            .background(Color.white.opacity(0.08))
-                            .cornerRadius(8)
+                        ADASecureField(placeholder: "Password", text: $viewModel.password)
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
+                    .glassCard(cornerRadius: ADATheme.cardCornerRadius)
+                    .padding(.horizontal)
+
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .font(ADATheme.telemetryFont(size: 12))
+                            .foregroundColor(ADATheme.hunterRed)
+                            .padding(.horizontal)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
-                    SecureField("Password", text: $viewModel.password)
-                        .padding()
-                        .background(Color.white.opacity(0.08))
-                        .cornerRadius(8)
-                }
-                .padding(.horizontal)
-
-                if let error = viewModel.errorMessage {
-                    Text(error)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.red)
-                        .padding(.horizontal)
-                }
-
-                Button(action: submit) {
-                    if viewModel.isLoading {
-                        ProgressView()
-                            .frame(maxWidth: .infinity)
-                    } else {
-                        Text(isRegisterMode ? "CREATE ACCOUNT" : "LOG IN")
-                            .font(.system(size: 15, weight: .bold, design: .monospaced))
-                            .frame(maxWidth: .infinity)
+                    Button(action: submit) {
+                        if viewModel.isLoading {
+                            ProgressView()
+                                .tint(.black)
+                        } else {
+                            Text(isRegisterMode ? "CREATE ACCOUNT" : "LOG IN")
+                        }
                     }
-                }
-                .padding()
-                .background(Color.green.opacity(0.85))
-                .foregroundColor(.black)
-                .cornerRadius(10)
-                .padding(.horizontal)
-                .disabled(viewModel.isLoading)
+                    .buttonStyle(GlowButtonStyle(tint: ADATheme.runnerGreen, isLoading: viewModel.isLoading))
+                    .padding(.horizontal)
+                    .disabled(viewModel.isLoading)
 
-                Spacer()
+                    Spacer()
+                }
+                .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
             }
-            .background(Color.black.edgesIgnoringSafeArea(.all))
+            .obsidianBackdrop()
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.5)) { hasAppeared = true }
         }
     }
 
@@ -85,6 +97,35 @@ struct AuthView: View {
                 await viewModel.login()
             }
         }
+    }
+}
+
+/// Shared glass-surfaced text field styling for the auth/lobby forms.
+struct ADATextField: View {
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        TextField("", text: $text, prompt: Text(placeholder).foregroundColor(.white.opacity(0.35)))
+            .font(ADATheme.uiFont(size: 15))
+            .foregroundColor(.white)
+            .padding()
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
+    }
+}
+
+struct ADASecureField: View {
+    let placeholder: String
+    @Binding var text: String
+
+    var body: some View {
+        SecureField("", text: $text, prompt: Text(placeholder).foregroundColor(.white.opacity(0.35)))
+            .font(ADATheme.uiFont(size: 15))
+            .foregroundColor(.white)
+            .padding()
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
     }
 }
 

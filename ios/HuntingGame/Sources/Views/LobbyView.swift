@@ -11,61 +11,64 @@ struct LobbyView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
-                header
+            ScrollView {
+                VStack(spacing: 16) {
+                    header
 
-                if let user = authSession.currentUser {
-                    Text("Signed in as \(user.tagLabel)")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.gray)
+                    if let user = authSession.currentUser {
+                        Text("SIGNED IN AS \(user.tagLabel.uppercased())")
+                            .font(ADATheme.telemetryFont(size: 11))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+
+                    joinSection
+
+                    Button {
+                        showCreateSheet = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "mappin.and.ellipse")
+                            Text("HOST NEW GAME")
+                        }
+                    }
+                    .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
+                    .padding(.horizontal)
+
+                    Button {
+                        showFriends = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "person.2.fill")
+                            Text("FRIENDS")
+                        }
+                    }
+                    .buttonStyle(GlassButtonStyle(tint: .white))
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal)
+
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .font(ADATheme.telemetryFont(size: 12))
+                            .foregroundColor(ADATheme.hunterRed)
+                            .padding(.horizontal)
+                            .transition(.opacity)
+                    }
+
+                    if let session = viewModel.activeSession, let player = viewModel.activePlayer {
+                        sessionStatusCard(session: session, player: player)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+
+                    Button("Sign Out") { authSession.signOut() }
+                        .font(ADATheme.telemetryFont(size: 12))
+                        .foregroundColor(.white.opacity(0.35))
+                        .padding(.top, 12)
+                        .padding(.bottom, 30)
                 }
-
-                joinSection
-
-                Button {
-                    showCreateSheet = true
-                } label: {
-                    Text("HOST NEW GAME")
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue.opacity(0.85))
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
-                .padding(.horizontal)
-
-                Button {
-                    showFriends = true
-                } label: {
-                    Text("FRIENDS")
-                        .font(.system(size: 14, weight: .bold, design: .monospaced))
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.white.opacity(0.1))
-                        .foregroundColor(.white)
-                        .cornerRadius(10)
-                }
-                .padding(.horizontal)
-
-                if let error = viewModel.errorMessage {
-                    Text(error)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.red)
-                }
-
-                if let session = viewModel.activeSession, let player = viewModel.activePlayer {
-                    sessionStatusCard(session: session, player: player)
-                }
-
-                Spacer()
-
-                Button("Sign Out") { authSession.signOut() }
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.gray)
-                    .padding(.bottom, 20)
+                .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
+                .animation(ADATheme.ambientSpring, value: viewModel.activeSession?.status)
             }
-            .background(Color.black.edgesIgnoringSafeArea(.all))
+            .obsidianBackdrop()
             .sheet(isPresented: $showCreateSheet) {
                 CreateGameSheet(viewModel: viewModel, locationManager: locationManager)
             }
@@ -80,25 +83,29 @@ struct LobbyView: View {
             }
             .onAppear { locationManager.requestAuthorizationAndStart() }
         }
+        .preferredColorScheme(.dark)
     }
 
     private var header: some View {
-        Text("HUNTING GAME")
-            .font(.system(size: 26, weight: .black, design: .monospaced))
-            .foregroundColor(.green)
-            .padding(.top, 40)
+        VStack(spacing: 4) {
+            Text("HUNTING GAME")
+                .font(ADATheme.displayFont(size: 26))
+                .foregroundColor(.white)
+            Text("MISSION CONTROL")
+                .font(ADATheme.telemetryFont(size: 10))
+                .foregroundColor(ADATheme.runnerGreen)
+                .tracking(3)
+        }
+        .padding(.top, 40)
     }
 
     private var joinSection: some View {
         VStack(spacing: 10) {
-            TextField("Game code", text: $viewModel.joinCodeInput)
+            ADATextField(placeholder: "GAME CODE", text: $viewModel.joinCodeInput)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .multilineTextAlignment(.center)
-                .font(.system(size: 20, weight: .bold, design: .monospaced))
-                .padding()
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(8)
+                .font(ADATheme.displayFont(size: 20))
 
             Picker("Role", selection: $viewModel.selectedRole) {
                 ForEach([PlayerRole.runner, .hunter, .spectator], id: \.self) { role in
@@ -108,10 +115,8 @@ struct LobbyView: View {
             .pickerStyle(.segmented)
 
             if viewModel.selectedMode == .squad {
-                TextField("Squad name", text: $viewModel.squadName)
-                    .padding()
-                    .background(Color.white.opacity(0.08))
-                    .cornerRadius(8)
+                ADATextField(placeholder: "Squad name", text: $viewModel.squadName)
+                    .transition(.scale.combined(with: .opacity))
             }
 
             Button {
@@ -122,30 +127,36 @@ struct LobbyView: View {
                     }
                 }
             } label: {
-                Text("JOIN GAME")
-                    .font(.system(size: 14, weight: .bold, design: .monospaced))
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(Color.green.opacity(0.85))
-                    .foregroundColor(.black)
-                    .cornerRadius(10)
+                HStack {
+                    Image(systemName: "arrow.right.circle.fill")
+                    Text("JOIN GAME")
+                }
             }
+            .buttonStyle(GlowButtonStyle(tint: ADATheme.runnerGreen))
         }
+        .padding(16)
+        .glassCard(cornerRadius: ADATheme.cardCornerRadius)
         .padding(.horizontal)
+        .animation(ADATheme.controlSpring, value: viewModel.selectedMode)
     }
 
     private func sessionStatusCard(session: GameSession, player: GamePlayer) -> some View {
-        VStack(spacing: 8) {
-            Text("Code: \(session.code)  ·  Mode: \(session.mode.displayName)")
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .foregroundColor(.white)
-            Text("Status: \(session.status.rawValue)")
-                .font(.system(size: 12, design: .monospaced))
-                .foregroundColor(.gray)
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusColor(for: session.status))
+                    .frame(width: 8, height: 8)
+                Text("CODE \(session.code) · \(session.mode.displayName.uppercased())")
+                    .font(ADATheme.telemetryFont(size: 13))
+                    .foregroundColor(.white)
+            }
+            Text(session.status.rawValue)
+                .font(ADATheme.telemetryFont(size: 11))
+                .foregroundColor(statusColor(for: session.status))
 
             HStack(spacing: 12) {
                 if player.role == .supervisor && session.status == .lobby {
-                    Button("START GAME") {
+                    Button("START") {
                         Task {
                             await viewModel.startGame()
                             if let updated = viewModel.activeSession {
@@ -153,25 +164,25 @@ struct LobbyView: View {
                             }
                         }
                     }
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .padding(8)
-                    .background(Color.orange.opacity(0.85))
-                    .foregroundColor(.black)
-                    .cornerRadius(8)
+                    .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
                 }
 
                 Button("ENTER") { launchedGame = (player, session) }
-                    .font(.system(size: 12, weight: .bold, design: .monospaced))
-                    .padding(8)
-                    .background(Color.blue.opacity(0.85))
-                    .foregroundColor(.white)
-                    .cornerRadius(8)
+                    .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
             }
         }
-        .padding()
-        .background(Color.white.opacity(0.06))
-        .cornerRadius(12)
+        .padding(18)
+        .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: statusColor(for: session.status))
         .padding(.horizontal)
+    }
+
+    private func statusColor(for status: GameStatus) -> Color {
+        switch status {
+        case .lobby: return ADATheme.spatialCyan
+        case .active: return ADATheme.runnerGreen
+        case .paused: return ADATheme.tacticalAmber
+        case .ended: return ADATheme.neutralGray
+        }
     }
 }
 
@@ -188,74 +199,92 @@ struct CreateGameSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 12) {
-                Picker("Mode", selection: $viewModel.selectedMode) {
-                    ForEach(GameMode.allCases) { mode in
-                        Text(mode.displayName).tag(mode)
+            ScrollView {
+                VStack(spacing: 14) {
+                    Picker("Mode", selection: $viewModel.selectedMode.animation(ADATheme.controlSpring)) {
+                        ForEach(GameMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
                     }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-
-                VStack(alignment: .leading) {
-                    Text("Duration: \(Int(viewModel.durationMinutes)) min")
-                    Slider(value: $viewModel.durationMinutes, in: 10...180, step: 5)
-                    Text("Radar interval: \(Int(viewModel.radarIntervalSec))s")
-                    Slider(value: $viewModel.radarIntervalSec, in: 15...300, step: 15)
-                }
-                .font(.system(size: 12, design: .monospaced))
-                .padding(.horizontal)
-
-                Text("Tap the map to draw the public play-area boundary (min. 3 points). Power-ups only spawn on verified public land inside it.")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundColor(.gray)
+                    .pickerStyle(.segmented)
                     .padding(.horizontal)
 
-                BoundaryMapView(
-                    points: $viewModel.boundaryPoints,
-                    centerCoordinate: locationManager.currentLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
-                )
-                .frame(height: 300)
-                .cornerRadius(12)
-                .padding(.horizontal)
-
-                HStack {
-                    Button("Clear") { viewModel.resetBoundary() }
-                        .font(.system(size: 12, design: .monospaced))
-                    Spacer()
-                    Text("\(viewModel.boundaryPoints.count) points")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundColor(.gray)
-                }
-                .padding(.horizontal)
-
-                if let error = viewModel.errorMessage {
-                    Text(error).font(.system(size: 12, design: .monospaced)).foregroundColor(.red)
-                }
-
-                Button {
-                    Task {
-                        await viewModel.createGame()
-                        if viewModel.activeSession != nil { dismiss() }
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("DURATION: \(Int(viewModel.durationMinutes)) MIN")
+                        Slider(value: $viewModel.durationMinutes, in: 10...180, step: 5)
+                            .tint(ADATheme.spatialCyan)
+                        Text("RADAR INTERVAL: \(Int(viewModel.radarIntervalSec))S")
+                        Slider(value: $viewModel.radarIntervalSec, in: 15...300, step: 15)
+                            .tint(ADATheme.spatialCyan)
                     }
-                } label: {
-                    if viewModel.isLoading {
-                        ProgressView().frame(maxWidth: .infinity)
-                    } else {
-                        Text("CREATE GAME").font(.system(size: 14, weight: .bold, design: .monospaced)).frame(maxWidth: .infinity)
-                    }
-                }
-                .padding()
-                .background(Color.green.opacity(0.85))
-                .foregroundColor(.black)
-                .cornerRadius(10)
-                .padding(.horizontal)
+                    .font(ADATheme.telemetryFont(size: 12))
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(16)
+                    .glassCard(cornerRadius: ADATheme.cardCornerRadius)
+                    .padding(.horizontal)
 
-                Spacer()
+                    Text("Tap the map to draw the public play-area boundary (min. 3 points). Power-ups only spawn on verified public land inside it.")
+                        .font(ADATheme.uiFont(size: 12, weight: .medium))
+                        .foregroundColor(.white.opacity(0.45))
+                        .padding(.horizontal)
+
+                    BoundaryMapView(
+                        points: $viewModel.boundaryPoints,
+                        centerCoordinate: locationManager.currentLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+                    )
+                    .frame(height: 300)
+                    .clipShape(RoundedRectangle(cornerRadius: ADATheme.cardCornerRadius, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: ADATheme.cardCornerRadius, style: .continuous)
+                            .stroke(ADATheme.borderGlass, lineWidth: 1)
+                    )
+                    .padding(.horizontal)
+
+                    HStack {
+                        Button("CLEAR") { viewModel.resetBoundary() }
+                            .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+                        Spacer()
+                        Text("\(viewModel.boundaryPoints.count) POINTS")
+                            .font(ADATheme.telemetryFont(size: 12))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    .padding(.horizontal)
+
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .font(ADATheme.telemetryFont(size: 12))
+                            .foregroundColor(ADATheme.hunterRed)
+                            .padding(.horizontal)
+                    }
+
+                    Button {
+                        Task {
+                            await viewModel.createGame()
+                            if viewModel.activeSession != nil { dismiss() }
+                        }
+                    } label: {
+                        if viewModel.isLoading {
+                            ProgressView().tint(.black)
+                        } else {
+                            HStack {
+                                Image(systemName: "flag.checkered")
+                                Text("CREATE GAME")
+                            }
+                        }
+                    }
+                    .buttonStyle(GlowButtonStyle(tint: ADATheme.runnerGreen, isLoading: viewModel.isLoading))
+                    .padding(.horizontal)
+
+                    Spacer(minLength: 20)
+                }
+                .padding(.top)
+                .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
             }
-            .padding(.top)
+            .obsidianBackdrop()
             .navigationTitle("Host a Game")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarColorScheme(.dark, for: .navigationBar)
         }
+        .preferredColorScheme(.dark)
     }
 }
