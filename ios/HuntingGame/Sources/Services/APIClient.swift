@@ -135,6 +135,15 @@ final class APIClient {
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
         guard (200..<300).contains(http.statusCode) else {
             let message = (try? decoder.decode(ErrorBody.self, from: data))?.error ?? "Request failed with status \(http.statusCode)."
+            // A 401 on a request that carried our saved token means the server has
+            // genuinely rejected it (expired/invalid) — the user should land back on
+            // the login screen rather than see the same request fail silently over
+            // and over while the app still thinks they're signed in. A 401 from an
+            // unauthorized call (login/register with wrong credentials) never hits
+            // this, since the user was never signed in to begin with.
+            if authorized, http.statusCode == 401 {
+                await MainActor.run { AuthSession.shared.signOut() }
+            }
             throw APIError.server(message)
         }
         do {
