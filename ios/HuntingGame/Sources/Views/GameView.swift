@@ -8,10 +8,7 @@ struct GameView: View {
     // otherwise those socket-driven updates wouldn't trigger a re-render.
     @ObservedObject private var socket = SocketService.shared
     @Environment(\.dismiss) private var dismiss
-    @State private var mapRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
-        span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
-    )
+    @State private var now = Date()
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
@@ -19,11 +16,13 @@ struct GameView: View {
 
     var body: some View {
         ZStack {
-            Map(coordinateRegion: $mapRegion, showsUserLocation: true, annotationItems: mapAnnotations) { item in
-                MapAnnotation(coordinate: item.coordinate) {
-                    PlayerBlipView(kind: item.kind)
-                }
-            }
+            GameMapView(
+                players: mapAnnotations,
+                zone: socket.zone,
+                extractionPoint: socket.extractionPoint,
+                decoys: socket.radar?.decoys ?? [],
+                initialCenter: viewModel.currentLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+            )
             .edgesIgnoringSafeArea(.all)
             .overlay(Color.black.opacity(0.18).edgesIgnoringSafeArea(.all))
 
@@ -43,13 +42,31 @@ struct GameView: View {
                     radarPanel
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
+                if let squadmate = viewModel.revivableSquadmate() {
+                    revivePanel(for: squadmate)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                if viewModel.role == .supervisor {
+                    SupervisorDashboardView(
+                        players: viewModel.allPlayers,
+                        onOverride: viewModel.supervisorOverride,
+                        onEndGame: viewModel.supervisorEndGame
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 Spacer()
-                PowerUpDeckView(inventory: viewModel.inventory, onActivate: viewModel.usePowerUp)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
+                if viewModel.role == .hunter || viewModel.role == .runner {
+                    PowerUpDeckView(inventory: viewModel.inventory, onActivate: viewModel.usePowerUp)
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                }
             }
 
-            if viewModel.isCaught {
+            if viewModel.isExtracted {
+                dimScrim
+                extractedOverlay
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            } else if viewModel.isCaught {
                 dimScrim
                 caughtOverlay
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
@@ -63,15 +80,14 @@ struct GameView: View {
             }
         }
         .animation(ADATheme.ambientSpring, value: viewModel.isCaught)
+        .animation(ADATheme.ambientSpring, value: viewModel.isExtracted)
         .animation(ADATheme.ambientSpring, value: viewModel.catchTargetId)
         .animation(ADATheme.controlSpring, value: viewModel.role)
-        .onAppear {
-            viewModel.start()
-            if let loc = viewModel.currentLocation {
-                mapRegion.center = loc.coordinate
-            }
-        }
+        .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
+            now = tick
+        }
         .alert("Catch failed", isPresented: Binding(
             get: { viewModel.showCatchFailure != nil },
             set: { if !$0 { viewModel.showCatchFailure = nil } }
@@ -106,6 +122,16 @@ struct GameView: View {
                     Text("CODE: \(viewModel.arrestCode)")
                         .font(ADATheme.telemetryFont(size: 12))
                         .foregroundColor(.white.opacity(0.5))
+                }
+                if let remaining = matchRemainingText {
+                    Text("TIME LEFT: \(remaining)")
+                        .font(ADATheme.telemetryFont(size: 12))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                if let zone = socket.zone, viewModel.mode == .standard {
+                    Text("ZONE: \(Int(zone.radiusMeters))M")
+                        .font(ADATheme.telemetryFont(size: 12))
+                        .foregroundColor(ADATheme.tacticalAmber)
                 }
             }
 
@@ -170,6 +196,51 @@ struct GameView: View {
         .animation(ADATheme.controlSpring, value: viewModel.visibleRunners.map(\.id))
     }
 
+    private func revivePanel(for squadmate: PlayerState) -> some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "heart.text.square.fill")
+                    .font(.system(size: 12, weight: .bold))
+                Text("\(squadmate.username.uppercased()) IS CAUGHT NEARBY")
+                    .font(ADATheme.telemetryFont(size: 12))
+            }
+            .foregroundColor(ADATheme.runnerGreen)
+
+            Button {
+                viewModel.revive(squadmate.id)
+            } label: {
+                HStack {
+                    Image(systemName: "arrow.uturn.backward.circle.fill")
+                    Text("REVIVE TEAMMATE")
+                }
+            }
+            .buttonStyle(GlowButtonStyle(tint: ADATheme.runnerGreen))
+        }
+        .padding(18)
+        .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: ADATheme.runnerGreen)
+        .padding(.horizontal, 16)
+    }
+
+    private var extractedOverlay: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(.system(size: 36, weight: .bold))
+                .foregroundColor(ADATheme.runnerGreen)
+                .shadow(color: ADATheme.runnerGreen, radius: 12)
+
+            Text("YOU EXTRACTED SAFELY")
+                .font(ADATheme.displayFont(size: 20))
+                .foregroundColor(.white)
+
+            Text("Spectate the rest of the match from here.")
+                .font(ADATheme.uiFont(size: 13, weight: .medium))
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .padding(32)
+        .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.runnerGreen)
+        .padding(.horizontal, 40)
+    }
+
     private var caughtOverlay: some View {
         VStack(spacing: 14) {
             Image(systemName: "hand.raised.fill")
@@ -229,7 +300,7 @@ struct GameView: View {
         .padding(.horizontal, 24)
     }
 
-    private var mapAnnotations: [MapBlip] {
+    private var mapAnnotations: [GameMapView.Blip] {
         // The roster (viewModel.allPlayers) only gets a fresh snapshot on
         // join/leave — for non-supervisors it's never refreshed afterward,
         // so it still carries whatever position you were at (lat/lng 0,0)
@@ -238,40 +309,20 @@ struct GameView: View {
         // pin sitting at (0,0).
         var blips = viewModel.allPlayers
             .filter { $0.id != viewModel.gamePlayerId }
-            .map { MapBlip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role) }
+            .map { GameMapView.Blip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role) }
 
         if let selfCoordinate = viewModel.currentLocation?.coordinate {
-            blips.append(MapBlip(id: viewModel.gamePlayerId, coordinate: selfCoordinate, kind: viewModel.role))
+            blips.append(GameMapView.Blip(id: viewModel.gamePlayerId, coordinate: selfCoordinate, kind: viewModel.role))
         }
 
         return blips
     }
-}
 
-private struct MapBlip: Identifiable {
-    let id: String
-    let coordinate: CLLocationCoordinate2D
-    let kind: PlayerRole
-}
-
-private struct PlayerBlipView: View {
-    let kind: PlayerRole
-    @State private var isVisible = false
-
-    var body: some View {
-        Circle()
-            .fill(color)
-            .frame(width: 14, height: 14)
-            .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
-            .shadow(color: color.opacity(0.8), radius: 6)
-            .scaleEffect(isVisible ? 1.0 : 0.3)
-            .opacity(isVisible ? 1.0 : 0.0)
-            .onAppear {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
-                    isVisible = true
-                }
-            }
+    private var matchRemainingText: String? {
+        guard let startedAt = socket.matchStartedAt else { return nil }
+        let totalSeconds = viewModel.sessionSettings.durationMinutes * 60
+        let elapsed = Int(now.timeIntervalSince(startedAt))
+        let remaining = max(0, totalSeconds - elapsed)
+        return String(format: "%02d:%02d", remaining / 60, remaining % 60)
     }
-
-    private var color: Color { ADATheme.accent(for: kind) }
 }

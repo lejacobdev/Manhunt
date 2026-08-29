@@ -12,6 +12,7 @@ final class GameViewModel: ObservableObject {
     @Published var mode: GameMode
     @Published var arrestCode: String
     @Published var isCaught: Bool = false
+    @Published var isExtracted: Bool = false
     @Published var isInvisible: Bool = false
     @Published var invisibilityRemainingSec: Int = 0
     @Published var activeSafeZone: (lat: Double, lng: Double, radius: Double)?
@@ -33,6 +34,8 @@ final class GameViewModel: ObservableObject {
     private let minSendInterval: TimeInterval = 2.0
 
     let gamePlayerId: String
+    let mySquad: String?
+    let sessionSettings: GameSettings
     private let roomCode: String
 
     init(gamePlayer: GamePlayer, session: GameSession) {
@@ -41,6 +44,8 @@ final class GameViewModel: ObservableObject {
         self.arrestCode = gamePlayer.arrestCode
         self.isCaught = gamePlayer.isCaught
         self.gamePlayerId = gamePlayer.id
+        self.mySquad = gamePlayer.squad
+        self.sessionSettings = session.settings
         self.roomCode = session.code
 
         bindLocation()
@@ -77,7 +82,7 @@ final class GameViewModel: ObservableObject {
 
     private func pushWatchSnapshot() {
         let snapshot = WatchGameSnapshot(
-            isActive: !isCaught,
+            isActive: !isCaught && !isExtracted,
             gameCode: roomCode,
             roleRaw: role.rawValue,
             arrestCode: arrestCode,
@@ -124,7 +129,8 @@ final class GameViewModel: ObservableObject {
                 lng: location.coordinate.longitude,
                 speed: max(0, location.speed),
                 accuracy: location.horizontalAccuracy,
-                battery: max(0, Int(UIDevice.current.batteryLevel * 100))
+                battery: max(0, Int(UIDevice.current.batteryLevel * 100)),
+                isMovingOnFoot: self.locationManager.isMovingOnFoot
             )
         }
     }
@@ -139,9 +145,30 @@ final class GameViewModel: ObservableObject {
                     HapticsEngine.shared.catchFailed()
                     LiveActivityManager.shared.markCaught()
                     self.pushWatchSnapshot()
-                } else if event.hunterId == self.gamePlayerId {
+                } else if let hunterId = event.hunterId, hunterId == self.gamePlayerId {
                     HapticsEngine.shared.catchSucceeded()
                 }
+            }
+            .store(in: &cancellables)
+
+        socket.playerExtractedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] playerId in
+                guard let self, playerId == self.gamePlayerId else { return }
+                self.isExtracted = true
+                HapticsEngine.shared.catchSucceeded()
+                LiveActivityManager.shared.end()
+                self.pushWatchSnapshot()
+            }
+            .store(in: &cancellables)
+
+        socket.playerRevivedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                guard let self, event.playerId == self.gamePlayerId else { return }
+                self.isCaught = false
+                HapticsEngine.shared.powerUpActivated()
+                self.pushWatchSnapshot()
             }
             .store(in: &cancellables)
 
@@ -218,6 +245,35 @@ final class GameViewModel: ObservableObject {
     func cancelCatch() {
         catchTargetId = nil
         catchCodeEntry = ""
+    }
+
+    // MARK: - Squad mode
+
+    /// A caught squadmate this player is close enough (and same-squad) to attempt reviving.
+    func revivableSquadmate() -> PlayerState? {
+        guard mode == .squad, let mySquad, let me = currentLocation else { return nil }
+        return allPlayers.first { candidate in
+            guard candidate.id != gamePlayerId, candidate.isCaught, candidate.squad == mySquad else { return false }
+            let distance = me.distance(from: CLLocation(latitude: candidate.lat, longitude: candidate.lng))
+            return distance <= 15
+        }
+    }
+
+    func revive(_ playerId: String) {
+        HapticsEngine.shared.lightTap()
+        socket.reviveTeammate(targetId: playerId)
+    }
+
+    // MARK: - Supervisor actions
+
+    func supervisorOverride(playerId: String, isCaught: Bool) {
+        HapticsEngine.shared.lightTap()
+        socket.supervisorOverride(targetId: playerId, isCaught: isCaught)
+    }
+
+    func supervisorEndGame() {
+        HapticsEngine.shared.catchFailed()
+        socket.supervisorEndGame()
     }
 
     // MARK: - Derived state

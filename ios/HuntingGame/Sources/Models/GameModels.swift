@@ -76,11 +76,11 @@ enum PowerUpType: String, Codable, CaseIterable, Identifiable, Hashable {
     var durationSeconds: Int {
         switch self {
         case .invisibility: return 600
-        case .ghostDecoy: return 300
-        case .empJammer: return 180
-        case .thermalVision: return 240
+        case .ghostDecoy: return 180
+        case .empJammer: return 60
+        case .thermalVision: return 45
         case .adrenaline: return 90
-        case .safeZoneFlare: return 120
+        case .safeZoneFlare: return 90
         }
     }
 }
@@ -88,6 +88,15 @@ enum PowerUpType: String, Codable, CaseIterable, Identifiable, Hashable {
 struct Coordinate: Codable, Equatable {
     let lat: Double
     let lng: Double
+}
+
+/// Mirrors backend GameService.GameSettings — the immutable configuration
+/// chosen when a session was created.
+struct GameSettings: Codable, Equatable {
+    let durationMinutes: Int
+    let radarIntervalSec: Int
+    let boundsPolygon: [Coordinate]
+    let extractionPoint: Coordinate?
 }
 
 struct GameSession: Codable, Identifiable {
@@ -98,6 +107,7 @@ struct GameSession: Codable, Identifiable {
     let hostId: String
     let startedAt: String?
     let endedAt: String?
+    let settings: GameSettings
 }
 
 struct GamePlayer: Codable, Identifiable {
@@ -122,13 +132,25 @@ struct PlayerState: Codable, Identifiable, Equatable {
     var speed: Double
     var accuracy: Double
     var battery: Int
+    var isMovingOnFoot: Bool
     var arrestCode: String
     var isCaught: Bool
+    var isExtracted: Bool
     var inventory: [PowerUpType]
 
     static func == (lhs: PlayerState, rhs: PlayerState) -> Bool {
         lhs.id == rhs.id && lhs.lat == rhs.lat && lhs.lng == rhs.lng && lhs.isCaught == rhs.isCaught
+            && lhs.isExtracted == rhs.isExtracted && lhs.battery == rhs.battery
     }
+}
+
+/// The Standard-mode shrinking safe zone — mirrors backend ZoneService.ZoneState.
+struct ZoneUpdate: Codable {
+    let center: Coordinate
+    let radiusMeters: Double
+    let fullRadiusMeters: Double
+    let finalRadiusMeters: Double
+    let progress: Double
 }
 
 struct DecoyBlip: Codable, Identifiable {

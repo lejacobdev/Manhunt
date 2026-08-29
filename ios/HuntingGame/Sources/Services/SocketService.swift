@@ -14,6 +14,9 @@ final class SocketService: ObservableObject {
     @Published var players: [PlayerState] = []
     @Published var compass: CompassUpdate?
     @Published var radar: RadarBroadcast?
+    @Published var zone: ZoneUpdate?
+    @Published var extractionPoint: Coordinate?
+    @Published var matchStartedAt: Date?
     @Published var lastCatchFailure: String?
     @Published var lastErrorMessage: String?
     @Published var lastAntiCheatWarning: String?
@@ -21,14 +24,19 @@ final class SocketService: ObservableObject {
     @Published var isConnected: Bool = false
     @Published var gameOverReason: String?
 
-    /// Fires with the caught player's id whenever a catch/infection event lands.
-    let playerCaughtSubject = PassthroughSubject<(runnerId: String, hunterId: String), Never>()
+    /// Fires with the caught player's id whenever a catch/infection/zone event lands.
+    /// hunterId is nil for a zone-enforced catch (no hunter involved).
+    let playerCaughtSubject = PassthroughSubject<(runnerId: String, hunterId: String?, reason: String?), Never>()
     let playerInfectedSubject = PassthroughSubject<(runnerId: String, hunterId: String), Never>()
+    let playerExtractedSubject = PassthroughSubject<String, Never>()
+    let playerRevivedSubject = PassthroughSubject<(playerId: String, revivedById: String), Never>()
 
     private var manager: SocketManager?
     private var socket: SocketIOClient?
     private var roomCode: String?
     private var gamePlayerId: String?
+
+    private static let iso8601 = ISO8601DateFormatter()
 
     private init() {}
 
@@ -62,15 +70,19 @@ final class SocketService: ObservableObject {
         players = []
         compass = nil
         radar = nil
+        zone = nil
+        extractionPoint = nil
+        matchStartedAt = nil
     }
 
-    func sendLocationUpdate(lat: Double, lng: Double, speed: Double, accuracy: Double, battery: Int) {
+    func sendLocationUpdate(lat: Double, lng: Double, speed: Double, accuracy: Double, battery: Int, isMovingOnFoot: Bool) {
         socket?.emit("send_location_update", [
             "lat": lat,
             "lng": lng,
             "speed": speed,
             "accuracy": accuracy,
             "battery": battery,
+            "isMovingOnFoot": isMovingOnFoot,
         ])
     }
 
@@ -84,6 +96,21 @@ final class SocketService: ObservableObject {
 
     func usePowerUp(_ type: PowerUpType) {
         socket?.emit("use_powerup", ["powerUpType": type.rawValue])
+    }
+
+    /// Squad mode: revive a caught teammate within arm's reach.
+    func reviveTeammate(targetId: String) {
+        socket?.emit("revive_teammate", ["targetId": targetId])
+    }
+
+    /// Supervisor-only: force-resolve a disputed catch.
+    func supervisorOverride(targetId: String, isCaught: Bool) {
+        socket?.emit("supervisor_override", ["targetId": targetId, "isCaught": isCaught])
+    }
+
+    /// Supervisor-only: force-end the match immediately.
+    func supervisorEndGame() {
+        socket?.emit("supervisor_end_game")
     }
 
     private func registerHandlers(on socket: SocketIOClient) {
@@ -117,16 +144,31 @@ final class SocketService: ObservableObject {
             self.radar = Self.decode(raw)
         }
 
+        socket.on("zone_update") { [weak self] data, _ in
+            guard let self, let raw = data.first else { return }
+            self.zone = Self.decode(raw)
+        }
+
+        socket.on("extraction_point") { [weak self] data, _ in
+            guard let self, let raw = data.first else { return }
+            self.extractionPoint = Self.decode(raw)
+        }
+
+        socket.on("game_started") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any], let raw = dict["startedAt"] as? String else { return }
+            self.matchStartedAt = Self.iso8601.date(from: raw)
+        }
+
         socket.on("supervisor_map_update") { [weak self] data, _ in
             guard let self, let raw = data.first else { return }
             self.players = Self.decodeArray(raw)
         }
 
         socket.on("player_caught") { [weak self] data, _ in
-            guard let dict = data.first as? [String: Any],
-                  let runnerId = dict["runnerId"] as? String,
-                  let hunterId = dict["hunterId"] as? String else { return }
-            self?.playerCaughtSubject.send((runnerId, hunterId))
+            guard let dict = data.first as? [String: Any], let runnerId = dict["runnerId"] as? String else { return }
+            let hunterId = dict["hunterId"] as? String
+            let reason = dict["reason"] as? String
+            self?.playerCaughtSubject.send((runnerId, hunterId, reason))
         }
 
         socket.on("player_infected") { [weak self] data, _ in
@@ -134,6 +176,33 @@ final class SocketService: ObservableObject {
                   let runnerId = dict["runnerId"] as? String,
                   let hunterId = dict["hunterId"] as? String else { return }
             self?.playerInfectedSubject.send((runnerId, hunterId))
+        }
+
+        socket.on("player_extracted") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any], let playerId = dict["playerId"] as? String else { return }
+            self?.playerExtractedSubject.send(playerId)
+            if let index = self?.players.firstIndex(where: { $0.id == playerId }) {
+                self?.players[index].isExtracted = true
+            }
+        }
+
+        socket.on("player_revived") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any],
+                  let playerId = dict["playerId"] as? String,
+                  let revivedById = dict["revivedById"] as? String else { return }
+            self?.playerRevivedSubject.send((playerId, revivedById))
+            if let index = self?.players.firstIndex(where: { $0.id == playerId }) {
+                self?.players[index].isCaught = false
+            }
+        }
+
+        socket.on("supervisor_override_applied") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any],
+                  let playerId = dict["playerId"] as? String,
+                  let isCaught = dict["isCaught"] as? Bool else { return }
+            if let index = self.players.firstIndex(where: { $0.id == playerId }) {
+                self.players[index].isCaught = isCaught
+            }
         }
 
         socket.on("catch_failed") { [weak self] data, _ in
