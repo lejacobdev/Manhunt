@@ -1,9 +1,43 @@
-import { ADRENALINE_SPEED_MPS, MAX_HUMAN_SPEED_MPS, PlayerState } from '../types';
+import { ADRENALINE_SPEED_MPS, MAX_ACCURACY_METERS, MAX_HUMAN_SPEED_MPS, PlayerState } from '../types';
 
 export interface SpeedCheckResult {
   allowed: boolean;
   reason?: string;
   ceilingMps: number;
+}
+
+export interface SimpleCheckResult {
+  allowed: boolean;
+  reason?: string;
+}
+
+/**
+ * GPS spoofing / signal quality guard: rejects fixes with unusably poor
+ * horizontal accuracy. The iOS client already filters these client-side,
+ * but that alone is trivially bypassed by a modified client — this is the
+ * check that actually matters.
+ */
+export function checkAccuracy(accuracyMeters: number): SimpleCheckResult {
+  if (accuracyMeters > MAX_ACCURACY_METERS) {
+    return {
+      allowed: false,
+      reason: `GPS accuracy ${accuracyMeters.toFixed(1)}m exceeds the ${MAX_ACCURACY_METERS}m threshold.`,
+    };
+  }
+  return { allowed: true };
+}
+
+/**
+ * Cross-references the client's CoreMotion-derived on-foot signal. The iOS
+ * client only reports isMovingOnFoot=false when CMMotionActivityManager
+ * explicitly detects automotive or cycling activity (not merely "unknown"),
+ * so this is a deliberate, low-false-positive signal worth rejecting on.
+ */
+export function checkMotion(isMovingOnFoot: boolean): SimpleCheckResult {
+  if (!isMovingOnFoot) {
+    return { allowed: false, reason: 'Motion sensors indicate non-foot travel (vehicle or bicycle).' };
+  }
+  return { allowed: true };
 }
 
 /**

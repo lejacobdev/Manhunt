@@ -13,6 +13,13 @@ export interface CreateSessionInput {
   mode?: GameMode;
 }
 
+export interface GameSettings {
+  durationMinutes: number;
+  radarIntervalSec: number;
+  boundsPolygon: Point2D[];
+  extractionPoint?: Point2D;
+}
+
 export class GameService {
   public async createSession(input: CreateSessionInput) {
     let code = generateGameCode();
@@ -21,17 +28,29 @@ export class GameService {
       code = generateGameCode();
     }
 
+    // Standard mode's alternate win condition: reach a designated, verified
+    // public-land extraction point. Auto-selected from real Overpass data
+    // (parks/footways/plazas) rather than requiring host-side UI to place one.
+    let extractionPoint: Point2D | undefined;
+    if ((input.mode ?? 'STANDARD') === 'STANDARD') {
+      const extractionCandidates = await overpassSpawner.generatePublicPowerUpSpawns(input.boundsPolygon, 1);
+      extractionPoint = extractionCandidates[0];
+    }
+
+    const settings: GameSettings = {
+      durationMinutes: input.durationMinutes,
+      radarIntervalSec: input.radarIntervalSec,
+      boundsPolygon: input.boundsPolygon,
+      extractionPoint,
+    };
+
     const session = await prisma.gameSession.create({
       data: {
         code,
         hostId: input.hostId,
         status: 'LOBBY',
         mode: input.mode ?? 'STANDARD',
-        settings: {
-          durationMinutes: input.durationMinutes,
-          radarIntervalSec: input.radarIntervalSec,
-          boundsPolygon: input.boundsPolygon,
-        } as unknown as Prisma.InputJsonValue,
+        settings: settings as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -113,6 +132,50 @@ export class GameService {
         type: 'CATCH',
         payload: { hunterPlayerId, runnerPlayerId, timestamp: new Date().toISOString() },
       },
+    });
+  }
+
+  /** Alternate win condition: a runner who reaches the designated extraction point is safe for the rest of the match. */
+  public async recordExtraction(sessionId: string, playerId: string) {
+    await prisma.gamePlayer.update({
+      where: { id: playerId },
+      data: { isExtracted: true, extractedAt: new Date() },
+    });
+    return prisma.gameEvent.create({
+      data: { sessionId, type: 'EXTRACTED', payload: { playerId, timestamp: new Date().toISOString() } },
+    });
+  }
+
+  /** Standard mode: a runner caught outside the shrinking safe zone for too long is auto-eliminated by the zone itself. */
+  public async recordZoneCatch(sessionId: string, playerId: string) {
+    await prisma.gamePlayer.update({
+      where: { id: playerId },
+      data: { isCaught: true, caughtAt: new Date() },
+    });
+    return prisma.gameEvent.create({
+      data: { sessionId, type: 'ZONE_SHRINK_CATCH', payload: { playerId, timestamp: new Date().toISOString() } },
+    });
+  }
+
+  /** Squad mode: a squadmate within range of a caught teammate can revive them back into play. */
+  public async revivePlayer(sessionId: string, playerId: string, revivedById: string) {
+    await prisma.gamePlayer.update({
+      where: { id: playerId },
+      data: { isCaught: false, caughtAt: null },
+    });
+    return prisma.gameEvent.create({
+      data: { sessionId, type: 'REVIVED', payload: { playerId, revivedById, timestamp: new Date().toISOString() } },
+    });
+  }
+
+  /** Supervisor override: force-resolve a disputed catch/status. */
+  public async supervisorOverridePlayerStatus(sessionId: string, playerId: string, isCaught: boolean) {
+    await prisma.gamePlayer.update({
+      where: { id: playerId },
+      data: { isCaught, caughtAt: isCaught ? new Date() : null },
+    });
+    return prisma.gameEvent.create({
+      data: { sessionId, type: 'SUPERVISOR_OVERRIDE', payload: { playerId, isCaught, timestamp: new Date().toISOString() } },
     });
   }
 

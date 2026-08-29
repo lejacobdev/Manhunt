@@ -5,6 +5,10 @@ import { gameService } from '../services/GameService';
 import { overpassSpawner } from '../services/OverpassSpawner';
 import { prisma } from '../lib/prisma';
 import { zodErrorMessage } from '../utils/validation';
+// Circular import (server.ts imports this router) — safe because `io` and
+// `sessionStartedAtCache` are only read inside route handlers, which run
+// long after both modules have finished loading, never at module top level.
+import { io, sessionStartedAtCache } from '../server';
 
 export const gamesRouter = Router();
 gamesRouter.use(requireAuth);
@@ -64,6 +68,13 @@ gamesRouter.post('/:code/start', async (req: AuthedRequest, res) => {
     return res.status(403).json({ error: 'Only the host can start the game.' });
   }
   const started = await gameService.startSession(session.id);
+  // Live-patch the socket layer's cache so already-connected sockets (and any that
+  // join after this point) immediately see the real match clock and shrinking zone,
+  // rather than waiting on the next join_room DB read.
+  if (started.startedAt) {
+    sessionStartedAtCache.set(started.code, started.startedAt.getTime());
+  }
+  io.to(started.code).emit('game_started', { startedAt: started.startedAt });
   return res.json({ session: started });
 });
 
@@ -74,6 +85,8 @@ gamesRouter.post('/:code/end', async (req: AuthedRequest, res) => {
     return res.status(403).json({ error: 'Only the host can end the game.' });
   }
   const ended = await gameService.endSession(session.id);
+  sessionStartedAtCache.delete(session.code);
+  io.to(session.code).emit('game_over', { reason: 'HOST_ENDED' });
   return res.json({ session: ended });
 });
 

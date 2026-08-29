@@ -118,6 +118,8 @@ model GamePlayer {
   squad        String?
   isCaught     Boolean     @default(false)
   caughtAt     DateTime?
+  isExtracted  Boolean     @default(false)
+  extractedAt  DateTime?
   arrestCode   String
   batteryLevel Int         @default(100)
   inventory    Json        @default("[]")

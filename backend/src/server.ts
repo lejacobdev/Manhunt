@@ -10,9 +10,12 @@ import { friendsRouter } from './routes/friends';
 import { gamesRouter } from './routes/games';
 import { powerUpsRouter } from './routes/powerups';
 import { prisma } from './lib/prisma';
-import { gameService } from './services/GameService';
-import { checkSpeed, checkTeleport } from './services/AntiCheatService';
+import { gameService, GameSettings } from './services/GameService';
+import { checkAccuracy, checkMotion, checkSpeed, checkTeleport } from './services/AntiCheatService';
+import { computeZoneState, distanceOutsideZone } from './services/ZoneService';
 import {
+  DecoyMap,
+  currentDecoyPosition,
   grantPowerUp,
   isBuffActive,
   isWithinAnySafeZone,
@@ -23,9 +26,14 @@ import {
 import {
   AuthTokenPayload,
   CATCH_VERIFICATION_RADIUS_METERS,
+  EXTRACTION_RADIUS_METERS,
   GameMode,
   PlayerState,
   PowerUpType,
+  THERMAL_VISION_INTERVAL_MS,
+  THERMAL_VISION_RADIUS_METERS,
+  ZONE_GRACE_MS,
+  ZONE_GRACE_METERS,
 } from './types';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-do-not-use-in-production';
@@ -45,11 +53,18 @@ export const io = new Server(httpServer, { cors: { origin: process.env.CORS_ORIG
 
 // roomCode -> (gamePlayerId -> PlayerState)
 const activeSessions: Map<string, Map<string, PlayerState>> = new Map();
-// roomCode -> game mode, cached at ACTIVE start to avoid a DB hit per tick
+// roomCode -> game mode, cached at join to avoid a DB hit per tick
 const sessionModes: Map<string, GameMode> = new Map();
+// roomCode -> immutable session settings (duration, radar interval, boundary, extraction point)
+export const sessionSettingsCache: Map<string, GameSettings> = new Map();
+// roomCode -> match start time (epoch ms) — set at join if already started, or live-patched by the
+// REST /games/:code/start route (see routes/games.ts) the moment the host starts the match.
+export const sessionStartedAtCache: Map<string, number> = new Map();
 // roomCode -> ghost decoys currently live
-const decoys: Map<string, { sessionOwnerId: string; lat: number; lng: number; expiresAt: number }[]> = new Map();
-// gamePlayerId -> last accepted fix, used for teleport detection
+const decoys: DecoyMap = new Map();
+// roomCode -> gamePlayerId -> epoch ms of when they were first detected outside the shrinking zone
+const zoneViolationSince: Map<string, Map<string, number>> = new Map();
+// gamePlayerId -> last accepted fix, used for teleport detection and ghost-decoy bearing
 const lastFix: Map<string, { lat: number; lng: number; timestamp: number }> = new Map();
 // gamePlayerId -> pending location log entries flushed to Postgres periodically
 const pendingLogs: Map<string, { playerId: string; lat: number; lng: number; accuracy: number; speed?: number }[]> = new Map();
@@ -92,6 +107,10 @@ io.on('connection', (socket: Socket) => {
       socket.data.roomCode = roomCode;
       socket.data.gamePlayerId = gamePlayerId;
       sessionModes.set(roomCode, gamePlayer.session.mode as GameMode);
+      sessionSettingsCache.set(roomCode, gamePlayer.session.settings as unknown as GameSettings);
+      if (gamePlayer.session.startedAt) {
+        sessionStartedAtCache.set(roomCode, gamePlayer.session.startedAt.getTime());
+      }
 
       if (!activeSessions.has(roomCode)) activeSessions.set(roomCode, new Map());
       const session = activeSessions.get(roomCode)!;
@@ -107,8 +126,10 @@ io.on('connection', (socket: Socket) => {
         speed: 0,
         accuracy: 9999,
         battery: gamePlayer.batteryLevel,
+        isMovingOnFoot: true,
         arrestCode: gamePlayer.arrestCode,
         isCaught: gamePlayer.isCaught,
+        isExtracted: gamePlayer.isExtracted,
         inventory: (gamePlayer.inventory as PowerUpType[]) ?? [],
         activeBuffs: {},
         lastUpdate: Date.now(),
@@ -120,6 +141,11 @@ io.on('connection', (socket: Socket) => {
       }
 
       io.to(roomCode).emit('player_joined', Array.from(session.values()));
+
+      const settings = sessionSettingsCache.get(roomCode);
+      if (settings?.extractionPoint) {
+        socket.emit('extraction_point', settings.extractionPoint);
+      }
     } catch (err) {
       console.error('[join_room] failed', err);
       socket.emit('error_event', { reason: 'Failed to join room.' });
@@ -134,23 +160,40 @@ io.on('connection', (socket: Socket) => {
       speed,
       accuracy,
       battery,
+      isMovingOnFoot,
     }: {
       lat: number;
       lng: number;
       speed?: number;
       accuracy: number;
       battery: number;
+      isMovingOnFoot: boolean;
     }) => {
       const roomCode = socket.data.roomCode as string | undefined;
       const gamePlayerId = socket.data.gamePlayerId as string | undefined;
       if (!roomCode || !gamePlayerId) return;
 
+      // Match-timer expiry is checked on the hot path so the game ends the moment
+      // it's due, not just on the 10s sweep — see that sweep below for the backstop.
+      if (await endMatchIfExpired(roomCode)) return;
+
       const session = activeSessions.get(roomCode);
       if (!session || !session.has(gamePlayerId)) return;
       const p = session.get(gamePlayerId)!;
-      if (p.isCaught) return;
+      if (p.isCaught || p.isExtracted) return;
 
       pruneExpiredBuffs(p);
+
+      const accuracyCheck = checkAccuracy(accuracy);
+      if (!accuracyCheck.allowed) {
+        socket.emit('anti_cheat_warning', { reason: accuracyCheck.reason });
+        return;
+      }
+      const motionCheck = checkMotion(isMovingOnFoot);
+      if (!motionCheck.allowed) {
+        socket.emit('anti_cheat_warning', { reason: motionCheck.reason });
+        return;
+      }
 
       const speedCheck = checkSpeed(p, speed);
       if (!speedCheck.allowed) {
@@ -171,17 +214,28 @@ io.on('connection', (socket: Socket) => {
       p.speed = speed ?? 0;
       p.accuracy = accuracy;
       p.battery = battery;
+      p.isMovingOnFoot = isMovingOnFoot;
       p.lastUpdate = now;
 
       const logs = pendingLogs.get(roomCode) ?? [];
       logs.push({ playerId: gamePlayerId, lat, lng, accuracy, speed });
       pendingLogs.set(roomCode, logs);
 
+      const mode = sessionModes.get(roomCode) ?? 'STANDARD';
+      const gameSessionId = await resolveSessionId(roomCode);
+
+      if (p.role === 'RUNNER' && gameSessionId) {
+        await checkExtraction(roomCode, gameSessionId, p, session, mode);
+        if (mode === 'STANDARD' && !p.isCaught && !p.isExtracted) {
+          await checkZoneContainment(roomCode, gameSessionId, p, session);
+        }
+      }
+
       const allPlayers = Array.from(session.values());
       const hunters = allPlayers.filter((x) => x.role === 'HUNTER');
-      const runners = allPlayers.filter((x) => x.role === 'RUNNER' && !x.isCaught);
+      const runners = allPlayers.filter((x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted);
 
-      if (p.role === 'RUNNER' && hunters.length > 0) {
+      if (p.role === 'RUNNER' && !p.isCaught && hunters.length > 0) {
         let minDist = Infinity;
         let nearestHunterBearing = 0;
         const rPt = turf.point([p.lng, p.lat]);
@@ -200,14 +254,34 @@ io.on('connection', (socket: Socket) => {
       }
 
       if (p.role === 'HUNTER') {
-        // A hunter's own EMP_JAMMER debuff (cast on them by a runner) blanks their radar.
-        if (isBuffActive(p, 'EMP_JAMMER')) {
-          socket.emit('radar_broadcast', { runners: [], jammed: true });
-        } else {
-          const visibleRunners = runners.filter((r) => !isBuffActive(r, 'INVISIBILITY_10MIN') || isBuffActive(p, 'THERMAL_VISION'));
-          pruneExpiredDecoys(decoys, roomCode);
-          const liveDecoys = (decoys.get(roomCode) ?? []).map((d) => ({ lat: d.lat, lng: d.lng, isDecoy: true }));
-          socket.emit('radar_broadcast', { runners: visibleRunners, decoys: liveDecoys, jammed: false });
+        const settings = sessionSettingsCache.get(roomCode);
+        const baseIntervalMs = (settings?.radarIntervalSec ?? 5) * 1000;
+        const thermalActive = isBuffActive(p, 'THERMAL_VISION');
+        const effectiveIntervalMs = thermalActive ? THERMAL_VISION_INTERVAL_MS : baseIntervalMs;
+        const sinceLastPush = now - (p.lastRadarPushAt ?? 0);
+
+        // Tactical radar per spec 1.1: hunters get periodic pings, not a continuous
+        // feed — except Thermal Vision, which forces a 1-second refresh.
+        if (sinceLastPush >= effectiveIntervalMs) {
+          p.lastRadarPushAt = now;
+
+          if (isBuffActive(p, 'EMP_JAMMER')) {
+            socket.emit('radar_broadcast', { runners: [], decoys: [], jammed: true });
+          } else {
+            const hunterPt = turf.point([p.lng, p.lat]);
+            const visibleRunners = runners.filter((r) => {
+              if (!isBuffActive(r, 'INVISIBILITY_10MIN')) return true;
+              if (!thermalActive) return false;
+              const dist = turf.distance(hunterPt, turf.point([r.lng, r.lat]), { units: 'meters' });
+              return dist <= THERMAL_VISION_RADIUS_METERS;
+            });
+            pruneExpiredDecoys(decoys, roomCode);
+            const liveDecoys = (decoys.get(roomCode) ?? []).map((d) => {
+              const pos = currentDecoyPosition(d);
+              return { lat: pos.lat, lng: pos.lng, isDecoy: true };
+            });
+            socket.emit('radar_broadcast', { runners: visibleRunners, decoys: liveDecoys, jammed: false });
+          }
         }
       }
 
@@ -226,12 +300,21 @@ io.on('connection', (socket: Socket) => {
       if (!session) return;
       const hunter = session.get(hunterId);
       const runner = session.get(runnerId);
+      const mode = sessionModes.get(roomCode) ?? 'STANDARD';
 
-      if (!hunter || hunter.role !== 'HUNTER') {
+      if (!hunter) return;
+
+      if (mode === 'SQUAD') {
+        if (!hunter.squad || !runner?.squad || hunter.squad === runner.squad) {
+          socket.emit('catch_failed', { reason: 'Squad mode: you can only tag members of other squads.' });
+          return;
+        }
+      } else if (hunter.role !== 'HUNTER') {
         socket.emit('catch_failed', { reason: 'Only hunters may attempt a catch.' });
         return;
       }
-      if (!runner || runner.isCaught) {
+
+      if (!runner || runner.isCaught || runner.isExtracted) {
         socket.emit('catch_failed', { reason: 'Target is not an active runner.' });
         return;
       }
@@ -252,14 +335,13 @@ io.on('connection', (socket: Socket) => {
         return;
       }
 
-      const mode = sessionModes.get(roomCode) ?? 'STANDARD';
-      const gameSession = await prisma.gameSession.findUnique({ where: { code: roomCode } });
-      if (!gameSession) return;
+      const gameSessionId = await resolveSessionId(roomCode);
+      if (!gameSessionId) return;
 
       if (mode === 'INFECTION') {
         runner.role = 'HUNTER';
         runner.isCaught = false;
-        await gameService.convertRunnerToHunter(gameSession.id, runner.id);
+        await gameService.convertRunnerToHunter(gameSessionId, runner.id);
         io.to(roomCode).emit('player_infected', {
           runnerId: runner.id,
           hunterId: hunter.id,
@@ -267,21 +349,101 @@ io.on('connection', (socket: Socket) => {
         });
       } else {
         runner.isCaught = true;
-        await gameService.recordCatch(gameSession.id, hunter.id, runner.id);
+        await gameService.recordCatch(gameSessionId, hunter.id, runner.id);
         io.to(roomCode).emit('player_caught', {
           runnerId: runner.id,
           hunterId: hunter.id,
           timestamp: new Date().toISOString(),
         });
-
-        const remainingRunners = Array.from(session.values()).filter((x) => x.role === 'RUNNER' && !x.isCaught);
-        if (remainingRunners.length === 0 && mode === 'STANDARD') {
-          await gameService.endSession(gameSession.id);
-          io.to(roomCode).emit('game_over', { reason: 'ALL_RUNNERS_CAUGHT' });
-        }
+        await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
       }
     }
   );
+
+  /** Squad mode: revive a caught teammate within arm's reach. */
+  socket.on('revive_teammate', async ({ targetId }: { targetId: string }) => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const reviverId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !reviverId) return;
+    const session = activeSessions.get(roomCode);
+    if (!session) return;
+    const mode = sessionModes.get(roomCode) ?? 'STANDARD';
+    if (mode !== 'SQUAD') {
+      socket.emit('error_event', { reason: 'Revives are only available in Squad mode.' });
+      return;
+    }
+
+    const reviver = session.get(reviverId);
+    const target = session.get(targetId);
+    if (!reviver || !target || !target.isCaught) {
+      socket.emit('error_event', { reason: 'Nothing to revive.' });
+      return;
+    }
+    if (!reviver.squad || reviver.squad !== target.squad) {
+      socket.emit('error_event', { reason: 'You can only revive your own squad.' });
+      return;
+    }
+    const dist = turf.distance(turf.point([reviver.lng, reviver.lat]), turf.point([target.lng, target.lat]), {
+      units: 'meters',
+    });
+    if (dist > CATCH_VERIFICATION_RADIUS_METERS) {
+      socket.emit('error_event', { reason: `Too far to revive (${Math.round(dist)}m away).` });
+      return;
+    }
+
+    target.isCaught = false;
+    const gameSessionId = await resolveSessionId(roomCode);
+    if (gameSessionId) await gameService.revivePlayer(gameSessionId, target.id, reviver.id);
+
+    io.to(roomCode).emit('player_revived', {
+      playerId: target.id,
+      revivedById: reviver.id,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  /** Supervisor admin override: force-resolve a disputed catch/status. */
+  socket.on('supervisor_override', async ({ targetId, isCaught }: { targetId: string; isCaught: boolean }) => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const supervisorId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !supervisorId) return;
+    const session = activeSessions.get(roomCode);
+    if (!session) return;
+    const supervisor = session.get(supervisorId);
+    if (!supervisor || supervisor.role !== 'SUPERVISOR') {
+      socket.emit('error_event', { reason: 'Only supervisors can override player status.' });
+      return;
+    }
+    const target = session.get(targetId);
+    if (!target) {
+      socket.emit('error_event', { reason: 'Player not found.' });
+      return;
+    }
+
+    target.isCaught = isCaught;
+    const gameSessionId = await resolveSessionId(roomCode);
+    if (gameSessionId) await gameService.supervisorOverridePlayerStatus(gameSessionId, target.id, isCaught);
+
+    io.to(roomCode).emit('supervisor_override_applied', {
+      playerId: target.id,
+      isCaught,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  /** Supervisor admin action: force-end the match immediately. */
+  socket.on('supervisor_end_game', async () => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const supervisorId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !supervisorId) return;
+    const session = activeSessions.get(roomCode);
+    const supervisor = session?.get(supervisorId);
+    if (!supervisor || supervisor.role !== 'SUPERVISOR') {
+      socket.emit('error_event', { reason: 'Only supervisors can end the match.' });
+      return;
+    }
+    await endMatch(roomCode, 'SUPERVISOR_ENDED');
+  });
 
   socket.on('collect_powerup', async ({ spawnId }: { spawnId: string }) => {
     const roomCode = socket.data.roomCode as string | undefined;
@@ -306,11 +468,11 @@ io.on('connection', (socket: Socket) => {
       return;
     }
 
-    const gameSession = await prisma.gameSession.findUnique({ where: { code: roomCode } });
-    if (!gameSession) return;
+    const gameSessionId = await resolveSessionId(roomCode);
+    if (!gameSessionId) return;
 
     grantPowerUp(player, spawn.type as PowerUpType);
-    await gameService.recordPowerUpCollected(gameSession.id, spawn.id, gamePlayerId);
+    await gameService.recordPowerUpCollected(gameSessionId, spawn.id, gamePlayerId);
     await prisma.gamePlayer.update({ where: { id: gamePlayerId }, data: { inventory: player.inventory } });
 
     io.to(roomCode).emit('powerup_collected', { playerId: gamePlayerId, spawnId, type: spawn.type });
@@ -324,16 +486,25 @@ io.on('connection', (socket: Socket) => {
     const session = activeSessions.get(roomCode);
     if (!session) return;
 
-    const result = usePowerUp(session, gamePlayerId, powerUpType, decoys, roomCode);
+    let runnerBearingDegrees: number | undefined;
+    if (powerUpType === 'GHOST_DECOY') {
+      const prevFix = lastFix.get(gamePlayerId);
+      const player = session.get(gamePlayerId);
+      if (prevFix && player && (prevFix.lat !== player.lat || prevFix.lng !== player.lng)) {
+        runnerBearingDegrees = turf.bearing(turf.point([prevFix.lng, prevFix.lat]), turf.point([player.lng, player.lat]));
+      }
+    }
+
+    const result = usePowerUp(session, gamePlayerId, powerUpType, decoys, roomCode, runnerBearingDegrees);
     if (!result.ok) {
       socket.emit('error_event', { reason: result.error });
       return;
     }
 
     const player = session.get(gamePlayerId)!;
-    const gameSession = await prisma.gameSession.findUnique({ where: { code: roomCode } });
-    if (gameSession) {
-      await gameService.recordPowerUpUsed(gameSession.id, gamePlayerId, powerUpType);
+    const gameSessionId = await resolveSessionId(roomCode);
+    if (gameSessionId) {
+      await gameService.recordPowerUpUsed(gameSessionId, gamePlayerId, powerUpType);
       await prisma.gamePlayer.update({ where: { id: gamePlayerId }, data: { inventory: player.inventory } });
     }
 
@@ -359,20 +530,147 @@ function cleanupSocket(socket: Socket) {
     if (session.size === 0) {
       activeSessions.delete(roomCode);
       sessionModes.delete(roomCode);
+      sessionSettingsCache.delete(roomCode);
+      sessionStartedAtCache.delete(roomCode);
       decoys.delete(roomCode);
+      zoneViolationSince.delete(roomCode);
     }
   }
   lastFix.delete(gamePlayerId);
 }
 
-// Periodically flush buffered location fixes to Postgres for post-game analytics/replay.
+async function resolveSessionId(roomCode: string): Promise<string | undefined> {
+  const gameSession = await prisma.gameSession.findUnique({ where: { code: roomCode } });
+  return gameSession?.id;
+}
+
+/** Checks whether a runner has reached the designated extraction point and, if so, marks them safe. */
+async function checkExtraction(
+  roomCode: string,
+  gameSessionId: string,
+  runner: PlayerState,
+  session: Map<string, PlayerState>,
+  mode: GameMode
+) {
+  const settings = sessionSettingsCache.get(roomCode);
+  const extractionPoint = settings?.extractionPoint;
+  if (!extractionPoint) return;
+
+  const distance = turf.distance(
+    turf.point([runner.lng, runner.lat]),
+    turf.point([extractionPoint.lng, extractionPoint.lat]),
+    { units: 'meters' }
+  );
+  if (distance > EXTRACTION_RADIUS_METERS) return;
+
+  runner.isExtracted = true;
+  await gameService.recordExtraction(gameSessionId, runner.id);
+  io.to(roomCode).emit('player_extracted', { playerId: runner.id, timestamp: new Date().toISOString() });
+
+  if (mode === 'STANDARD') {
+    await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+  }
+}
+
+/** Standard mode: auto-catches a runner who has strayed outside the shrinking safe zone for too long. */
+async function checkZoneContainment(
+  roomCode: string,
+  gameSessionId: string,
+  runner: PlayerState,
+  session: Map<string, PlayerState>
+) {
+  const settings = sessionSettingsCache.get(roomCode);
+  const startedAtMs = sessionStartedAtCache.get(roomCode);
+  if (!settings || !startedAtMs) return;
+
+  const zone = computeZoneState(settings.boundsPolygon, new Date(startedAtMs), settings.durationMinutes);
+  const outsideBy = distanceOutsideZone({ lat: runner.lat, lng: runner.lng }, zone);
+
+  const violations = zoneViolationSince.get(roomCode) ?? new Map<string, number>();
+  zoneViolationSince.set(roomCode, violations);
+
+  if (outsideBy <= ZONE_GRACE_METERS) {
+    violations.delete(runner.id);
+    return;
+  }
+
+  const now = Date.now();
+  const since = violations.get(runner.id);
+  if (!since) {
+    violations.set(runner.id, now);
+    return;
+  }
+
+  if (now - since >= ZONE_GRACE_MS) {
+    violations.delete(runner.id);
+    runner.isCaught = true;
+    await gameService.recordZoneCatch(gameSessionId, runner.id);
+    io.to(roomCode).emit('player_caught', {
+      runnerId: runner.id,
+      hunterId: null,
+      reason: 'ZONE',
+      timestamp: new Date().toISOString(),
+    });
+    await checkStandardWinCondition(roomCode, gameSessionId, session, 'STANDARD');
+  }
+}
+
+async function checkStandardWinCondition(
+  roomCode: string,
+  gameSessionId: string,
+  session: Map<string, PlayerState>,
+  mode: GameMode
+) {
+  if (mode !== 'STANDARD') return;
+  const activeRunners = Array.from(session.values()).filter(
+    (x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted
+  );
+  if (activeRunners.length === 0) {
+    await gameService.endSession(gameSessionId);
+    sessionStartedAtCache.delete(roomCode);
+    io.to(roomCode).emit('game_over', { reason: 'ALL_RUNNERS_RESOLVED' });
+  }
+}
+
+async function endMatch(roomCode: string, reason: string) {
+  const gameSessionId = await resolveSessionId(roomCode);
+  if (!gameSessionId) return;
+  await gameService.endSession(gameSessionId);
+  sessionStartedAtCache.delete(roomCode);
+  io.to(roomCode).emit('game_over', { reason });
+}
+
+async function endMatchIfExpired(roomCode: string): Promise<boolean> {
+  const startedAtMs = sessionStartedAtCache.get(roomCode);
+  const settings = sessionSettingsCache.get(roomCode);
+  if (!startedAtMs || !settings) return false;
+  if (Date.now() - startedAtMs < settings.durationMinutes * 60_000) return false;
+  await endMatch(roomCode, 'TIME_EXPIRED');
+  return true;
+}
+
+// Periodically flush buffered location fixes to Postgres for post-game analytics/replay,
+// broadcast the current shrinking-zone state for Standard-mode matches, and act as a
+// backstop for match-timer expiry in case no player sent a location update right at the deadline.
 setInterval(async () => {
+  for (const roomCode of activeSessions.keys()) {
+    if (await endMatchIfExpired(roomCode)) continue;
+
+    const mode = sessionModes.get(roomCode);
+    const settings = sessionSettingsCache.get(roomCode);
+    const startedAtMs = sessionStartedAtCache.get(roomCode);
+    if (mode === 'STANDARD' && settings && startedAtMs) {
+      const zone = computeZoneState(settings.boundsPolygon, new Date(startedAtMs), settings.durationMinutes);
+      io.to(roomCode).emit('zone_update', zone);
+    }
+  }
+
   for (const [roomCode, entries] of pendingLogs.entries()) {
     if (entries.length === 0) continue;
     pendingLogs.set(roomCode, []);
-    const gameSession = await prisma.gameSession.findUnique({ where: { code: roomCode } });
-    if (gameSession) {
-      await gameService.logLocationBatch(gameSession.id, entries).catch((err) => {
+    const gameSessionId = await resolveSessionId(roomCode);
+    if (gameSessionId) {
+      await gameService.logLocationBatch(gameSessionId, entries).catch((err) => {
         console.error('[locationLogFlush] failed', err);
       });
     }
