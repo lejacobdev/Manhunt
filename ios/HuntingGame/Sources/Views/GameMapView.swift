@@ -17,6 +17,10 @@ struct GameMapView: UIViewRepresentable {
     let extractionPoint: Coordinate?
     let decoys: [DecoyBlip]
     var initialCenter: CLLocationCoordinate2D
+    /// Spectator/supervisor "follow" — when set to a player id present in `players`,
+    /// the map re-centers on that player once (not continuously; the viewer can still
+    /// pan freely afterward). Changing it to a different id re-centers again.
+    var focusPlayerId: String? = nil
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -101,12 +105,21 @@ struct GameMapView: UIViewRepresentable {
         } else if !mapView.overlays.isEmpty {
             mapView.removeOverlays(mapView.overlays)
         }
+
+        if let focusPlayerId, focusPlayerId != context.coordinator.lastFocusedId,
+           let target = players.first(where: { $0.id == focusPlayerId }) {
+            mapView.setRegion(MKCoordinateRegion(center: target.coordinate, latitudinalMeters: 400, longitudinalMeters: 400), animated: true)
+            context.coordinator.lastFocusedId = focusPlayerId
+        } else if focusPlayerId == nil {
+            context.coordinator.lastFocusedId = nil
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         var hasCentered = false
+        var lastFocusedId: String?
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let circle = overlay as? MKCircle else { return MKOverlayRenderer(overlay: overlay) }

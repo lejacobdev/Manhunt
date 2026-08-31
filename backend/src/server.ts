@@ -9,6 +9,7 @@ import { authRouter } from './routes/auth';
 import { friendsRouter } from './routes/friends';
 import { gamesRouter } from './routes/games';
 import { powerUpsRouter } from './routes/powerups';
+import { invitesRouter } from './routes/invites';
 import { prisma } from './lib/prisma';
 import { gameService, GameSettings } from './services/GameService';
 import { checkAccuracy, checkMotion, checkSpeed, checkTeleport } from './services/AntiCheatService';
@@ -47,6 +48,7 @@ app.use('/auth', authRouter);
 app.use('/friends', friendsRouter);
 app.use('/games', gamesRouter);
 app.use('/powerups', powerUpsRouter);
+app.use('/invites', invitesRouter);
 
 export const httpServer = createServer(app);
 export const io = new Server(httpServer, { cors: { origin: process.env.CORS_ORIGIN ?? '*' } });
@@ -68,6 +70,49 @@ const zoneViolationSince: Map<string, Map<string, number>> = new Map();
 const lastFix: Map<string, { lat: number; lng: number; timestamp: number }> = new Map();
 // gamePlayerId -> pending location log entries flushed to Postgres periodically
 const pendingLogs: Map<string, { playerId: string; lat: number; lng: number; accuracy: number; speed?: number }[]> = new Map();
+
+// userId -> number of live sockets for that user (a user can be connected via both a
+// presence-only connection and an active-match connection at once, hence a refcount
+// rather than a plain set). Every authenticated socket counts here, regardless of
+// whether it ever joins a game room — presence reflects "app is open", not "in a match".
+const onlineUserRefCounts: Map<string, number> = new Map();
+
+/** True if the given user currently has at least one live socket connection. */
+export function isUserOnline(userId: string): boolean {
+  return (onlineUserRefCounts.get(userId) ?? 0) > 0;
+}
+
+async function getAcceptedFriendIds(userId: string): Promise<string[]> {
+  const friendships = await prisma.friendship.findMany({
+    where: { status: 'ACCEPTED', OR: [{ senderId: userId }, { receiverId: userId }] },
+    select: { senderId: true, receiverId: true },
+  });
+  return friendships.map((f) => (f.senderId === userId ? f.receiverId : f.senderId));
+}
+
+async function markUserOnline(userId: string) {
+  const count = (onlineUserRefCounts.get(userId) ?? 0) + 1;
+  onlineUserRefCounts.set(userId, count);
+  if (count === 1) {
+    const friendIds = await getAcceptedFriendIds(userId);
+    for (const friendId of friendIds) {
+      io.to(`user:${friendId}`).emit('friend_online', { userId });
+    }
+  }
+}
+
+async function markUserOffline(userId: string) {
+  const count = (onlineUserRefCounts.get(userId) ?? 0) - 1;
+  if (count <= 0) {
+    onlineUserRefCounts.delete(userId);
+    const friendIds = await getAcceptedFriendIds(userId);
+    for (const friendId of friendIds) {
+      io.to(`user:${friendId}`).emit('friend_offline', { userId });
+    }
+  } else {
+    onlineUserRefCounts.set(userId, count);
+  }
+}
 
 io.use((socket, next) => {
   // The iOS client sends the token three ways for robustness across
@@ -91,6 +136,17 @@ io.use((socket, next) => {
 io.on('connection', (socket: Socket) => {
   const authedUser = socket.data.user as AuthTokenPayload;
   console.log(`[Socket] Connected: ${socket.id} (user=${authedUser.username})`);
+
+  // Presence is independent of game membership — every authenticated socket (including
+  // one just sitting on the lobby/friends screen) joins its own user room so friends and
+  // invites can reach it, and counts toward "online" for the duration of the connection.
+  socket.join(`user:${authedUser.userId}`);
+  markUserOnline(authedUser.userId).catch((err) => console.error('[presence] markUserOnline failed', err));
+
+  socket.on('get_online_friends', async () => {
+    const friendIds = await getAcceptedFriendIds(authedUser.userId);
+    socket.emit('online_friends_snapshot', { onlineFriendIds: friendIds.filter(isUserOnline) });
+  });
 
   socket.on('join_room', async ({ roomCode, gamePlayerId }: { roomCode: string; gamePlayerId: string }) => {
     try {
@@ -136,8 +192,11 @@ io.on('connection', (socket: Socket) => {
       };
       session.set(gamePlayer.id, state);
 
-      if (gamePlayer.role === 'SUPERVISOR') {
-        socket.join(`${roomCode}_supervisors`);
+      if (gamePlayer.role === 'SUPERVISOR' || gamePlayer.role === 'SPECTATOR') {
+        // Both roles are pure observers — neither carries an inventory or takes
+        // gameplay actions — so both get the continuous full-roster feed that
+        // hunters/runners don't (those only see each other via radar pings).
+        socket.join(`${roomCode}_observers`);
       }
 
       io.to(roomCode).emit('player_joined', Array.from(session.values()));
@@ -285,7 +344,7 @@ io.on('connection', (socket: Socket) => {
         }
       }
 
-      io.to(`${roomCode}_supervisors`).emit('supervisor_map_update', allPlayers);
+      io.to(`${roomCode}_observers`).emit('roster_update', allPlayers);
     }
   );
 
@@ -515,7 +574,10 @@ io.on('connection', (socket: Socket) => {
   });
 
   socket.on('leave_room', () => cleanupSocket(socket));
-  socket.on('disconnect', () => cleanupSocket(socket));
+  socket.on('disconnect', () => {
+    cleanupSocket(socket);
+    markUserOffline(authedUser.userId).catch((err) => console.error('[presence] markUserOffline failed', err));
+  });
 });
 
 function cleanupSocket(socket: Socket) {

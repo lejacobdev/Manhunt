@@ -5,8 +5,11 @@ struct LobbyView: View {
     @StateObject private var viewModel = LobbyViewModel()
     @StateObject private var locationManager = LocationManager()
     @EnvironmentObject var authSession: AuthSession
+    @EnvironmentObject var presence: PresenceService
     @State private var showCreateSheet = false
     @State private var showFriends = false
+    @State private var showHistory = false
+    @State private var joiningInvite: GameInvite?
     @State private var launchedGame: (player: GamePlayer, session: GameSession)?
 
     var body: some View {
@@ -19,6 +22,17 @@ struct LobbyView: View {
                         Text("SIGNED IN AS \(user.tagLabel.uppercased())")
                             .font(ADATheme.telemetryFont(size: 11))
                             .foregroundColor(.white.opacity(0.4))
+                    }
+
+                    if !presence.incomingInvites.isEmpty {
+                        InviteBannerView(
+                            invites: presence.incomingInvites,
+                            onJoin: { joiningInvite = $0 },
+                            onDecline: { invite in
+                                Task { _ = try? await presence.respondToInvite(invite, accept: false) }
+                            }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
                     }
 
                     joinSection
@@ -34,16 +48,29 @@ struct LobbyView: View {
                     .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
                     .padding(.horizontal)
 
-                    Button {
-                        showFriends = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "person.2.fill")
-                            Text("FRIENDS")
+                    HStack(spacing: 10) {
+                        Button {
+                            showFriends = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "person.2.fill")
+                                Text("FRIENDS")
+                            }
                         }
+                        .buttonStyle(GlassButtonStyle(tint: .white))
+                        .frame(maxWidth: .infinity)
+
+                        Button {
+                            showHistory = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "clock.arrow.circlepath")
+                                Text("HISTORY")
+                            }
+                        }
+                        .buttonStyle(GlassButtonStyle(tint: .white))
+                        .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(GlassButtonStyle(tint: .white))
-                    .frame(maxWidth: .infinity)
                     .padding(.horizontal)
 
                     if let error = viewModel.errorMessage {
@@ -67,13 +94,24 @@ struct LobbyView: View {
                 }
                 .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
                 .animation(ADATheme.ambientSpring, value: viewModel.activeSession?.status)
+                .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
             }
             .obsidianBackdrop()
             .sheet(isPresented: $showCreateSheet) {
                 CreateGameSheet(viewModel: viewModel, locationManager: locationManager)
             }
             .sheet(isPresented: $showFriends) {
-                FriendsView()
+                FriendsView(inviteSessionCode: viewModel.activeSession?.status == .lobby ? viewModel.activeSession?.code : nil)
+            }
+            .sheet(isPresented: $showHistory) {
+                MatchHistoryView()
+            }
+            .sheet(item: $joiningInvite) { invite in
+                InviteJoinSheet(invite: invite) { role, squad in
+                    guard let session = try? await presence.respondToInvite(invite, accept: true) else { return }
+                    guard let (player, joinedSession) = try? await APIClient.shared.joinGame(code: session.code, role: role, squad: squad) else { return }
+                    launchedGame = (player, joinedSession)
+                }
             }
             .fullScreenCover(item: Binding(
                 get: { launchedGame.map { GameLaunch(player: $0.player, session: $0.session) } },

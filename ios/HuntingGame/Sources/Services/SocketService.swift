@@ -67,12 +67,21 @@ final class SocketService: ObservableObject {
         socket?.disconnect()
         manager = nil
         socket = nil
+        isConnected = false
+        // Full reset, not just the map/roster fields — this is a singleton reused across
+        // matches, so anything left stale here (most importantly gameOverReason) would leak
+        // into the next match's GameView and show a "Match Ended" overlay on a fresh game.
         players = []
         compass = nil
         radar = nil
         zone = nil
         extractionPoint = nil
         matchStartedAt = nil
+        lastCatchFailure = nil
+        lastErrorMessage = nil
+        lastAntiCheatWarning = nil
+        inventory = []
+        gameOverReason = nil
     }
 
     func sendLocationUpdate(lat: Double, lng: Double, speed: Double, accuracy: Double, battery: Int, isMovingOnFoot: Bool) {
@@ -159,7 +168,9 @@ final class SocketService: ObservableObject {
             self.matchStartedAt = Self.iso8601.date(from: raw)
         }
 
-        socket.on("supervisor_map_update") { [weak self] data, _ in
+        // Sent to both SUPERVISOR and SPECTATOR observers — the full live roster, on
+        // every location tick, since neither role gets the hunter-only radar feed.
+        socket.on("roster_update") { [weak self] data, _ in
             guard let self, let raw = data.first else { return }
             self.players = Self.decodeArray(raw)
         }

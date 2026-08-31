@@ -42,18 +42,26 @@ enum FriendStatus {
   BLOCKED
 }
 
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 model User {
-  id           String       @id @default(uuid())
+  id           String   @id @default(uuid())
   username     String
   userTag      String
   passwordHash String
   avatarUrl    String?
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   sentRequests Friendship[] @relation("SentRequests")
   recvRequests Friendship[] @relation("RecvRequests")
   players      GamePlayer[]
+  sentInvites  GameInvite[] @relation("SentInvites")
+  recvInvites  GameInvite[] @relation("RecvInvites")
 
   @@unique([username, userTag])
   @@index([username])
@@ -89,9 +97,28 @@ model GameSession {
   powerUps PowerUpSpawn[]
   events   GameEvent[]
   logs     LocationLog[]
+  invites  GameInvite[]
 
   @@index([code])
   @@index([status])
+}
+
+// A friend-to-lobby invite for a specific game session — durable so it survives the recipient being offline.
+model GameInvite {
+  id          String       @id @default(uuid())
+  sessionId   String
+  fromUserId  String
+  toUserId    String
+  status      InviteStatus @default(PENDING)
+  createdAt   DateTime     @default(now())
+  respondedAt DateTime?
+
+  session  GameSession @relation(fields: [sessionId], references: [id])
+  fromUser User        @relation("SentInvites", fields: [fromUserId], references: [id])
+  toUser   User        @relation("RecvInvites", fields: [toUserId], references: [id])
+
+  @@unique([sessionId, toUserId])
+  @@index([toUserId, status])
 }
 
 model PowerUpSpawn {
@@ -111,20 +138,20 @@ model PowerUpSpawn {
 }
 
 model GamePlayer {
-  id           String      @id @default(uuid())
+  id           String     @id @default(uuid())
   sessionId    String
   userId       String
   role         PlayerRole
   squad        String?
-  isCaught     Boolean     @default(false)
+  isCaught     Boolean    @default(false)
   caughtAt     DateTime?
-  isExtracted  Boolean     @default(false)
+  isExtracted  Boolean    @default(false)
   extractedAt  DateTime?
   arrestCode   String
-  batteryLevel Int         @default(100)
-  inventory    Json        @default("[]")
-  activeBuffs  Json        @default("{}")
-  joinedAt     DateTime    @default(now())
+  batteryLevel Int        @default(100)
+  inventory    Json       @default("[]")
+  activeBuffs  Json       @default("{}")
+  joinedAt     DateTime   @default(now())
 
   session GameSession @relation(fields: [sessionId], references: [id])
   user    User        @relation(fields: [userId], references: [id])

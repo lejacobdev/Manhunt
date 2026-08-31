@@ -96,6 +96,44 @@ gamesRouter.get('/:code', async (req: AuthedRequest, res) => {
   return res.json({ session });
 });
 
+/**
+ * Post-game (or in-progress) playback: every buffered GPS fix for the match, grouped
+ * by player, ordered by time. Restricted to session members so spectators/supervisors
+ * of *this* match can scrub through it, but no one else can pull another match's tracks.
+ */
+gamesRouter.get('/:code/replay', async (req: AuthedRequest, res) => {
+  const session = await gameService.getSessionByCode(req.params.code);
+  if (!session) return res.status(404).json({ error: 'Game not found.' });
+  const isMember = session.players.some((p) => p.userId === req.user!.userId);
+  if (!isMember) return res.status(403).json({ error: 'You are not a member of this game.' });
+
+  const logs = await prisma.locationLog.findMany({
+    where: { sessionId: session.id },
+    orderBy: { timestamp: 'asc' },
+    take: 20_000,
+  });
+
+  const byPlayer = new Map<string, { lat: number; lng: number; accuracy: number; speed: number | null; timestamp: string }[]>();
+  for (const log of logs) {
+    const list = byPlayer.get(log.playerId) ?? [];
+    list.push({ lat: log.latitude, lng: log.longitude, accuracy: log.accuracy, speed: log.speed, timestamp: log.timestamp.toISOString() });
+    byPlayer.set(log.playerId, list);
+  }
+
+  const players = session.players.map((p) => ({
+    gamePlayerId: p.id,
+    username: p.user.username,
+    role: p.role,
+    track: byPlayer.get(p.id) ?? [],
+  }));
+
+  return res.json({
+    startedAt: session.startedAt,
+    endedAt: session.endedAt,
+    players,
+  });
+});
+
 /** Verifies a proposed play-area boundary actually contains real, public outdoor terrain. */
 gamesRouter.post('/verify-boundary', async (req: AuthedRequest, res) => {
   const parsed = z.object({ boundsPolygon: z.array(pointSchema).min(3) }).safeParse(req.body);

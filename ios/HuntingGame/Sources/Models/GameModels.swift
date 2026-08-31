@@ -185,6 +185,9 @@ struct AppUser: Codable, Identifiable, Equatable {
     let username: String
     let userTag: String
     let avatarUrl: String?
+    /// Only populated by GET /friends (a live presence read); absent (nil) from search
+    /// results and other endpoints that don't compute it.
+    var isOnline: Bool?
 
     var tagLabel: String { "\(username)#\(userTag)" }
 }
@@ -192,4 +195,61 @@ struct AppUser: Codable, Identifiable, Equatable {
 struct Friendship: Codable, Identifiable {
     let id: String
     let status: String
+}
+
+/// A pending friend request, either received or sent — mirrors the trimmed
+/// (no passwordHash) shape returned by GET /friends/requests/incoming|outgoing.
+struct FriendRequest: Codable, Identifiable {
+    let id: String
+    let createdAt: String
+    let from: AppUser?
+    let to: AppUser?
+
+    var otherUser: AppUser { from ?? to ?? AppUser(id: "", username: "?", userTag: "0000", avatarUrl: nil, isOnline: nil) }
+}
+
+/// A durable invite to join a friend's lobby — mirrors GameInvite's REST/socket payload shape.
+struct GameInvite: Codable, Identifiable {
+    let id: String
+    let sessionCode: String
+    let mode: GameMode
+    let fromUserId: String
+    let fromUsername: String
+    let createdAt: String
+}
+
+/// One buffered GPS fix from GET /games/:code/replay's per-player track.
+struct ReplayTrackPoint: Codable {
+    let lat: Double
+    let lng: Double
+    let accuracy: Double
+    let speed: Double?
+    let timestamp: String
+}
+
+struct ReplayPlayer: Codable, Identifiable {
+    let gamePlayerId: String
+    let username: String
+    let role: PlayerRole
+    let track: [ReplayTrackPoint]
+
+    var id: String { gamePlayerId }
+}
+
+/// Full post-game (or in-progress) playback data for a match.
+struct MatchReplay: Codable {
+    let startedAt: String?
+    let endedAt: String?
+    let players: [ReplayPlayer]
+}
+
+/// One row of GET /games/history/mine — a past match this player took part in.
+/// Only the fields this app actually uses are declared; Decodable ignores the rest.
+struct HistoryEntry: Codable, Identifiable {
+    let id: String
+    let role: PlayerRole
+    let isCaught: Bool
+    let isExtracted: Bool
+    let joinedAt: String
+    let session: GameSession
 }

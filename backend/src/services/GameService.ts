@@ -226,7 +226,12 @@ export class GameService {
   public async getSessionByCode(code: string) {
     return prisma.gameSession.findUnique({
       where: { code },
-      include: { players: { include: { user: true } }, powerUps: true },
+      include: {
+        // select (not include: true) so passwordHash never leaves the server in a
+        // session/player payload — every /games route returns this verbatim to clients.
+        players: { include: { user: { select: { id: true, username: true, userTag: true, avatarUrl: true } } } },
+        powerUps: true,
+      },
     });
   }
 }

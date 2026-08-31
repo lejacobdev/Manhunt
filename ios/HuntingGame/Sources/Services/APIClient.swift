@@ -68,10 +68,51 @@ final class APIClient {
         let _: EmptyResponse = try await post("/friends/requests/\(id)/accept", body: EmptyBody())
     }
 
+    func declineFriendRequest(id: String) async throws {
+        try await delete("/friends/requests/\(id)/decline")
+    }
+
     func listFriends() async throws -> [AppUser] {
         struct Response: Decodable { let friends: [AppUser] }
         let resp: Response = try await get("/friends")
         return resp.friends
+    }
+
+    func incomingFriendRequests() async throws -> [FriendRequest] {
+        struct Response: Decodable { let requests: [FriendRequest] }
+        let resp: Response = try await get("/friends/requests/incoming")
+        return resp.requests
+    }
+
+    func outgoingFriendRequests() async throws -> [FriendRequest] {
+        struct Response: Decodable { let requests: [FriendRequest] }
+        let resp: Response = try await get("/friends/requests/outgoing")
+        return resp.requests
+    }
+
+    // MARK: - Invites
+
+    func sendGameInvite(toUserId: String, sessionCode: String) async throws {
+        struct Body: Encodable { let toUserId: String; let sessionCode: String }
+        let _: EmptyResponse = try await post("/invites", body: Body(toUserId: toUserId, sessionCode: sessionCode))
+    }
+
+    func incomingInvites() async throws -> [GameInvite] {
+        struct Response: Decodable { let invites: [GameInvite] }
+        let resp: Response = try await get("/invites/incoming")
+        return resp.invites
+    }
+
+    /// Marks the invite resolved and returns the session to join; the caller still
+    /// picks a role and calls `joinGame(code:role:squad:)` to actually enter the lobby.
+    func acceptInvite(id: String) async throws -> GameSession {
+        struct Response: Decodable { let session: GameSession }
+        let resp: Response = try await post("/invites/\(id)/accept", body: EmptyBody())
+        return resp.session
+    }
+
+    func declineInvite(id: String) async throws {
+        try await delete("/invites/\(id)/decline")
     }
 
     // MARK: - Games
@@ -110,6 +151,16 @@ final class APIClient {
         return resp.session
     }
 
+    func fetchReplay(code: String) async throws -> MatchReplay {
+        try await get("/games/\(code)/replay")
+    }
+
+    func gameHistory() async throws -> [HistoryEntry] {
+        struct Response: Decodable { let history: [HistoryEntry] }
+        let resp: Response = try await get("/games/history/mine")
+        return resp.history
+    }
+
     // MARK: - Core request helpers
 
     private func get<T: Decodable>(_ path: String) async throws -> T {
@@ -124,6 +175,25 @@ final class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
         return try await send(request, authorized: authorized)
+    }
+
+    /// For 204-No-Content endpoints (decline routes) where there's no response body to
+    /// decode — an empty byte stream isn't valid JSON, so this skips `send`'s decode step.
+    private func delete(_ path: String) async throws {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        if let token = AuthSession.shared.token {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
+        guard (200..<300).contains(http.statusCode) else {
+            let message = (try? decoder.decode(ErrorBody.self, from: data))?.error ?? "Request failed with status \(http.statusCode)."
+            if http.statusCode == 401 {
+                await MainActor.run { AuthSession.shared.signOut() }
+            }
+            throw APIError.server(message)
+        }
     }
 
     private func send<T: Decodable>(_ request: URLRequest, authorized: Bool = true) async throws -> T {

@@ -3,6 +3,9 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthedRequest, requireAuth } from '../middleware/auth';
 import { zodErrorMessage } from '../utils/validation';
+// Circular import (server.ts imports this router) — safe because `isUserOnline` is
+// only read inside route handlers, which run long after both modules finish loading.
+import { isUserOnline } from '../server';
 
 export const friendsRouter = Router();
 friendsRouter.use(requireAuth);
@@ -118,23 +121,35 @@ friendsRouter.get('/', async (req: AuthedRequest, res) => {
 
   const friends = friendships.map((f) => {
     const other = f.senderId === userId ? f.receiver : f.sender;
-    return { id: other.id, username: other.username, userTag: other.userTag, avatarUrl: other.avatarUrl };
+    return {
+      id: other.id,
+      username: other.username,
+      userTag: other.userTag,
+      avatarUrl: other.avatarUrl,
+      isOnline: isUserOnline(other.id),
+    };
   });
   return res.json({ friends });
 });
 
+const safeUserSelect = { id: true, username: true, userTag: true, avatarUrl: true } as const;
+
 friendsRouter.get('/requests/incoming', async (req: AuthedRequest, res) => {
   const requests = await prisma.friendship.findMany({
     where: { receiverId: req.user!.userId, status: 'PENDING' },
-    include: { sender: true },
+    include: { sender: { select: safeUserSelect } },
   });
-  return res.json({ requests });
+  return res.json({
+    requests: requests.map((r) => ({ id: r.id, createdAt: r.createdAt, from: r.sender })),
+  });
 });
 
 friendsRouter.get('/requests/outgoing', async (req: AuthedRequest, res) => {
   const requests = await prisma.friendship.findMany({
     where: { senderId: req.user!.userId, status: 'PENDING' },
-    include: { receiver: true },
+    include: { receiver: { select: safeUserSelect } },
   });
-  return res.json({ requests });
+  return res.json({
+    requests: requests.map((r) => ({ id: r.id, createdAt: r.createdAt, to: r.receiver })),
+  });
 });

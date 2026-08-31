@@ -9,6 +9,8 @@ struct GameView: View {
     @ObservedObject private var socket = SocketService.shared
     @Environment(\.dismiss) private var dismiss
     @State private var now = Date()
+    @State private var focusedPlayerId: String?
+    @State private var showReplay = false
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
@@ -21,7 +23,8 @@ struct GameView: View {
                 zone: socket.zone,
                 extractionPoint: socket.extractionPoint,
                 decoys: socket.radar?.decoys ?? [],
-                initialCenter: viewModel.currentLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+                initialCenter: viewModel.currentLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                focusPlayerId: focusedPlayerId
             )
             .edgesIgnoringSafeArea(.all)
             .overlay(Color.black.opacity(0.18).edgesIgnoringSafeArea(.all))
@@ -54,6 +57,14 @@ struct GameView: View {
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
+                if viewModel.role == .spectator {
+                    SpectatorDashboardView(
+                        players: viewModel.allPlayers,
+                        focusedPlayerId: focusedPlayerId,
+                        onFocus: { focusedPlayerId = $0 }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 Spacer()
                 if viewModel.role == .hunter || viewModel.role == .runner {
                     PowerUpDeckView(inventory: viewModel.inventory, onActivate: viewModel.usePowerUp)
@@ -62,7 +73,11 @@ struct GameView: View {
                 }
             }
 
-            if viewModel.isExtracted {
+            if socket.gameOverReason != nil {
+                dimScrim
+                gameOverOverlay
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            } else if viewModel.isExtracted {
                 dimScrim
                 extractedOverlay
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
@@ -81,6 +96,7 @@ struct GameView: View {
         }
         .animation(ADATheme.ambientSpring, value: viewModel.isCaught)
         .animation(ADATheme.ambientSpring, value: viewModel.isExtracted)
+        .animation(ADATheme.ambientSpring, value: socket.gameOverReason)
         .animation(ADATheme.ambientSpring, value: viewModel.catchTargetId)
         .animation(ADATheme.controlSpring, value: viewModel.role)
         .onAppear { viewModel.start() }
@@ -219,6 +235,54 @@ struct GameView: View {
         .padding(18)
         .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: ADATheme.runnerGreen)
         .padding(.horizontal, 16)
+    }
+
+    private var gameOverOverlay: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "flag.checkered.circle.fill")
+                .font(.system(size: 36, weight: .bold))
+                .foregroundColor(ADATheme.spatialCyan)
+                .shadow(color: ADATheme.spatialCyan, radius: 12)
+
+            Text("MATCH ENDED")
+                .font(ADATheme.displayFont(size: 20))
+                .foregroundColor(.white)
+
+            Text(gameOverReasonLabel)
+                .font(ADATheme.uiFont(size: 13, weight: .medium))
+                .foregroundColor(.white.opacity(0.5))
+
+            HStack(spacing: 14) {
+                Button("EXIT") { dismiss() }
+                    .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+
+                Button {
+                    showReplay = true
+                } label: {
+                    HStack {
+                        Image(systemName: "play.circle.fill")
+                        Text("WATCH REPLAY")
+                    }
+                }
+                .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
+            }
+        }
+        .padding(32)
+        .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.spatialCyan)
+        .padding(.horizontal, 40)
+        .sheet(isPresented: $showReplay) {
+            MatchReplayView(sessionCode: viewModel.roomCode)
+        }
+    }
+
+    private var gameOverReasonLabel: String {
+        switch socket.gameOverReason {
+        case "TIME_EXPIRED": return "Time expired — the runners survived."
+        case "ALL_RUNNERS_RESOLVED": return "All runners caught or extracted."
+        case "SUPERVISOR_ENDED": return "The supervisor ended the match early."
+        case "HOST_ENDED": return "The host ended the match."
+        default: return "The match has ended."
+        }
     }
 
     private var extractedOverlay: some View {

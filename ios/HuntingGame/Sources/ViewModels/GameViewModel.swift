@@ -36,7 +36,7 @@ final class GameViewModel: ObservableObject {
     let gamePlayerId: String
     let mySquad: String?
     let sessionSettings: GameSettings
-    private let roomCode: String
+    let roomCode: String
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         self.role = gamePlayer.role
