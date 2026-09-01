@@ -1,0 +1,10 @@
+version: 1
+bundleID: com.huntinggame.app
+product: HuntingGame
+infoPath: Info.plist
+entitlementsPath: HuntingGame.entitlements
+
+extensions:
+  - product: HuntingGameWidget
+    bundleID: com.huntinggame.app.widgets
+    infoPath: HuntingGameWidget-Info.plist

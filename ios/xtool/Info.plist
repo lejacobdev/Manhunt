@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	xtool auto-generates the boilerplate keys (CFBundleIdentifier, CFBundleVersion,
+	device family, orientations, UILaunchScreen, etc.) and merges this dictionary on
+	top — see PackLib/Planner.swift. Only the keys HuntingGame actually needs beyond
+	that default are listed here, mirroring project.yml's `info.properties` block.
+	-->
+	<key>CFBundleDisplayName</key>
+	<string>Hunting Game</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Hunting Game tracks your position continuously during a match so hunters and runners can see live radar, compass bearings, and catch verification even while the app is backgrounded.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Hunting Game needs your location to place you on the live match map.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>Hunting Game uses motion data to distinguish on-foot movement from vehicle travel for anti-cheat checks.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+</dict>
+</plist>
