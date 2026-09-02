@@ -60,7 +60,7 @@ docker run -it --rm \
     # runtime deps added preemptively to save round-trips — if `swift --version`
     # below still fails on a missing .so, that error names what to add next.
     apt-get update -qq
-    apt-get install -y -qq curl git ca-certificates usbmuxd \
+    apt-get install -y -qq curl git ca-certificates usbmuxd unzip \
       libncurses6 libsqlite3-0 libcurl4 libxml2 libedit2 2>&1 | tail -5
 
     if [[ -n "$SWIFTLY_TOOLCHAIN_BIN" && -x "$SWIFTLY_TOOLCHAIN_BIN/swift" ]]; then
