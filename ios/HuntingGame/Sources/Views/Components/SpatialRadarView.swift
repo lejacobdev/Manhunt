@@ -129,9 +129,12 @@ struct SpatialRadarView: View {
     }
 }
 
+// See AuthView.swift for why this is gated — #Preview needs an Xcode-only plugin.
+#if !SWIFT_PACKAGE
 #Preview {
     ZStack {
         ADATheme.obsidianBackground.edgesIgnoringSafeArea(.all)
         SpatialRadarView(distanceMeters: 18, bearingDegrees: 120, currentHeading: 45, role: .runner)
     }
 }
+#endif

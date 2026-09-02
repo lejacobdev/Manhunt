@@ -129,6 +129,13 @@ struct ADASecureField: View {
     }
 }
 
+// SwiftUI's #Preview macro relies on a plugin only Xcode's live-preview
+// system provides — unavailable when building headlessly via plain
+// `swift build` (as the xtool/SwiftPM build path does). SWIFT_PACKAGE is
+// defined automatically by SwiftPM (never by Xcode), so this keeps the
+// canvas preview working in Xcode while skipping it there.
+#if !SWIFT_PACKAGE
 #Preview {
     AuthView()
 }
+#endif
