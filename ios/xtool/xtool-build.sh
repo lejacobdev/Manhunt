@@ -28,6 +28,11 @@
 
 set -euo pipefail
 
+# The xtool AppImage normally mounts itself via FUSE, which isn't available in
+# most containers/minimal servers (no /dev/fuse). This makes it extract to a
+# temp dir and run from there instead — confirmed working where FUSE isn't.
+export APPIMAGE_EXTRACT_AND_RUN=1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 XTOOL_BIN="${HOME}/.local/bin/xtool"
 WEB_ROOT="/var/www/html"
