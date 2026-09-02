@@ -10,6 +10,15 @@
 
 import PackageDescription
 
+// This package needs swift-tools-version 6.0 for xtool's app-extension product
+// support, but the actual source (Sources/*, symlinked from ios/HuntingGame/)
+// was written against project.yml's SWIFT_VERSION 5.0 — plain Swift 5 language
+// mode, not Swift 6's strict concurrency checking. Pinning every target back to
+// .v5 below matches what the code actually targets, rather than either fighting
+// spurious Swift-6-only Sendable diagnostics or rewriting concurrency semantics
+// that Xcode never required.
+let swift5Mode: [SwiftSetting] = [.swiftLanguageMode(.v5)]
+
 let package = Package(
     name: "HuntingGame",
     platforms: [
@@ -34,11 +43,11 @@ let package = Package(
         // the widget extension so both agree on colors and the WatchConnectivity
         // payload shape — the payload type itself is harmless to keep even
         // though the watchOS app isn't part of this build).
-        .target(name: "HuntingGameShared"),
+        .target(name: "HuntingGameShared", swiftSettings: swift5Mode),
 
         // Mirrors project.yml's LiveActivityShared/ folder — the ActivityAttributes
         // type both the app and the widget extension need to agree on.
-        .target(name: "LiveActivityShared"),
+        .target(name: "LiveActivityShared", swiftSettings: swift5Mode),
 
         .target(
             name: "HuntingGame",
@@ -46,7 +55,8 @@ let package = Package(
                 "HuntingGameShared",
                 "LiveActivityShared",
                 .product(name: "SocketIO", package: "socket.io-client-swift"),
-            ]
+            ],
+            swiftSettings: swift5Mode
         ),
 
         .target(
@@ -54,7 +64,8 @@ let package = Package(
             dependencies: [
                 "HuntingGameShared",
                 "LiveActivityShared",
-            ]
+            ],
+            swiftSettings: swift5Mode
         ),
     ]
 )
