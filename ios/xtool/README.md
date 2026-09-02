@@ -23,36 +23,60 @@ documents building a **watchOS** app or companion-app bundling. So:
 - App icon isn't wired up (the source project's asset catalog is empty
   anyway — no PNGs to point xtool's `iconPath` at). Cosmetic only.
 
-This restructuring was done without a working Swift toolchain available to
-verify it compiles — the session that wrote it hit network restrictions
-blocking every source of a Linux Swift toolchain (`download.swift.org`,
-GitHub release assets, and Docker Hub's CDN were all blocked by that
-session's egress policy). Treat this as a solid best-effort starting point,
-not a verified-working build; you may need to fix small things once you see
-real compiler output.
+This restructuring was originally written without a working Swift toolchain
+available to verify it compiles, then debugged live against a real Debian 11
+server. It now builds successfully there. Treat it as solid, but any *new*
+host may still surface something distro-specific (see the "known-good build
+environment" note below) — that's normal, not a sign something's fundamentally
+wrong; paste the error and it's usually one missing package.
 
 ## Building
 
-Run this on a machine with normal internet access (this restructuring itself
-was done from a network-restricted session — the actual build has to happen
-somewhere that can reach `swift.org`, `developer.apple.com`, and GitHub
-without restriction):
+Two options, both unsigned (same trust model as `build_ipa.sh`'s Mac output —
+AltStore/SideStore sign it on install) and **neither needs an Apple ID
+login**. That surprised us too: `xtool setup` always logs in first, but login
+is only actually required for a *signed* build (`--sign`) or installing
+straight to a device. Both scripts below skip `xtool setup` entirely and go
+straight to the standalone `xtool sdk install` command instead, which needs
+no auth.
+
+### Option A — `docker-build.sh` (recommended)
 
 ```bash
-./xtool-build.sh
+./docker-build.sh [/path/to/Xcode.xip]
 ```
 
-It installs `xtool` itself, walks you through `xtool setup` (your own Apple
-ID — this step needs a human, `xtool` will prompt you interactively for
-either an App Store Connect API key or your Apple ID password + a live 2FA
-code, plus the path to an `Xcode.xip` you download yourself from
-https://developer.apple.com/download/all/?q=Xcode), then builds and packages
-`HuntingGame.ipa`.
+Builds a `swift:6.2-jammy`-based image (has every runtime lib xtool/Swift
+need already correctly set up — this is the known-good build environment,
+confirmed working on Debian 11 where the host's own glibc was too old for a
+directly-installed toolchain) and runs the whole build inside it. The Darwin
+SDK is cached at `~/.xtool-cache/swiftpm/` — **shared with any other xtool
+project on the same server** — so if you've built one before, this skips SDK
+extraction entirely and needs no `Xcode.xip` at all. First time on a given
+server, pass the path to a downloaded `Xcode.xip` (from
+https://developer.apple.com/download/all/?q=Xcode, logged in with your Apple
+ID in the browser — that login is separate from and unrelated to `xtool`'s
+own auth).
 
-See the script's own comments for exactly what it does at each step, and
-xtool's docs (cloned into this session at build time from
-https://github.com/xtool-org/xtool — `Documentation/xtool.docc/`) for the
-full reference, since `xtool.sh` itself was unreachable from this session.
+### Option B — `xtool-build.sh` (no Docker)
+
+```bash
+./xtool-build.sh [/path/to/Xcode.xip]
+```
+
+Same logic, but installs Swift and `xtool` directly on the host instead of in
+a container. Only works if the host's glibc is new enough for the prebuilt
+Swift 6.3 toolchain and the xtool AppImage (both need glibc ≥ 2.35 as of this
+writing) — Debian 11/Ubuntu 20.04 are too old for this path; use
+`docker-build.sh` there instead.
+
+Both scripts publish the finished `HuntingGame.ipa` to `/var/www/html/` if
+that directory exists, so it's directly downloadable from the server.
+
+See each script's own comments for the full step-by-step, and xtool's docs
+(`Documentation/xtool.docc/` in https://github.com/xtool-org/xtool — cloned
+directly since `xtool.sh` itself was unreachable from the session that wrote
+this) for the underlying reference.
 
 ## Files
 
@@ -67,3 +91,6 @@ full reference, since `xtool.sh` itself was unreachable from this session.
   `NSExtensionPointIdentifier`) — mirrors `project.yml`'s `info.properties`.
 - `HuntingGame.entitlements` — identical to `../HuntingGame/HuntingGame.entitlements`.
 - `Sources/*` — symlinks into `../HuntingGame/{Sources,Shared,LiveActivityShared,Widgets/HuntingGameWidgets}`.
+- `Dockerfile.xtool` — the known-good build image (`swift:6.2-jammy` + xtool +
+  runtime libs) that `docker-build.sh` builds and runs against.
+- `docker-build.sh` / `xtool-build.sh` — see "Building" above.

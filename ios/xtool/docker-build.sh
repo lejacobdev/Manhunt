@@ -1,82 +1,131 @@
 #!/usr/bin/env bash
+# docker-build.sh — build HuntingGame.ipa using xtool + Docker, unsigned.
 #
-# docker-build.sh — runs xtool-build.sh inside a fresh Ubuntu 24.04 container
-# instead of directly on the host. Use this when the host's glibc is too old
-# for the prebuilt Swift toolchain and/or the xtool AppImage (e.g. Debian 11
-# "bullseye", glibc 2.31 — both need up to glibc 2.35). Doesn't touch the
-# host's own packages.
+# Modeled directly on a proven-working script from another project on this
+# server (SingOpKoelsch-iOS/make-ipa.sh) — same base image (swift:6.2-jammy,
+# which has all the runtime libs xtool/swift need already correctly set up),
+# same SDK cache directory, same no-auth-needed approach.
 #
-# If you already have a Swift toolchain installed via swiftly on the host
-# (~/.local/share/swiftly/toolchains/<version>), this reuses it by bind-mount
-# instead of re-downloading — the toolchain files themselves are fine, they
-# just need a newer glibc than the host provides, which the container has.
+# Key fact this fixes vs. earlier attempts: `xtool setup` always logs in with
+# your Apple ID first, even though that's only actually required for a SIGNED
+# build (`xtool dev build --sign`) or installing to a device. An unsigned
+# build — what this script produces, same as build_ipa.sh's Mac output, meant
+# for AltStore/SideStore to sign on install — needs no Apple ID login at all.
+# This script never calls `xtool auth` / `xtool setup`.
 #
-# Usage: ./docker-build.sh
+# What you need:
+#   1. Docker (already installed ✓)
+#   2. Xcode.xip — only if the SDK isn't already cached from a previous build
+#      (this server already has one at ~/.xtool-cache/ from another project,
+#      so you likely don't need to provide this at all). If you do:
+#      download from https://developer.apple.com/download/all/?q=Xcode
+#      (log in with your Apple ID in the browser), then either drop it under
+#      this directory or pass its path as an argument.
 #
-# Same interactive requirements as xtool-build.sh apply — you'll still need
-# to answer the `xtool setup` prompts (Apple ID/2FA or API key, and the path
-# to a downloaded Xcode.xip) live, inside the container's shell. If Xcode.xip
-# lives outside this repo checkout, put it under this repo (or edit the -v
-# lines below to mount wherever it actually is) so the container can see it.
+# Usage:
+#   ./docker-build.sh [/path/to/Xcode.xip]
+#
+# The SDK is cached in ~/.xtool-cache/swiftpm/ (shared across projects on this
+# server) — subsequent builds, including for other xtool projects here, skip
+# extraction entirely.
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+DOCKER_IMAGE="manhunt-xtool-builder"
+CACHE_DIR="$HOME/.xtool-cache"
+SDK_MARKER="$CACHE_DIR/.sdk_installed"
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEB_ROOT="/var/www/html"
-IMAGE="ubuntu:24.04"
-SWIFT_VERSION="6.3-RELEASE"
-SWIFTLY_DIR="${HOME}/.local/share/swiftly"
+IPA_NAME="HuntingGame.ipa"
+IPA_OUT="$PROJECT_DIR/build/ipa/$IPA_NAME"
 
-mkdir -p "$WEB_ROOT"
+RED='\033[0;31m'; GRN='\033[0;32m'; YLW='\033[1;33m'; CYN='\033[0;36m'; NC='\033[0m'
+step() { echo -e "\n${YLW}▶  $*${NC}"; }
+ok()   { echo -e "${GRN}✔  $*${NC}"; }
+info() { echo -e "${CYN}   $*${NC}"; }
+fail() { echo -e "${RED}✖  $*${NC}"; exit 1; }
 
-VOLUME_ARGS=(
-  -v "${REPO_ROOT}:/workspace"
-  -v "${WEB_ROOT}:/var/www/html"
-  -v xtool-local-bin:/root/.local/bin
-)
-if [[ -d "$SWIFTLY_DIR/toolchains" ]]; then
-  echo "==> Reusing existing swiftly toolchains from $SWIFTLY_DIR"
-  VOLUME_ARGS+=(-v "${SWIFTLY_DIR}:/root/.local/share/swiftly:ro")
+mkdir -p "$CACHE_DIR/swiftpm"
+
+# ── 1. Build Docker image (cached after first run) ──────────────────────────
+step "Preparing Docker build environment..."
+docker build -f "$PROJECT_DIR/Dockerfile.xtool" -t "$DOCKER_IMAGE" "$PROJECT_DIR" --quiet
+ok "Docker image ready: $DOCKER_IMAGE"
+
+# ── 2. SDK: reuse the cache if present, else extract from Xcode.xip ─────────
+if [ -f "$SDK_MARKER" ]; then
+    ok "SDK already cached at $CACHE_DIR/swiftpm/ — skipping extraction."
 else
-  VOLUME_ARGS+=(-v xtool-swift-toolchain:/opt/swift)
+    XIP_PATH="${1:-}"
+    if [ -z "$XIP_PATH" ]; then
+        for candidate in ~/Downloads/Xcode*.xip /tmp/Xcode*.xip "$PROJECT_DIR/Xcode.xip"; do
+            for f in $candidate; do
+                [ -f "$f" ] && XIP_PATH="$f" && break 2
+            done
+        done
+    fi
+    if [ -z "$XIP_PATH" ] || [ ! -f "$XIP_PATH" ]; then
+        echo ""
+        fail "No cached SDK found and no Xcode.xip given. Download one from
+  https://developer.apple.com/download/all/?q=Xcode (log in with your Apple
+  ID in the browser), then run: ./docker-build.sh /path/to/Xcode.xip"
+    fi
+    XIP_PATH=$(realpath "$XIP_PATH")
+    ok "Xcode.xip: $XIP_PATH  ($(du -sh "$XIP_PATH" | cut -f1))"
+
+    step "Extracting the iOS SDK from Xcode.xip (runs once, takes a few minutes)..."
+    docker run --rm \
+        -v "$CACHE_DIR/swiftpm:/root/.swiftpm" \
+        -v "$XIP_PATH:/Xcode.xip:ro" \
+        "$DOCKER_IMAGE" \
+        xtool sdk install /Xcode.xip
+
+    touch "$SDK_MARKER"
+    ok "SDK installed and cached at $CACHE_DIR/swiftpm/"
 fi
 
-docker run -it --rm \
-  "${VOLUME_ARGS[@]}" \
-  -w /workspace/ios/xtool \
-  -e SWIFT_VERSION="$SWIFT_VERSION" \
-  "$IMAGE" \
-  bash -c '
-    set -euo pipefail
-    export DEBIAN_FRONTEND=noninteractive
+# ── 3. Build the IPA (unsigned, no Apple ID needed) ──────────────────────────
+step "Building $IPA_NAME..."
+mkdir -p "$PROJECT_DIR/build/ipa"
 
-    # Prefer a swiftly-managed toolchain mounted from the host, if present;
-    # otherwise fall back to downloading one straight from swift.org into the
-    # container.
-    SWIFTLY_TOOLCHAIN_BIN="$(find /root/.local/share/swiftly/toolchains -maxdepth 3 -type d -name bin 2>/dev/null | head -1)"
+docker run --rm \
+    -v "$CACHE_DIR/swiftpm:/root/.swiftpm" \
+    -v "$PROJECT_DIR:/workspace" \
+    "$DOCKER_IMAGE" \
+    sh -c "cd /workspace && xtool dev build --ipa -c release"
 
-    # libncurses6 and libsqlite3-0 confirmed needed by real runs (swift errored
-    # on each in turn). libcurl4/libxml2/libedit2 are other common Swift Foundation
-    # runtime deps added preemptively to save round-trips — if `swift --version`
-    # below still fails on a missing .so, that error names what to add next.
-    apt-get update -qq
-    apt-get install -y -qq curl git ca-certificates usbmuxd unzip \
-      libncurses6 libsqlite3-0 libcurl4 libxml2 libedit2 2>&1 | tail -5
+# ── 4. Locate and move the IPA ────────────────────────────────────────────────
+FOUND=$(find "$PROJECT_DIR/xtool" "$PROJECT_DIR/.build" -name "*.ipa" 2>/dev/null | head -1 || true)
+[ -z "$FOUND" ] && FOUND=$(find "$PROJECT_DIR/build" -name "*.ipa" 2>/dev/null | grep -v "$IPA_OUT" | head -1 || true)
+[ -z "$FOUND" ] && fail "IPA not found after build — see output above for errors."
+[ "$FOUND" != "$IPA_OUT" ] && mv "$FOUND" "$IPA_OUT"
 
-    if [[ -n "$SWIFTLY_TOOLCHAIN_BIN" && -x "$SWIFTLY_TOOLCHAIN_BIN/swift" ]]; then
-      export PATH="${SWIFTLY_TOOLCHAIN_BIN}:/root/.local/bin:$PATH"
+IPA_SIZE=$(du -sh "$IPA_OUT" | cut -f1)
+ok "IPA built: $IPA_OUT ($IPA_SIZE)"
+
+# ── 5. Publish to the web root ────────────────────────────────────────────────
+if [ -d "$WEB_ROOT" ]; then
+    DEST="$WEB_ROOT/$IPA_NAME"
+    if [ -w "$WEB_ROOT" ]; then
+        cp "$IPA_OUT" "$DEST"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo cp "$IPA_OUT" "$DEST"
     else
-      export PATH="/opt/swift/usr/bin:/root/.local/bin:$PATH"
-      if ! command -v swift >/dev/null 2>&1; then
-        echo "==> Downloading Swift ${SWIFT_VERSION} for Ubuntu 24.04..."
-        curl -fL \
-          "https://download.swift.org/swift-${SWIFT_VERSION}/ubuntu2404/swift-${SWIFT_VERSION}/swift-${SWIFT_VERSION}-ubuntu24.04.tar.gz" \
-          -o /tmp/swift.tar.gz
-        tar xzf /tmp/swift.tar.gz -C /opt/swift --strip-components=1
-        rm /tmp/swift.tar.gz
-      fi
+        fail "$WEB_ROOT isn't writable and sudo isn't available. IPA is at $IPA_OUT"
     fi
+    ok "Copied to $DEST — reachable at http(s)://<this-server>/$IPA_NAME"
+    info "That's a plain, unauthenticated static file — fine for personal use,"
+    info "just don't leave it up if you don't want it downloadable by anyone with the URL."
+else
+    info "$WEB_ROOT doesn't exist here — IPA is at $IPA_OUT"
+fi
 
-    swift --version
-    exec ./xtool-build.sh
-  '
+echo ""
+echo -e "${GRN}╔══════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${GRN}║  ✅  $IPA_NAME ready! ($IPA_SIZE)${NC}"
+echo -e "${YLW}║  ⚠️  Watch app requires a Mac build (build_ipa.sh via Xcode) —${NC}"
+echo -e "${YLW}║     xtool has no documented watchOS support, so it isn't in${NC}"
+echo -e "${YLW}║     this build.${NC}"
+echo -e "${GRN}║${NC}"
+echo -e "${GRN}║  Install via AltStore/SideStore (re-sign on install) or TrollStore.${NC}"
+echo -e "${GRN}╚══════════════════════════════════════════════════════════════╝${NC}"

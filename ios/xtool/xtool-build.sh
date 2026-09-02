@@ -85,12 +85,37 @@ else
   log "xtool already installed at $XTOOL_BIN ($("$XTOOL_BIN" --version))"
 fi
 
-# --- 3. Auth + Darwin SDK (interactive) -------------------------------------
+# --- 3. Darwin SDK (no Apple ID login needed) -------------------------------
+# `xtool setup` would also log in with your Apple ID here — but that's only
+# actually required for a *signed* build (`--sign`) or installing to a
+# device. This produces an unsigned .ipa (same as build_ipa.sh's Mac output,
+# meant for AltStore/SideStore to sign on install), so we skip auth entirely
+# and go straight to the SDK, via the same standalone `xtool sdk` subcommand.
 
-log "Running 'xtool setup' — this is interactive. You'll be asked to log in" \
-    "with your Apple ID (API key or password+2FA), then for the path to the" \
-    "Xcode.xip you downloaded from developer.apple.com."
-"$XTOOL_BIN" setup
+if "$XTOOL_BIN" sdk status >/dev/null 2>&1; then
+  log "Darwin SDK already installed."
+else
+  XIP_PATH="${1:-}"
+  if [[ -z "$XIP_PATH" ]]; then
+    for candidate in "$HOME"/Downloads/Xcode*.xip /tmp/Xcode*.xip "$SCRIPT_DIR"/Xcode.xip; do
+      for f in $candidate; do
+        [[ -f "$f" ]] && XIP_PATH="$f" && break 2
+      done
+    done
+  fi
+  if [[ -z "$XIP_PATH" || ! -f "$XIP_PATH" ]]; then
+    cat >&2 <<'EOF'
+ERROR: No Darwin SDK installed and no Xcode.xip found.
+
+Download one from https://developer.apple.com/download/all/?q=Xcode
+(log in with your Apple ID in the browser first), then re-run:
+  ./xtool-build.sh /path/to/Xcode.xip
+EOF
+    exit 1
+  fi
+  log "Installing the Darwin SDK from $XIP_PATH (runs once, takes a few minutes)..."
+  "$XTOOL_BIN" sdk install "$XIP_PATH"
+fi
 
 # --- 4. Build ----------------------------------------------------------------
 

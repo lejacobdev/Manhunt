@@ -1,0 +1,18 @@
+FROM swift:6.2-jammy
+
+# xtool runtime deps + AppImage FUSE support
+RUN apt-get update && apt-get install -y \
+    curl zip unzip fuse libfuse2 \
+    usbmuxd libimobiledevice-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install xtool AppImage
+RUN ARCH=$(uname -m) && \
+    curl -fL "https://github.com/xtool-org/xtool/releases/latest/download/xtool-${ARCH}.AppImage" \
+    -o /usr/local/bin/xtool && \
+    chmod +x /usr/local/bin/xtool
+
+# Allow AppImage to run without FUSE inside Docker
+ENV APPIMAGE_EXTRACT_AND_RUN=1
+
+WORKDIR /workspace
