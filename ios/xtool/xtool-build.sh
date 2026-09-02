@@ -30,6 +30,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 XTOOL_BIN="${HOME}/.local/bin/xtool"
+WEB_ROOT="/var/www/html"
+IPA_NAME="HuntingGame.ipa"
 
 log() { echo "==> $*"; }
 
@@ -89,10 +91,43 @@ log "Running 'xtool setup' — this is interactive. You'll be asked to log in" \
 
 cd "$SCRIPT_DIR"
 log "Building HuntingGame.ipa (this compiles the full app + widget extension)..."
-"$XTOOL_BIN" dev build --configuration release --ipa
 
-log "Done. See the 'Wrote to ...' path above for the .ipa location."
+BUILD_LOG="$(mktemp)"
+trap 'rm -f "$BUILD_LOG"' EXIT
+"$XTOOL_BIN" dev build --configuration release --ipa 2>&1 | tee "$BUILD_LOG"
+
+# xtool prints "Wrote to <path>" as its last line on success.
+IPA_PATH="$(grep '^Wrote to ' "$BUILD_LOG" | tail -1 | sed 's/^Wrote to //')"
+if [[ -z "$IPA_PATH" || ! -f "$IPA_PATH" ]]; then
+  echo "ERROR: build finished but couldn't find the .ipa xtool reported writing." >&2
+  exit 1
+fi
+
 log "That .ipa is unsigned, same as build_ipa.sh's output — install it via" \
     "AltStore/SideStore (which re-sign on install) or TrollStore."
 log "To instead produce a directly-installable ad-hoc signed .ipa tied to your" \
     "Apple ID (no re-signing needed), re-run with: $XTOOL_BIN dev build --configuration release --ipa --sign"
+
+# --- 5. Publish to the web root ----------------------------------------------
+# So it's downloadable straight off this server (e.g. https://your-domain/HuntingGame.ipa)
+# instead of needing scp/rsync to get it off the box.
+
+if [[ -d "$WEB_ROOT" ]]; then
+  DEST="${WEB_ROOT}/${IPA_NAME}"
+  if [[ -w "$WEB_ROOT" ]]; then
+    cp "$IPA_PATH" "$DEST"
+  elif command -v sudo >/dev/null 2>&1; then
+    sudo cp "$IPA_PATH" "$DEST"
+  else
+    echo "ERROR: $WEB_ROOT isn't writable and sudo isn't available." \
+         "The built .ipa is still at $IPA_PATH — copy it manually." >&2
+    exit 1
+  fi
+  log "Copied to ${DEST} — reachable at http(s)://<this-server>/${IPA_NAME}"
+  log "Note: that's a plain, unauthenticated static file. Anyone with the URL" \
+      "can download it — fine for personal sideloading, but don't leave it up" \
+      "if that's not what you want."
+else
+  log "Note: $WEB_ROOT doesn't exist on this machine, skipping publish step." \
+      "Built .ipa is at $IPA_PATH"
+fi
