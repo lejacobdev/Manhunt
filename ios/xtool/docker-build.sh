@@ -55,12 +55,12 @@ docker run -it --rm \
     # container.
     SWIFTLY_TOOLCHAIN_BIN="$(find /root/.local/share/swiftly/toolchains -maxdepth 3 -type d -name bin 2>/dev/null | head -1)"
 
-    # libncurses6 confirmed needed by a real run (swift errored with
-    # "libncurses.so.6: cannot open shared object file"). Kept otherwise
-    # minimal — if `swift --version` below still fails on a missing .so,
-    # that error names exactly which package to add next.
+    # libncurses6 and libsqlite3-0 confirmed needed by real runs (swift errored
+    # on each in turn: "libncurses.so.6" then "libsqlite3.so.0" not found).
+    # Kept otherwise minimal — if `swift --version` below still fails on a
+    # missing .so, that error names exactly which package to add next.
     apt-get update -qq
-    apt-get install -y -qq curl git ca-certificates usbmuxd libncurses6 2>&1 | tail -5
+    apt-get install -y -qq curl git ca-certificates usbmuxd libncurses6 libsqlite3-0 2>&1 | tail -5
 
     if [[ -n "$SWIFTLY_TOOLCHAIN_BIN" && -x "$SWIFTLY_TOOLCHAIN_BIN/swift" ]]; then
       export PATH="${SWIFTLY_TOOLCHAIN_BIN}:/root/.local/bin:$PATH"
