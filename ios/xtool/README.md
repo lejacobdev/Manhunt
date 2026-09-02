@@ -90,7 +90,14 @@ this) for the underlying reference.
   background modes, Live Activity support, the widget's
   `NSExtensionPointIdentifier`) — mirrors `project.yml`'s `info.properties`.
 - `HuntingGame.entitlements` — identical to `../HuntingGame/HuntingGame.entitlements`.
-- `Sources/*` — symlinks into `../HuntingGame/{Sources,Shared,LiveActivityShared,Widgets/HuntingGameWidgets}`.
+- `Sources/HuntingGame/`, `Sources/HuntingGameWidget/` — each a real directory
+  (not itself a symlink) containing subfolder-level symlinks into
+  `../HuntingGame/{Sources,Shared,LiveActivityShared,Widgets/HuntingGameWidgets}`.
+  Both targets pull in `Shared/`/`LiveActivityShared/` directly rather than
+  depending on separate library targets for them — that code was written for
+  Xcode's "same file compiled into multiple targets" model (no imports, no
+  `public`), not SwiftPM's real module boundaries, so this mirrors Xcode's
+  approach instead of fighting it.
 - `Dockerfile.xtool` — the known-good build image (`swift:6.2-jammy` + xtool +
   runtime libs) that `docker-build.sh` builds and runs against.
 - `docker-build.sh` / `xtool-build.sh` — see "Building" above.

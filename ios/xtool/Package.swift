@@ -6,17 +6,26 @@
 // build_ipa.sh. Every source file here is a symlink into ios/HuntingGame/, so the
 // two build paths share one copy of the code; nothing is duplicated.
 //
+// Sources/HuntingGame/ and Sources/HuntingGameWidget/ are each a real directory
+// (not a symlink) containing subfolder-level symlinks into ios/HuntingGame/'s
+// Sources/, Shared/, and LiveActivityShared/ folders. This mirrors exactly what
+// Xcode does when the same folder is listed under multiple targets: each target
+// gets its own independently-compiled copy of that source, with no import needed
+// and no module boundary between them — the code was written for that model, not
+// SwiftPM's (a first attempt split Shared/LiveActivityShared into their own
+// SwiftPM library targets, which are genuinely separate modules; every reference
+// to a shared type failed with "cannot find X in scope" since nothing in this
+// codebase imports them, and it isn't `public` throughout).
+//
 // See README.md in this directory for setup and known limitations.
 
 import PackageDescription
 
-// This package needs swift-tools-version 6.0 for xtool's app-extension product
-// support, but the actual source (Sources/*, symlinked from ios/HuntingGame/)
-// was written against project.yml's SWIFT_VERSION 5.0 — plain Swift 5 language
-// mode, not Swift 6's strict concurrency checking. Pinning every target back to
-// .v5 below matches what the code actually targets, rather than either fighting
-// spurious Swift-6-only Sendable diagnostics or rewriting concurrency semantics
-// that Xcode never required.
+// The actual source (symlinked from ios/HuntingGame/) was written against
+// project.yml's SWIFT_VERSION 5.0 — plain Swift 5 language mode — but this
+// package needs swift-tools-version 6.0 for xtool's app-extension product
+// support, which defaults targets to Swift 6's stricter concurrency checking.
+// Pinning back to .v5 matches what the code actually targets.
 let swift5Mode: [SwiftSetting] = [.swiftLanguageMode(.v5)]
 
 let package = Package(
@@ -39,21 +48,9 @@ let package = Package(
         .package(url: "https://github.com/socketio/socket.io-client-swift", from: "16.1.1"),
     ],
     targets: [
-        // Mirrors project.yml's Shared/ folder (compiled into both the app and
-        // the widget extension so both agree on colors and the WatchConnectivity
-        // payload shape — the payload type itself is harmless to keep even
-        // though the watchOS app isn't part of this build).
-        .target(name: "HuntingGameShared", swiftSettings: swift5Mode),
-
-        // Mirrors project.yml's LiveActivityShared/ folder — the ActivityAttributes
-        // type both the app and the widget extension need to agree on.
-        .target(name: "LiveActivityShared", swiftSettings: swift5Mode),
-
         .target(
             name: "HuntingGame",
             dependencies: [
-                "HuntingGameShared",
-                "LiveActivityShared",
                 .product(name: "SocketIO", package: "socket.io-client-swift"),
             ],
             swiftSettings: swift5Mode
@@ -61,10 +58,6 @@ let package = Package(
 
         .target(
             name: "HuntingGameWidget",
-            dependencies: [
-                "HuntingGameShared",
-                "LiveActivityShared",
-            ],
             swiftSettings: swift5Mode
         ),
     ]
