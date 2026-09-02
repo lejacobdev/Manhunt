@@ -55,12 +55,12 @@ docker run -it --rm \
     # container.
     SWIFTLY_TOOLCHAIN_BIN="$(find /root/.local/share/swiftly/toolchains -maxdepth 3 -type d -name bin 2>/dev/null | head -1)"
 
-    # Kept deliberately minimal — Swift toolchains commonly need libpython/libncurses/etc
-    # at runtime too, but exact package names drift across Ubuntu releases and a wrong
-    # one here would fail this whole install. If `swift --version` below fails with a
-    # missing .so, that error will say exactly which package to add.
+    # libncurses6 confirmed needed by a real run (swift errored with
+    # "libncurses.so.6: cannot open shared object file"). Kept otherwise
+    # minimal — if `swift --version` below still fails on a missing .so,
+    # that error names exactly which package to add next.
     apt-get update -qq
-    apt-get install -y -qq curl git ca-certificates usbmuxd 2>&1 | tail -5
+    apt-get install -y -qq curl git ca-certificates usbmuxd libncurses6 2>&1 | tail -5
 
     if [[ -n "$SWIFTLY_TOOLCHAIN_BIN" && -x "$SWIFTLY_TOOLCHAIN_BIN/swift" ]]; then
       export PATH="${SWIFTLY_TOOLCHAIN_BIN}:/root/.local/bin:$PATH"
