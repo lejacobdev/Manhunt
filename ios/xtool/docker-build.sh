@@ -35,6 +35,11 @@ DOCKER_IMAGE="manhunt-xtool-builder"
 CACHE_DIR="$HOME/.xtool-cache"
 SDK_MARKER="$CACHE_DIR/.sdk_installed"
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Unlike SingOpKoelsch, this package's Sources/* are symlinks pointing OUTSIDE
+# PROJECT_DIR (up into ../HuntingGame/, to share code with the Xcode build) —
+# so the container needs the whole repo mounted, not just ios/xtool, or those
+# symlinks resolve to nothing and SwiftPM sees empty targets.
+REPO_ROOT="$(cd "$PROJECT_DIR/../.." && pwd)"
 WEB_ROOT="/var/www/html"
 IPA_NAME="HuntingGame.ipa"
 IPA_OUT="$PROJECT_DIR/build/ipa/$IPA_NAME"
@@ -90,9 +95,9 @@ mkdir -p "$PROJECT_DIR/build/ipa"
 
 docker run --rm \
     -v "$CACHE_DIR/swiftpm:/root/.swiftpm" \
-    -v "$PROJECT_DIR:/workspace" \
+    -v "$REPO_ROOT:/workspace" \
     "$DOCKER_IMAGE" \
-    sh -c "cd /workspace && xtool dev build --ipa -c release"
+    sh -c "cd /workspace/ios/xtool && xtool dev build --ipa -c release"
 
 # ── 4. Locate and move the IPA ────────────────────────────────────────────────
 FOUND=$(find "$PROJECT_DIR/xtool" "$PROJECT_DIR/.build" -name "*.ipa" 2>/dev/null | head -1 || true)
