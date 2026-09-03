@@ -11,7 +11,8 @@ struct GameView: View {
     @State private var now = Date()
     @State private var focusedPlayerId: String?
     @State private var showReplay = false
-    @State private var isRadarPanelExpanded = true
+    /// Starts collapsed — lives in the bottom dock now, not floating over the map.
+    @State private var isRadarPanelExpanded = false
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
@@ -33,6 +34,8 @@ struct GameView: View {
             VStack {
                 topBar
                 Spacer()
+                // Nothing here floats mid-screen: everything below hugs the bottom
+                // edge, so the map stays visible through the middle of the screen.
                 if viewModel.role == .runner {
                     SpatialRadarView(
                         distanceMeters: viewModel.nearestHunterDistance,
@@ -41,39 +44,11 @@ struct GameView: View {
                         role: viewModel.role
                     )
                     .transition(.scale.combined(with: .opacity))
+                    .padding(.bottom, 10)
                 }
-                if viewModel.role == .hunter {
-                    radarPanel
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                if let squadmate = viewModel.revivableSquadmate() {
-                    revivePanel(for: squadmate)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                if viewModel.role == .spectator {
-                    SpectatorDashboardView(
-                        players: viewModel.allPlayers,
-                        focusedPlayerId: focusedPlayerId,
-                        onFocus: { focusedPlayerId = $0 }
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                if viewModel.isHost {
-                    HostControlPanelView(
-                        players: viewModel.allPlayers,
-                        onOverride: viewModel.hostOverride,
-                        onEndGame: viewModel.hostEndGame
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
-                Spacer()
-                if viewModel.role == .hunter || viewModel.role == .runner {
-                    PowerUpDeckView(inventory: viewModel.inventory, onActivate: viewModel.usePowerUp)
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 10)
-                }
+                bottomDock
             }
-            .adaptiveContentWidth()
+            .adaptiveContentWidth(ADATheme.dockContentWidth)
 
             if socket.gameOverReason != nil {
                 dimScrim
@@ -179,26 +154,94 @@ struct GameView: View {
         .padding(.top, 10)
     }
 
+    // MARK: - Bottom dock
+    //
+    // Every HUD element that isn't the top bar or (for a runner) the spatial
+    // compass lives here: a row hugging the bottom edge, side panels flanking the
+    // power-up tray rather than any of it floating mid-screen over the map. Side
+    // panels are collected into one list and dealt alternately left/right, so the
+    // dock stays roughly balanced whether one panel is showing or several are —
+    // a host who's also a hunter with a revivable squadmate nearby, say.
+
+    private var dockSidePanels: [AnyView] {
+        var panels: [AnyView] = []
+        if viewModel.role == .hunter {
+            panels.append(AnyView(radarPanel))
+        }
+        if let squadmate = viewModel.revivableSquadmate() {
+            panels.append(AnyView(revivePanel(for: squadmate)))
+        }
+        if viewModel.role == .spectator {
+            panels.append(AnyView(
+                SpectatorDashboardView(players: viewModel.allPlayers, focusedPlayerId: focusedPlayerId, onFocus: { focusedPlayerId = $0 })
+            ))
+        }
+        if viewModel.isHost {
+            panels.append(AnyView(
+                HostControlPanelView(players: viewModel.allPlayers, onOverride: viewModel.hostOverride, onEndGame: viewModel.hostEndGame)
+            ))
+        }
+        return panels
+    }
+
+    private var leftDockPanels: [AnyView] {
+        dockSidePanels.enumerated().filter { $0.offset % 2 == 0 }.map(\.element)
+    }
+
+    private var rightDockPanels: [AnyView] {
+        dockSidePanels.enumerated().filter { $0.offset % 2 != 0 }.map(\.element)
+    }
+
+    private var bottomDock: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(Array(leftDockPanels.enumerated()), id: \.offset) { _, panel in
+                    panel.frame(width: ADATheme.dockPanelWidth)
+                }
+            }
+
+            Spacer(minLength: 4)
+
+            if viewModel.role == .hunter || viewModel.role == .runner {
+                PowerUpDeckView(inventory: viewModel.inventory, onActivate: viewModel.usePowerUp)
+            }
+
+            Spacer(minLength: 4)
+
+            VStack(alignment: .trailing, spacing: 8) {
+                ForEach(Array(rightDockPanels.enumerated()), id: \.offset) { _, panel in
+                    panel.frame(width: ADATheme.dockPanelWidth)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 10)
+        .animation(ADATheme.controlSpring, value: dockSidePanels.count)
+    }
+
     private var radarPanel: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            DisclosureHeader(icon: "eye.fill", title: "VISIBLE RUNNERS: \(viewModel.visibleRunners.count)", tint: ADATheme.hunterRed, isExpanded: $isRadarPanelExpanded)
+        VStack(alignment: .leading, spacing: 8) {
+            DisclosureHeader(icon: "eye.fill", title: "RUNNERS: \(viewModel.visibleRunners.count)", tint: ADATheme.hunterRed, isExpanded: $isRadarPanelExpanded)
 
             if isRadarPanelExpanded {
                 Group {
                     if viewModel.visibleRunners.isEmpty {
-                        Text(viewModel.isRadarJammed ? "Radar jammed by an EMP power-up." : "No runners currently in range.")
-                            .font(ADATheme.uiFont(size: 12, weight: .medium))
+                        Text(viewModel.isRadarJammed ? "Jammed by EMP." : "None in range.")
+                            .font(ADATheme.uiFont(size: 11, weight: .medium))
                             .foregroundColor(.white.opacity(0.4))
                     } else {
                         ScrollView {
-                            VStack(spacing: 8) {
+                            VStack(spacing: 6) {
                                 ForEach(viewModel.visibleRunners) { runner in
                                     Button {
                                         viewModel.beginCatch(on: runner.id)
                                     } label: {
-                                        HStack {
+                                        VStack(spacing: 2) {
                                             Image(systemName: "figure.run")
-                                            Text("CATCH \(runner.username.uppercased())")
+                                            Text(runner.username.uppercased())
+                                                .font(ADATheme.telemetryFont(size: 10))
+                                                .lineLimit(1)
+                                                .minimumScaleFactor(0.7)
                                         }
                                     }
                                     .buttonStyle(GlowButtonStyle(tint: ADATheme.hunterRed))
@@ -210,22 +253,23 @@ struct GameView: View {
                     }
                 }
                 .clipped()
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .padding(18)
+        .padding(12)
         .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: ADATheme.hunterRed)
-        .padding(.horizontal, 16)
         .animation(ADATheme.controlSpring, value: viewModel.visibleRunners.map(\.id))
     }
 
     private func revivePanel(for squadmate: PlayerState) -> some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 6) {
+        VStack(spacing: 8) {
+            VStack(spacing: 2) {
                 Image(systemName: "heart.text.square.fill")
-                    .font(.system(size: 12, weight: .bold))
-                Text("\(squadmate.username.uppercased()) IS CAUGHT NEARBY")
-                    .font(ADATheme.telemetryFont(size: 12))
+                    .font(.system(size: 14, weight: .bold))
+                Text("\(squadmate.username.uppercased()) CAUGHT")
+                    .font(ADATheme.telemetryFont(size: 10))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             .foregroundColor(ADATheme.runnerGreen)
 
@@ -234,14 +278,14 @@ struct GameView: View {
             } label: {
                 HStack {
                     Image(systemName: "arrow.uturn.backward.circle.fill")
-                    Text("REVIVE TEAMMATE")
+                    Text("REVIVE")
                 }
+                .font(ADATheme.telemetryFont(size: 11))
             }
             .buttonStyle(GlowButtonStyle(tint: ADATheme.runnerGreen))
         }
-        .padding(18)
+        .padding(12)
         .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: ADATheme.runnerGreen)
-        .padding(.horizontal, 16)
     }
 
     private var gameOverOverlay: some View {

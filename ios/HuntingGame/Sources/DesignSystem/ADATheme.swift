@@ -76,6 +76,13 @@ enum ADATheme {
     static let sheetCornerRadius: CGFloat = 32
     /// Cap for forms and HUD panel columns — see `View.adaptiveContentWidth()`.
     static let maxContentWidth: CGFloat = 480
+    /// Fixed width for a side-dock HUD panel (GameView's bottom dock) — narrow
+    /// enough that one can sit on each side of the map without meeting in the middle.
+    static let dockPanelWidth: CGFloat = 150
+    /// Wider cap for GameView's own top bar + bottom dock column — those need more
+    /// room than a plain form (two side docks plus the power-up tray between them),
+    /// so they use this instead of `maxContentWidth`.
+    static let dockContentWidth: CGFloat = 900
 
     // MARK: Motion
 
