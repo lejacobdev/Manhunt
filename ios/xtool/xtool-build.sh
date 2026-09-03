@@ -170,15 +170,28 @@ fi
 # every time.
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DIST_STATIC="$REPO_ROOT/backend/dist-static"
-mkdir -p "$DIST_STATIC"
-cp "$IPA_PATH" "$DIST_STATIC/$IPA_NAME"
+# docker compose creates this as root when it sets up the bind mount, so writing
+# here may need sudo — same fallback as the web-root publish above.
+SUDO=""
+if ! mkdir -p "$DIST_STATIC" 2>/dev/null || [[ ! -w "$DIST_STATIC" ]]; then
+  if command -v sudo >/dev/null 2>&1; then
+    SUDO="sudo"
+    $SUDO mkdir -p "$DIST_STATIC"
+  else
+    echo "ERROR: $DIST_STATIC isn't writable and sudo isn't available." \
+         "The built .ipa is still at $IPA_PATH — copy it manually." >&2
+    exit 1
+  fi
+fi
+
+$SUDO cp "$IPA_PATH" "$DIST_STATIC/$IPA_NAME"
 IPA_BYTES=$(stat -c%s "$DIST_STATIC/$IPA_NAME" 2>/dev/null || stat -f%z "$DIST_STATIC/$IPA_NAME")
 VERSION_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Keep in sync with ios/HuntingGame/project.yml's CFBundleShortVersionString.
 APP_VERSION="1.0.0"
 SOURCE_BASE_URL="${SOURCE_BASE_URL:-https://api.lejacob.eu}"
 
-cat > "$DIST_STATIC/source.json" <<JSON
+$SUDO tee "$DIST_STATIC/source.json" >/dev/null <<JSON
 {
   "name": "Hunting Game",
   "identifier": "eu.lejacob.huntinggame.source",

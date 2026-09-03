@@ -26,6 +26,13 @@ services:
     # and reverse-proxies api.lejacob.eu here. See deploy/apache/api.lejacob.eu.conf.
     ports:
       - "127.0.0.1:${BACKEND_PORT}:4000"
+    volumes:
+      # The sideloadable IPA + SideStore source.json, published here by
+      # ios/xtool/{docker-build.sh,xtool-build.sh} and served by the backend's
+      # '/dist' route. Bind-mounted rather than baked into the image: it's build
+      # output that changes on every app build, and re-imaging the backend just to
+      # publish a new IPA would be absurd. Read-only — the server only serves it.
+      - ./backend/dist-static:/app/dist-static:ro
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       JWT_SECRET: ${JWT_SECRET}

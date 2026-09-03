@@ -132,15 +132,23 @@ fi
 # future rebuilds just show up as an update, instead of re-sending a raw IPA link
 # every time.
 DIST_STATIC="$REPO_ROOT/backend/dist-static"
-mkdir -p "$DIST_STATIC"
-cp "$IPA_OUT" "$DIST_STATIC/$IPA_NAME"
+# docker compose creates this as root when it sets up the bind mount, so writing
+# here may need sudo — same fallback as the web-root publish above.
+SUDO=""
+if ! mkdir -p "$DIST_STATIC" 2>/dev/null || [ ! -w "$DIST_STATIC" ]; then
+    command -v sudo >/dev/null 2>&1 || fail "$DIST_STATIC isn't writable and sudo isn't available. IPA is at $IPA_OUT"
+    SUDO="sudo"
+    $SUDO mkdir -p "$DIST_STATIC"
+fi
+
+$SUDO cp "$IPA_OUT" "$DIST_STATIC/$IPA_NAME"
 IPA_BYTES=$(stat -c%s "$DIST_STATIC/$IPA_NAME" 2>/dev/null || stat -f%z "$DIST_STATIC/$IPA_NAME")
 VERSION_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Keep in sync with ios/HuntingGame/project.yml's CFBundleShortVersionString.
 APP_VERSION="1.0.0"
 SOURCE_BASE_URL="${SOURCE_BASE_URL:-https://api.lejacob.eu}"
 
-cat > "$DIST_STATIC/source.json" <<JSON
+$SUDO tee "$DIST_STATIC/source.json" >/dev/null <<JSON
 {
   "name": "Hunting Game",
   "identifier": "eu.lejacob.huntinggame.source",

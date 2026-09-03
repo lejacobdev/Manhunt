@@ -235,21 +235,23 @@ docker compose pull && docker compose up -d --build   # redeploy after a git pul
 tail -f /var/log/apache2/api_lejacob_ssl_error.log     # proxy-level errors
 ```
 
-**Every redeploy that includes a new `backend/prisma/migrations/` directory
-also needs the migration applied — rebuilding the container does not do it
-for you:**
+Pending migrations are applied automatically: the backend image's `CMD` runs
+`prisma migrate deploy` before starting the server, so any redeploy that
+brings in a new `backend/prisma/migrations/` directory also applies it. What
+that means in practice is that **the database only moves forward when you
+actually redeploy** — pulling new app code without redeploying the backend
+leaves the schema behind, and that drift doesn't necessarily show up as a
+server error. It can surface as an unrelated-looking client bug: the
+`20260902000000_remove_supervisor_role` migration, for instance, rewrites
+`GamePlayer.role = 'SUPERVISOR'` rows to `'SPECTATOR'`, and until it runs
+those stale rows come back over the API as a role no current build of the
+app knows about.
+
+To check what the database actually has:
 
 ```bash
-docker compose exec backend npx prisma migrate deploy
+docker compose exec backend npx prisma migrate status
 ```
-
-Skipping this leaves the database on the old schema while the code (and the
-app talking to it) expects the new one. That mismatch doesn't necessarily
-show up as a server error: it can surface as an unrelated-looking client
-bug — the `20260902000000_remove_supervisor_role` migration, for instance,
-rewrites `GamePlayer.role = 'SUPERVISOR'` rows to `'SPECTATOR'`, and until
-it runs those stale rows come back over the API as a role no current build
-of the app knows.
 
 Data persists in the named Docker volume `postgres_data` across restarts
 and redeploys — `docker compose down` leaves it intact; only
