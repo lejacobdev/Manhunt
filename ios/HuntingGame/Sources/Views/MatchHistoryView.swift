@@ -5,6 +5,7 @@ import SwiftUI
 struct MatchHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var entries: [HistoryEntry] = []
+    @State private var unreadableCount = 0
     @State private var isLoading = true
     @State private var errorMessage: String?
     @State private var replaySessionCode: String?
@@ -29,6 +30,15 @@ struct MatchHistoryView: View {
                         VStack(spacing: 8) {
                             ForEach(entries) { entry in
                                 row(for: entry)
+                            }
+                            if unreadableCount > 0 {
+                                Text(unreadableCount == 1
+                                     ? "1 older match couldn't be read and was skipped."
+                                     : "\(unreadableCount) older matches couldn't be read and were skipped.")
+                                    .font(ADATheme.telemetryFont(size: 10))
+                                    .foregroundColor(ADATheme.tacticalAmber.opacity(0.7))
+                                    .multilineTextAlignment(.center)
+                                    .padding(.top, 6)
                             }
                         }
                         .padding()
@@ -102,7 +112,9 @@ struct MatchHistoryView: View {
 
     private func load() async {
         do {
-            entries = try await APIClient.shared.gameHistory()
+            let result = try await APIClient.shared.gameHistory()
+            entries = result.entries
+            unreadableCount = result.unreadableCount
         } catch {
             errorMessage = error.localizedDescription
         }

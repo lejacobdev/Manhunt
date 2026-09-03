@@ -7,6 +7,17 @@ enum PlayerRole: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var id: String { rawValue }
 
+    /// Decoding a JSON array is all-or-nothing, so a single row carrying a role this
+    /// build doesn't know would otherwise abort the whole response and blank an entire
+    /// screen. That isn't hypothetical: every game hosted before the SUPERVISOR role
+    /// was removed still has `role = "SUPERVISOR"` in the database until that
+    /// migration is deployed. Fall back to the non-playing observer role instead —
+    /// the same value the migration remaps those rows to.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = PlayerRole(rawValue: raw) ?? .spectator
+    }
+
     var displayName: String {
         switch self {
         case .hunter: return "Hunter"

@@ -9,7 +9,39 @@ enum APIError: Error, LocalizedError {
         switch self {
         case .invalidResponse: return "The server returned an unexpected response."
         case .server(let message): return message
-        case .decoding(let error): return "Failed to decode response: \(error.localizedDescription)"
+        case .decoding(let error): return Self.describeDecodingFailure(error)
+        }
+    }
+
+    /// `DecodingError.localizedDescription` is always the same useless sentence
+    /// ("The data couldn't be read because it isn't in the correct format"), which
+    /// says nothing about *which* field disagreed with the server. Unpack it into
+    /// something that names the actual key and its path, so a model/API mismatch is
+    /// diagnosable from the screen it broke rather than only under a debugger.
+    private static func describeDecodingFailure(_ error: Error) -> String {
+        guard let error = error as? DecodingError else {
+            return "Failed to decode response: \(error.localizedDescription)"
+        }
+
+        func path(_ context: DecodingError.Context) -> String {
+            let joined = context.codingPath
+                .map { key in key.intValue.map { "[\($0)]" } ?? ".\(key.stringValue)" }
+                .joined()
+            if joined.isEmpty { return "the response" }
+            return joined.hasPrefix(".") ? String(joined.dropFirst()) : joined
+        }
+
+        switch error {
+        case .keyNotFound(let key, let context):
+            return "Server response is missing '\(key.stringValue)' (at \(path(context)))."
+        case .typeMismatch(let type, let context):
+            return "Server sent the wrong type for \(path(context)) — expected \(type)."
+        case .valueNotFound(let type, let context):
+            return "Server sent null for \(path(context)), which needs a \(type)."
+        case .dataCorrupted(let context):
+            return "Server sent an unexpected value for \(path(context)): \(context.debugDescription)"
+        @unknown default:
+            return "Failed to decode response: \(error.localizedDescription)"
         }
     }
 }
@@ -160,10 +192,14 @@ final class APIClient {
         try await get("/games/\(code)/replay")
     }
 
-    func gameHistory() async throws -> [HistoryEntry] {
-        struct Response: Decodable { let history: [HistoryEntry] }
+    /// Returns the readable rows plus a count of any that couldn't be decoded, rather
+    /// than throwing when a single row is unreadable — see `Lenient`. The caller
+    /// surfaces the skipped count so dropped matches are visible, not silent.
+    func gameHistory() async throws -> (entries: [HistoryEntry], unreadableCount: Int) {
+        struct Response: Decodable { let history: [Lenient<HistoryEntry>] }
         let resp: Response = try await get("/games/history/mine")
-        return resp.history
+        let entries = resp.history.compactMap(\.value)
+        return (entries, resp.history.count - entries.count)
     }
 
     // MARK: - Core request helpers
@@ -240,3 +276,14 @@ final class APIClient {
 private struct EmptyBody: Encodable {}
 private struct EmptyResponse: Decodable {}
 private struct ErrorBody: Decodable { let error: String }
+
+/// Decodes `T`, but yields nil instead of throwing when a single element doesn't fit
+/// the model. Swift decodes arrays all-or-nothing, so without this one stale or
+/// malformed row from an older schema takes down the entire list it appeared in.
+private struct Lenient<T: Decodable>: Decodable {
+    let value: T?
+
+    init(from decoder: Decoder) throws {
+        value = try? T(from: decoder)
+    }
+}
