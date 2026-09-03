@@ -1,8 +1,9 @@
 import SwiftUI
 
-/// Full roster panel for the SUPERVISOR role: battery/motion telemetry per
-/// player plus tap-to-override catch status and a force-end-game control.
-struct SupervisorDashboardView: View {
+/// Host-only admin panel: battery/motion telemetry per player plus tap-to-override
+/// catch status and a force-end-game control. Shown whenever this player hosted the
+/// match, regardless of which role (HUNTER/RUNNER/SPECTATOR) they chose to play as.
+struct HostControlPanelView: View {
     let players: [PlayerState]
     let onOverride: (String, Bool) -> Void
     let onEndGame: () -> Void
@@ -12,9 +13,9 @@ struct SupervisorDashboardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 6) {
-                Image(systemName: "eye.fill")
+                Image(systemName: "shield.fill")
                     .font(.system(size: 12, weight: .bold))
-                Text("ROSTER: \(players.count)")
+                Text("HOST CONTROLS: \(players.count)")
                     .font(ADATheme.telemetryFont(size: 12))
             }
             .foregroundColor(ADATheme.spatialCyan)

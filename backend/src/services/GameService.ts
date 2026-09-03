@@ -86,7 +86,7 @@ export class GameService {
   public async joinSession(
     sessionId: string,
     userId: string,
-    role: 'HUNTER' | 'RUNNER' | 'SUPERVISOR' | 'SPECTATOR',
+    role: 'HUNTER' | 'RUNNER' | 'SPECTATOR',
     squad?: string
   ) {
     const existing = await prisma.gamePlayer.findUnique({
@@ -168,14 +168,14 @@ export class GameService {
     });
   }
 
-  /** Supervisor override: force-resolve a disputed catch/status. */
-  public async supervisorOverridePlayerStatus(sessionId: string, playerId: string, isCaught: boolean) {
+  /** Host override: force-resolve a disputed catch/status. */
+  public async hostOverridePlayerStatus(sessionId: string, playerId: string, isCaught: boolean) {
     await prisma.gamePlayer.update({
       where: { id: playerId },
       data: { isCaught, caughtAt: isCaught ? new Date() : null },
     });
     return prisma.gameEvent.create({
-      data: { sessionId, type: 'SUPERVISOR_OVERRIDE', payload: { playerId, isCaught, timestamp: new Date().toISOString() } },
+      data: { sessionId, type: 'HOST_OVERRIDE', payload: { playerId, isCaught, timestamp: new Date().toISOString() } },
     });
   }
 

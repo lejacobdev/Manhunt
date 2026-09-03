@@ -3,7 +3,6 @@ import Foundation
 enum PlayerRole: String, Codable, CaseIterable, Identifiable, Hashable {
     case hunter = "HUNTER"
     case runner = "RUNNER"
-    case supervisor = "SUPERVISOR"
     case spectator = "SPECTATOR"
 
     var id: String { rawValue }
@@ -12,7 +11,6 @@ enum PlayerRole: String, Codable, CaseIterable, Identifiable, Hashable {
         switch self {
         case .hunter: return "Hunter"
         case .runner: return "Runner"
-        case .supervisor: return "Supervisor"
         case .spectator: return "Spectator"
         }
     }

@@ -55,7 +55,7 @@ final class APIClient {
 
     func searchUsers(query: String) async throws -> [AppUser] {
         struct Response: Decodable { let results: [AppUser] }
-        let resp: Response = try await get("/friends/search?q=\(query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")")
+        let resp: Response = try await get("/friends/search", queryItems: [URLQueryItem(name: "q", value: query)])
         return resp.results
     }
 
@@ -117,19 +117,24 @@ final class APIClient {
 
     // MARK: - Games
 
-    func createGame(durationMinutes: Int, radarIntervalSec: Int, boundsPolygon: [Coordinate], mode: GameMode) async throws -> GameSession {
+    /// The host plays too — no separate supervisor/observer role forced on them. They pick
+    /// role/squad just like anyone joining, and get host-only admin actions (end game,
+    /// override a catch) via GameSession.hostId instead.
+    func createGame(durationMinutes: Int, radarIntervalSec: Int, boundsPolygon: [Coordinate], mode: GameMode, role: PlayerRole, squad: String?) async throws -> (player: GamePlayer, session: GameSession) {
         struct Body: Encodable {
             let durationMinutes: Int
             let radarIntervalSec: Int
             let boundsPolygon: [Coordinate]
             let mode: String
+            let role: String
+            let squad: String?
         }
-        struct Response: Decodable { let session: GameSession }
+        struct Response: Decodable { let session: GameSession; let player: GamePlayer }
         let resp: Response = try await post(
             "/games",
-            body: Body(durationMinutes: durationMinutes, radarIntervalSec: radarIntervalSec, boundsPolygon: boundsPolygon, mode: mode.rawValue)
+            body: Body(durationMinutes: durationMinutes, radarIntervalSec: radarIntervalSec, boundsPolygon: boundsPolygon, mode: mode.rawValue, role: role.rawValue, squad: squad)
         )
-        return resp.session
+        return (resp.player, resp.session)
     }
 
     func joinGame(code: String, role: PlayerRole, squad: String?) async throws -> (player: GamePlayer, session: GameSession) {
@@ -163,8 +168,16 @@ final class APIClient {
 
     // MARK: - Core request helpers
 
-    private func get<T: Decodable>(_ path: String) async throws -> T {
-        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+    private func get<T: Decodable>(_ path: String, queryItems: [URLQueryItem] = []) async throws -> T {
+        // appendingPathComponent doesn't understand query-string syntax — it would
+        // literalize a "?q=..." suffix into the path itself, producing a malformed
+        // request (this was the actual cause of friend search always 404ing).
+        // URLComponents + queryItems handles percent-encoding correctly too.
+        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)!
+        if !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        var request = URLRequest(url: components.url!)
         request.httpMethod = "GET"
         return try await send(request)
     }

@@ -66,6 +66,10 @@ export const sessionStartedAtCache: Map<string, number> = new Map();
 const decoys: DecoyMap = new Map();
 // roomCode -> gamePlayerId -> epoch ms of when they were first detected outside the shrinking zone
 const zoneViolationSince: Map<string, Map<string, number>> = new Map();
+// roomCode -> the session's host userId, so host-only admin actions (end game, override a
+// catch) can be authorized without a separate SUPERVISOR role — the host plays a normal
+// role (hunter/runner/spectator) and keeps these powers regardless of which one.
+const sessionHostCache: Map<string, string> = new Map();
 // gamePlayerId -> last accepted fix, used for teleport detection and ghost-decoy bearing
 const lastFix: Map<string, { lat: number; lng: number; timestamp: number }> = new Map();
 // gamePlayerId -> pending location log entries flushed to Postgres periodically
@@ -164,6 +168,7 @@ io.on('connection', (socket: Socket) => {
       socket.data.gamePlayerId = gamePlayerId;
       sessionModes.set(roomCode, gamePlayer.session.mode as GameMode);
       sessionSettingsCache.set(roomCode, gamePlayer.session.settings as unknown as GameSettings);
+      sessionHostCache.set(roomCode, gamePlayer.session.hostId);
       if (gamePlayer.session.startedAt) {
         sessionStartedAtCache.set(roomCode, gamePlayer.session.startedAt.getTime());
       }
@@ -192,10 +197,12 @@ io.on('connection', (socket: Socket) => {
       };
       session.set(gamePlayer.id, state);
 
-      if (gamePlayer.role === 'SUPERVISOR' || gamePlayer.role === 'SPECTATOR') {
-        // Both roles are pure observers — neither carries an inventory or takes
-        // gameplay actions — so both get the continuous full-roster feed that
-        // hunters/runners don't (those only see each other via radar pings).
+      if (gamePlayer.role === 'SPECTATOR' || gamePlayer.session.hostId === authedUser.userId) {
+        // A pure observer — carries no inventory, takes no gameplay actions —
+        // so gets the continuous full-roster feed that hunters/runners don't
+        // (those only see each other via radar pings). The host also needs this
+        // feed regardless of their own role, to run host-only actions like
+        // overriding a disputed catch on any player.
         socket.join(`${roomCode}_observers`);
       }
 
@@ -461,16 +468,16 @@ io.on('connection', (socket: Socket) => {
     });
   });
 
-  /** Supervisor admin override: force-resolve a disputed catch/status. */
-  socket.on('supervisor_override', async ({ targetId, isCaught }: { targetId: string; isCaught: boolean }) => {
+  /** Host admin override: force-resolve a disputed catch/status. Authorized by GameSession.hostId, not a role. */
+  socket.on('host_override', async ({ targetId, isCaught }: { targetId: string; isCaught: boolean }) => {
     const roomCode = socket.data.roomCode as string | undefined;
-    const supervisorId = socket.data.gamePlayerId as string | undefined;
-    if (!roomCode || !supervisorId) return;
+    const callerId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !callerId) return;
     const session = activeSessions.get(roomCode);
     if (!session) return;
-    const supervisor = session.get(supervisorId);
-    if (!supervisor || supervisor.role !== 'SUPERVISOR') {
-      socket.emit('error_event', { reason: 'Only supervisors can override player status.' });
+    const caller = session.get(callerId);
+    if (!caller || caller.userId !== sessionHostCache.get(roomCode)) {
+      socket.emit('error_event', { reason: 'Only the host can override player status.' });
       return;
     }
     const target = session.get(targetId);
@@ -481,27 +488,27 @@ io.on('connection', (socket: Socket) => {
 
     target.isCaught = isCaught;
     const gameSessionId = await resolveSessionId(roomCode);
-    if (gameSessionId) await gameService.supervisorOverridePlayerStatus(gameSessionId, target.id, isCaught);
+    if (gameSessionId) await gameService.hostOverridePlayerStatus(gameSessionId, target.id, isCaught);
 
-    io.to(roomCode).emit('supervisor_override_applied', {
+    io.to(roomCode).emit('host_override_applied', {
       playerId: target.id,
       isCaught,
       timestamp: new Date().toISOString(),
     });
   });
 
-  /** Supervisor admin action: force-end the match immediately. */
-  socket.on('supervisor_end_game', async () => {
+  /** Host admin action: force-end the match immediately. Authorized by GameSession.hostId, not a role. */
+  socket.on('host_end_game', async () => {
     const roomCode = socket.data.roomCode as string | undefined;
-    const supervisorId = socket.data.gamePlayerId as string | undefined;
-    if (!roomCode || !supervisorId) return;
+    const callerId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !callerId) return;
     const session = activeSessions.get(roomCode);
-    const supervisor = session?.get(supervisorId);
-    if (!supervisor || supervisor.role !== 'SUPERVISOR') {
-      socket.emit('error_event', { reason: 'Only supervisors can end the match.' });
+    const caller = session?.get(callerId);
+    if (!caller || caller.userId !== sessionHostCache.get(roomCode)) {
+      socket.emit('error_event', { reason: 'Only the host can end the match.' });
       return;
     }
-    await endMatch(roomCode, 'SUPERVISOR_ENDED');
+    await endMatch(roomCode, 'HOST_ENDED');
   });
 
   socket.on('collect_powerup', async ({ spawnId }: { spawnId: string }) => {
@@ -594,6 +601,7 @@ function cleanupSocket(socket: Socket) {
       sessionModes.delete(roomCode);
       sessionSettingsCache.delete(roomCode);
       sessionStartedAtCache.delete(roomCode);
+      sessionHostCache.delete(roomCode);
       decoys.delete(roomCode);
       zoneViolationSince.delete(roomCode);
     }

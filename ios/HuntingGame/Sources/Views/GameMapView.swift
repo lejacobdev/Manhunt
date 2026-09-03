@@ -17,7 +17,7 @@ struct GameMapView: UIViewRepresentable {
     let extractionPoint: Coordinate?
     let decoys: [DecoyBlip]
     var initialCenter: CLLocationCoordinate2D
-    /// Spectator/supervisor "follow" — when set to a player id present in `players`,
+    /// Spectator "follow" — when set to a player id present in `players`,
     /// the map re-centers on that player once (not continuously; the viewer can still
     /// pan freely afterward). Changing it to a different id re-centers again.
     var focusPlayerId: String? = nil

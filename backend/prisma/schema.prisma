@@ -10,7 +10,6 @@ generator client {
 enum PlayerRole {
   HUNTER
   RUNNER
-  SUPERVISOR
   SPECTATOR
 }
 

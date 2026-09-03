@@ -193,7 +193,7 @@ struct LobbyView: View {
                 .foregroundColor(statusColor(for: session.status))
 
             HStack(spacing: 12) {
-                if player.role == .supervisor && session.status == .lobby {
+                if session.hostId == player.userId && session.status == .lobby {
                     Button("START") {
                         Task {
                             await viewModel.startGame()
@@ -246,6 +246,25 @@ struct CreateGameSheet: View {
                     }
                     .pickerStyle(.segmented)
                     .padding(.horizontal)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("PLAY AS")
+                            .font(ADATheme.telemetryFont(size: 11))
+                            .foregroundColor(.white.opacity(0.5))
+                        Picker("Role", selection: $viewModel.hostRole) {
+                            ForEach([PlayerRole.runner, .hunter, .spectator], id: \.self) { role in
+                                Text(role.displayName).tag(role)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        if viewModel.selectedMode == .squad {
+                            ADATextField(placeholder: "Squad name", text: $viewModel.hostSquadName)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .padding(.horizontal)
+                    .animation(ADATheme.controlSpring, value: viewModel.selectedMode)
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text("DURATION: \(Int(viewModel.durationMinutes)) MIN")

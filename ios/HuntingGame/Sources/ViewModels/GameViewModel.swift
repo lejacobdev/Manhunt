@@ -37,6 +37,9 @@ final class GameViewModel: ObservableObject {
     let mySquad: String?
     let sessionSettings: GameSettings
     let roomCode: String
+    /// Whether this player hosted the game — grants host-only admin actions
+    /// (end game, override a catch) regardless of their chosen HUNTER/RUNNER/SPECTATOR role.
+    let isHost: Bool
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         self.role = gamePlayer.role
@@ -47,6 +50,7 @@ final class GameViewModel: ObservableObject {
         self.mySquad = gamePlayer.squad
         self.sessionSettings = session.settings
         self.roomCode = session.code
+        self.isHost = session.hostId == gamePlayer.userId
 
         bindLocation()
         bindSocket()
@@ -264,16 +268,16 @@ final class GameViewModel: ObservableObject {
         socket.reviveTeammate(targetId: playerId)
     }
 
-    // MARK: - Supervisor actions
+    // MARK: - Host actions
 
-    func supervisorOverride(playerId: String, isCaught: Bool) {
+    func hostOverride(playerId: String, isCaught: Bool) {
         HapticsEngine.shared.lightTap()
-        socket.supervisorOverride(targetId: playerId, isCaught: isCaught)
+        socket.hostOverride(targetId: playerId, isCaught: isCaught)
     }
 
-    func supervisorEndGame() {
+    func hostEndGame() {
         HapticsEngine.shared.catchFailed()
-        socket.supervisorEndGame()
+        socket.hostEndGame()
     }
 
     // MARK: - Derived state

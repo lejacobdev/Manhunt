@@ -21,22 +21,34 @@ const createSessionSchema = z.object({
   boundsPolygon: z.array(pointSchema).min(3),
   powerUpCount: z.number().min(1).max(30).optional(),
   mode: z.enum(['STANDARD', 'INFECTION', 'SQUAD']).optional(),
+  // The host plays too — same role choice as anyone joining, no separate
+  // supervisor/observer role forced on them. Host-only admin actions (end
+  // game, override a catch) are authorized via GameSession.hostId instead.
+  role: z.enum(['HUNTER', 'RUNNER', 'SPECTATOR']),
+  squad: z.string().max(40).optional(),
 });
 
 gamesRouter.post('/', async (req: AuthedRequest, res) => {
   const parsed = createSessionSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
+  if (parsed.data.mode === 'SQUAD' && !parsed.data.squad) {
+    return res.status(400).json({ error: 'Squad name is required to host a SQUAD mode game.' });
+  }
 
   const session = await gameService.createSession({
     hostId: req.user!.userId,
-    ...parsed.data,
+    durationMinutes: parsed.data.durationMinutes,
+    radarIntervalSec: parsed.data.radarIntervalSec,
+    boundsPolygon: parsed.data.boundsPolygon,
+    powerUpCount: parsed.data.powerUpCount,
+    mode: parsed.data.mode,
   });
-  await gameService.joinSession(session.id, req.user!.userId, 'SUPERVISOR');
-  return res.status(201).json({ session });
+  const player = await gameService.joinSession(session.id, req.user!.userId, parsed.data.role, parsed.data.squad);
+  return res.status(201).json({ session, player });
 });
 
 const joinSchema = z.object({
-  role: z.enum(['HUNTER', 'RUNNER', 'SUPERVISOR', 'SPECTATOR']),
+  role: z.enum(['HUNTER', 'RUNNER', 'SPECTATOR']),
   squad: z.string().max(40).optional(),
 });
 
@@ -98,7 +110,7 @@ gamesRouter.get('/:code', async (req: AuthedRequest, res) => {
 
 /**
  * Post-game (or in-progress) playback: every buffered GPS fix for the match, grouped
- * by player, ordered by time. Restricted to session members so spectators/supervisors
+ * by player, ordered by time. Restricted to session members so spectators/hosts
  * of *this* match can scrub through it, but no one else can pull another match's tracks.
  */
 gamesRouter.get('/:code/replay', async (req: AuthedRequest, res) => {

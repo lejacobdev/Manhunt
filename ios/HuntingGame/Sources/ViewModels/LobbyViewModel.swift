@@ -5,8 +5,12 @@ import CoreLocation
 final class LobbyViewModel: ObservableObject {
     @Published var joinCodeInput = ""
     @Published var selectedRole: PlayerRole = .runner
+    /// Separate from `selectedRole` (used by the join-by-code flow) so picking a
+    /// role while hosting doesn't cross-contaminate the join picker's selection.
+    @Published var hostRole: PlayerRole = .runner
     @Published var selectedMode: GameMode = .standard
     @Published var squadName = ""
+    @Published var hostSquadName = ""
     @Published var durationMinutes: Double = 60
     @Published var radarIntervalSec: Double = 120
     @Published var boundaryPoints: [Coordinate] = []
@@ -30,20 +34,24 @@ final class LobbyViewModel: ObservableObject {
             errorMessage = "Draw a play-area boundary with at least 3 points before creating a game."
             return
         }
+        if selectedMode == .squad && hostSquadName.isEmpty {
+            errorMessage = "Enter a squad name before hosting a SQUAD mode game."
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {
-            let session = try await api.createGame(
+            let (player, session) = try await api.createGame(
                 durationMinutes: Int(durationMinutes),
                 radarIntervalSec: Int(radarIntervalSec),
                 boundsPolygon: boundaryPoints,
-                mode: selectedMode
+                mode: selectedMode,
+                role: hostRole,
+                squad: selectedMode == .squad ? hostSquadName : nil
             )
+            activePlayer = player
             activeSession = session
             joinCodeInput = session.code
-            let (player, joinedSession) = try await api.joinGame(code: session.code, role: .supervisor, squad: nil)
-            activePlayer = player
-            activeSession = joinedSession
         } catch {
             errorMessage = error.localizedDescription
         }

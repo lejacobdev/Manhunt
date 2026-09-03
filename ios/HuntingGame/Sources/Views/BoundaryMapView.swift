@@ -1,7 +1,7 @@
 import SwiftUI
 import MapKit
 
-/// Lets a supervisor tap out the play-area polygon directly on the map.
+/// Lets the host tap out the play-area polygon directly on the map.
 /// Wrapped in UIViewRepresentable (rather than SwiftUI's Map) so it works
 /// back to iOS 16 and gives precise tap-to-coordinate conversion.
 struct BoundaryMapView: UIViewRepresentable {

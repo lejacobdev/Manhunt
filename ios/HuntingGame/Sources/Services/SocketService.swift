@@ -112,14 +112,14 @@ final class SocketService: ObservableObject {
         socket?.emit("revive_teammate", ["targetId": targetId])
     }
 
-    /// Supervisor-only: force-resolve a disputed catch.
-    func supervisorOverride(targetId: String, isCaught: Bool) {
-        socket?.emit("supervisor_override", ["targetId": targetId, "isCaught": isCaught])
+    /// Host-only: force-resolve a disputed catch.
+    func hostOverride(targetId: String, isCaught: Bool) {
+        socket?.emit("host_override", ["targetId": targetId, "isCaught": isCaught])
     }
 
-    /// Supervisor-only: force-end the match immediately.
-    func supervisorEndGame() {
-        socket?.emit("supervisor_end_game")
+    /// Host-only: force-end the match immediately.
+    func hostEndGame() {
+        socket?.emit("host_end_game")
     }
 
     private func registerHandlers(on socket: SocketIOClient) {
@@ -168,8 +168,8 @@ final class SocketService: ObservableObject {
             self.matchStartedAt = Self.iso8601.date(from: raw)
         }
 
-        // Sent to both SUPERVISOR and SPECTATOR observers — the full live roster, on
-        // every location tick, since neither role gets the hunter-only radar feed.
+        // Sent to SPECTATOR observers (and to the host regardless of role) — the full
+        // live roster, on every location tick, since they don't get the hunter-only radar feed.
         socket.on("roster_update") { [weak self] data, _ in
             guard let self, let raw = data.first else { return }
             self.players = Self.decodeArray(raw)
@@ -207,7 +207,7 @@ final class SocketService: ObservableObject {
             }
         }
 
-        socket.on("supervisor_override_applied") { [weak self] data, _ in
+        socket.on("host_override_applied") { [weak self] data, _ in
             guard let self, let dict = data.first as? [String: Any],
                   let playerId = dict["playerId"] as? String,
                   let isCaught = dict["isCaught"] as? Bool else { return }

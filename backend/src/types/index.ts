@@ -1,4 +1,4 @@
-export type PlayerRole = 'HUNTER' | 'RUNNER' | 'SUPERVISOR' | 'SPECTATOR';
+export type PlayerRole = 'HUNTER' | 'RUNNER' | 'SPECTATOR';
 
 export type GameMode = 'STANDARD' | 'INFECTION' | 'SQUAD';
 

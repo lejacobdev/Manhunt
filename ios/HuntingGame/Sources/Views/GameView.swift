@@ -49,19 +49,19 @@ struct GameView: View {
                     revivePanel(for: squadmate)
                         .transition(.move(edge: .top).combined(with: .opacity))
                 }
-                if viewModel.role == .supervisor {
-                    SupervisorDashboardView(
-                        players: viewModel.allPlayers,
-                        onOverride: viewModel.supervisorOverride,
-                        onEndGame: viewModel.supervisorEndGame
-                    )
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                }
                 if viewModel.role == .spectator {
                     SpectatorDashboardView(
                         players: viewModel.allPlayers,
                         focusedPlayerId: focusedPlayerId,
                         onFocus: { focusedPlayerId = $0 }
+                    )
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                if viewModel.isHost {
+                    HostControlPanelView(
+                        players: viewModel.allPlayers,
+                        onOverride: viewModel.hostOverride,
+                        onEndGame: viewModel.hostEndGame
                     )
                     .transition(.move(edge: .top).combined(with: .opacity))
                 }
@@ -279,8 +279,7 @@ struct GameView: View {
         switch socket.gameOverReason {
         case "TIME_EXPIRED": return "Time expired — the runners survived."
         case "ALL_RUNNERS_RESOLVED": return "All runners caught or extracted."
-        case "SUPERVISOR_ENDED": return "The supervisor ended the match early."
-        case "HOST_ENDED": return "The host ended the match."
+        case "HOST_ENDED": return "The host ended the match early."
         default: return "The match has ended."
         }
     }
@@ -366,11 +365,11 @@ struct GameView: View {
 
     private var mapAnnotations: [GameMapView.Blip] {
         // The roster (viewModel.allPlayers) only gets a fresh snapshot on
-        // join/leave — for non-supervisors it's never refreshed afterward,
-        // so it still carries whatever position you were at (lat/lng 0,0)
-        // the moment you joined. Render your own pin from live GPS instead,
-        // and drop the stale roster copy of yourself so there's no ghost
-        // pin sitting at (0,0).
+        // join/leave for HUNTER/RUNNER players — it's never refreshed
+        // afterward, so it still carries whatever position you were at
+        // (lat/lng 0,0) the moment you joined. Render your own pin from
+        // live GPS instead, and drop the stale roster copy of yourself so
+        // there's no ghost pin sitting at (0,0).
         var blips = viewModel.allPlayers
             .filter { $0.id != viewModel.gamePlayerId }
             .map { GameMapView.Blip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role) }

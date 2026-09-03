@@ -31,7 +31,6 @@ enum ADATheme {
         switch role {
         case .hunter: return hunterRed
         case .runner: return runnerGreen
-        case .supervisor: return spatialCyan
         case .spectator: return neutralGray
         }
     }

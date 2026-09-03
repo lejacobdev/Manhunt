@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Read-only observer panel for the SPECTATOR role: the live roster with role/status
-/// telemetry, same data feed as the supervisor dashboard but with no override controls —
+/// telemetry, same data feed as HostControlPanelView but with no override controls —
 /// spectators can watch and tap a player to center the map on them, nothing more.
 struct SpectatorDashboardView: View {
     let players: [PlayerState]
