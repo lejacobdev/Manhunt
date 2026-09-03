@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import * as turf from '@turf/turf';
@@ -44,6 +45,15 @@ app.use(cors({ origin: process.env.CORS_ORIGIN ?? '*' }));
 app.use(express.json());
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'hunting-game-backend' }));
+
+// Serves the sideloadable HuntingGame.ipa plus an AltStore/SideStore source
+// manifest, so the app can be added as a SideStore "source" (one-time add,
+// then install/update from there) instead of re-downloading a raw IPA every
+// build. Populated by ios/xtool/{docker-build.sh,xtool-build.sh} — that
+// directory doesn't exist until a build has run, and is gitignored (build
+// output, not source), so express.static just 404s until then.
+app.use('/dist', express.static(path.join(__dirname, '..', 'dist-static')));
+
 app.use('/auth', authRouter);
 app.use('/friends', friendsRouter);
 app.use('/games', gamesRouter);

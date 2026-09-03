@@ -125,6 +125,51 @@ else
     info "$WEB_ROOT doesn't exist here — IPA is at $IPA_OUT"
 fi
 
+# ── 6. Publish to backend/dist-static + refresh the SideStore/AltStore source ──
+# Served by the backend's own '/dist' express.static route (backend/src/server.ts) —
+# same domain/TLS as api.lejacob.eu already, no separate vhost needed. This is a
+# proper AltStore/SideStore *source*: add it once in the app's Sources tab and
+# future rebuilds just show up as an update, instead of re-sending a raw IPA link
+# every time.
+DIST_STATIC="$REPO_ROOT/backend/dist-static"
+mkdir -p "$DIST_STATIC"
+cp "$IPA_OUT" "$DIST_STATIC/$IPA_NAME"
+IPA_BYTES=$(stat -c%s "$DIST_STATIC/$IPA_NAME" 2>/dev/null || stat -f%z "$DIST_STATIC/$IPA_NAME")
+VERSION_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# Keep in sync with ios/HuntingGame/project.yml's CFBundleShortVersionString.
+APP_VERSION="1.0.0"
+SOURCE_BASE_URL="${SOURCE_BASE_URL:-https://api.lejacob.eu}"
+
+cat > "$DIST_STATIC/source.json" <<JSON
+{
+  "name": "Hunting Game",
+  "identifier": "eu.lejacob.huntinggame.source",
+  "apps": [
+    {
+      "name": "Hunting Game",
+      "bundleIdentifier": "com.huntinggame.app",
+      "developerName": "lejacob.eu",
+      "localizedDescription": "GPS manhunt: hunters vs. runners with live radar, power-ups, and squad play.",
+      "versions": [
+        {
+          "version": "$APP_VERSION",
+          "date": "$VERSION_DATE",
+          "downloadURL": "$SOURCE_BASE_URL/dist/$IPA_NAME",
+          "size": $IPA_BYTES,
+          "minOSVersion": "16.2"
+        }
+      ]
+    }
+  ]
+}
+JSON
+
+ok "SideStore source updated: $SOURCE_BASE_URL/dist/source.json"
+info "Add that URL once under SideStore's Sources tab (+) — installs and every future"
+info "rebuild's update both come from there instead of a raw IPA link. Needs the"
+info "backend Node process running (and restarted at least once since it gained the"
+info "'/dist' static route) — set SOURCE_BASE_URL=... to override the domain."
+
 echo ""
 echo -e "${GRN}╔══════════════════════════════════════════════════════════════╗${NC}"
 echo -e "${GRN}║  ✅  $IPA_NAME ready! ($IPA_SIZE)${NC}"

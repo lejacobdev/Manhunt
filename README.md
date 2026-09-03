@@ -492,7 +492,15 @@ The output is **unsigned**. Options:
   on install and re-sign it automatically every 7 days (free account) or
   on-demand (paid account). Add the IPA via the AltStore/SideStore app on
   your device (AirDrop it over, or serve it and use the app's "install
-  from URL" flow).
+  from URL" flow). If you built with `ios/xtool/docker-build.sh` or
+  `xtool-build.sh` on a server that also runs this backend, prefer adding
+  it as a proper **SideStore source** instead: those scripts publish
+  `HuntingGame.ipa` and an AltStore-format `source.json` to
+  `backend/dist-static/`, served by the backend itself at
+  `https://<your-domain>/dist/source.json` (no separate vhost needed).
+  Add that URL once under SideStore's Sources tab (+), then installs and
+  every future rebuild's update both come from there instead of you
+  re-sending a raw IPA link each time.
 - **TrollStore** (jailbreak/exploit-dependent, device- and iOS-version
   gated) — installs unsigned IPAs directly with no re-signing needed.
   Check TrollStore's current compatibility list before relying on this.

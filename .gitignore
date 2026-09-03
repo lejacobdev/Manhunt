@@ -1,6 +1,7 @@
 # Node / backend
 backend/node_modules/
 backend/dist/
+backend/dist-static/
 backend/.env
 .env
 *.log
