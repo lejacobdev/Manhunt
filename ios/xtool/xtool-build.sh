@@ -185,6 +185,7 @@ if ! mkdir -p "$DIST_STATIC" 2>/dev/null || [[ ! -w "$DIST_STATIC" ]]; then
 fi
 
 $SUDO cp "$IPA_PATH" "$DIST_STATIC/$IPA_NAME"
+$SUDO cp "$SCRIPT_DIR/icon.png" "$DIST_STATIC/icon.png"
 IPA_BYTES=$(stat -c%s "$DIST_STATIC/$IPA_NAME" 2>/dev/null || stat -f%z "$DIST_STATIC/$IPA_NAME")
 VERSION_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Keep in sync with ios/HuntingGame/project.yml's CFBundleShortVersionString.
@@ -201,6 +202,7 @@ $SUDO tee "$DIST_STATIC/source.json" >/dev/null <<JSON
       "bundleIdentifier": "com.huntinggame.app",
       "developerName": "lejacob.eu",
       "localizedDescription": "GPS manhunt: hunters vs. runners with live radar, power-ups, and squad play.",
+      "iconURL": "$SOURCE_BASE_URL/dist/icon.png",
       "versions": [
         {
           "version": "$APP_VERSION",

@@ -3,6 +3,7 @@ bundleID: com.huntinggame.app
 product: HuntingGame
 infoPath: Info.plist
 entitlementsPath: HuntingGame.entitlements
+iconPath: icon.png
 
 extensions:
   - product: HuntingGameWidget

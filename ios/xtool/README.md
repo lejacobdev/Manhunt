@@ -20,8 +20,10 @@ documents building a **watchOS** app or companion-app bundling. So:
 - **Not included:** the Apple Watch companion app and its own widget
   extension (`ios/HuntingGame/Watch/`, `ios/HuntingGame/WatchWidgets/`). If
   you want those, build via Xcode instead.
-- App icon isn't wired up (the source project's asset catalog is empty
-  anyway — no PNGs to point xtool's `iconPath` at). Cosmetic only.
+- Has its own app icon (`icon.png`, wired up via `xtool.yml`'s `iconPath`) —
+  the main Xcode project's asset catalog is still empty (fine there, since a
+  Simulator/device run via Xcode doesn't require one), so this doesn't fix
+  that build path, only this one.
 
 This restructuring was originally written without a working Swift toolchain
 available to verify it compiles, then debugged live against a real Debian 11
@@ -90,6 +92,10 @@ this) for the underlying reference.
   background modes, Live Activity support, the widget's
   `NSExtensionPointIdentifier`) — mirrors `project.yml`'s `info.properties`.
 - `HuntingGame.entitlements` — identical to `../HuntingGame/HuntingGame.entitlements`.
+- `icon.png` — 1024×1024 app icon (a radar/crosshair motif in the app's own
+  tactical palette), pointed to by `xtool.yml`'s `iconPath`. Also published
+  by the build scripts to `backend/dist-static/icon.png` and referenced by
+  `source.json`'s `iconURL`, so it shows up in SideStore's Sources browser too.
 - `Sources/HuntingGame/`, `Sources/HuntingGameWidget/` — each a real directory
   (not itself a symlink) containing subfolder-level symlinks into
   `../HuntingGame/{Sources,Shared,LiveActivityShared,Widgets/HuntingGameWidgets}`.
