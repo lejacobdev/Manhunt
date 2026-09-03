@@ -16,22 +16,30 @@ struct GameMapView: UIViewRepresentable {
     let zone: ZoneUpdate?
     let extractionPoint: Coordinate?
     let decoys: [DecoyBlip]
-    var initialCenter: CLLocationCoordinate2D
+    /// The real point to center on once known — nil until it's available (e.g. before the
+    /// first GPS fix, or before replay data has loaded). Passing an already-defaulted
+    /// fallback here instead of nil would defeat `hasCentered`: the one-shot recenter below
+    /// would latch onto that fallback on the very first pass and never fire again once the
+    /// real value showed up.
+    var initialCenter: CLLocationCoordinate2D?
     /// Spectator "follow" — when set to a player id present in `players`,
     /// the map re-centers on that player once (not continuously; the viewer can still
     /// pan freely afterward). Changing it to a different id re-centers again.
     var focusPlayerId: String? = nil
 
+    /// Used only for the very first camera position, before `initialCenter` is known.
+    private static let defaultFallbackCenter = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = true
-        mapView.setRegion(MKCoordinateRegion(center: initialCenter, latitudinalMeters: 600, longitudinalMeters: 600), animated: false)
+        mapView.setRegion(MKCoordinateRegion(center: initialCenter ?? Self.defaultFallbackCenter, latitudinalMeters: 600, longitudinalMeters: 600), animated: false)
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
-        if !context.coordinator.hasCentered, initialCenter.latitude != 0 || initialCenter.longitude != 0 {
+        if !context.coordinator.hasCentered, let initialCenter {
             mapView.setRegion(MKCoordinateRegion(center: initialCenter, latitudinalMeters: 600, longitudinalMeters: 600), animated: true)
             context.coordinator.hasCentered = true
         }

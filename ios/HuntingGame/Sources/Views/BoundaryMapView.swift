@@ -6,11 +6,19 @@ import MapKit
 /// back to iOS 16 and gives precise tap-to-coordinate conversion.
 struct BoundaryMapView: UIViewRepresentable {
     @Binding var points: [Coordinate]
+    /// Fallback region center used only until `userCoordinate` becomes available —
+    /// permission grant + first GPS fix can take a couple of seconds after this
+    /// view appears, so the map opens somewhere reasonable rather than blank.
     var centerCoordinate: CLLocationCoordinate2D
+    /// The device's live location, nil until LocationManager gets a fix. The map
+    /// recenters on it once, the first time it becomes available — after that the
+    /// host is free to pan away to draw a boundary anywhere.
+    var userCoordinate: CLLocationCoordinate2D?
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
+        mapView.showsUserLocation = true
         mapView.setRegion(MKCoordinateRegion(center: centerCoordinate, latitudinalMeters: 800, longitudinalMeters: 800), animated: false)
 
         let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
@@ -19,6 +27,11 @@ struct BoundaryMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        if !context.coordinator.hasCenteredOnUser, let userCoordinate {
+            mapView.setRegion(MKCoordinateRegion(center: userCoordinate, latitudinalMeters: 800, longitudinalMeters: 800), animated: true)
+            context.coordinator.hasCenteredOnUser = true
+        }
+
         mapView.removeOverlays(mapView.overlays)
         mapView.removeAnnotations(mapView.annotations)
 
@@ -43,6 +56,7 @@ struct BoundaryMapView: UIViewRepresentable {
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         var parent: BoundaryMapView
+        var hasCenteredOnUser = false
 
         init(_ parent: BoundaryMapView) {
             self.parent = parent

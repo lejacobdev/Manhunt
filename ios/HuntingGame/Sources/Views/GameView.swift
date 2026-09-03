@@ -23,7 +23,7 @@ struct GameView: View {
                 zone: socket.zone,
                 extractionPoint: socket.extractionPoint,
                 decoys: socket.radar?.decoys ?? [],
-                initialCenter: viewModel.currentLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                initialCenter: viewModel.currentLocation?.coordinate,
                 focusPlayerId: focusedPlayerId
             )
             .edgesIgnoringSafeArea(.all)

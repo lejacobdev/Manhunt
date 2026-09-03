@@ -287,7 +287,8 @@ struct CreateGameSheet: View {
 
                     BoundaryMapView(
                         points: $viewModel.boundaryPoints,
-                        centerCoordinate: locationManager.currentLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+                        centerCoordinate: locationManager.currentLocation?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194),
+                        userCoordinate: locationManager.currentLocation?.coordinate
                     )
                     .frame(height: 300)
                     .clipShape(RoundedRectangle(cornerRadius: ADATheme.cardCornerRadius, style: .continuous))

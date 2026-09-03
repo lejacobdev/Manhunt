@@ -39,7 +39,7 @@ struct MatchReplayView: View {
                         zone: nil,
                         extractionPoint: nil,
                         decoys: [],
-                        initialCenter: currentBlips.first?.coordinate ?? CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
+                        initialCenter: currentBlips.first?.coordinate
                     )
                     .edgesIgnoringSafeArea(.all)
 
