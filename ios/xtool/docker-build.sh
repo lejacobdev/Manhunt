@@ -145,8 +145,18 @@ $SUDO cp "$IPA_OUT" "$DIST_STATIC/$IPA_NAME"
 $SUDO cp "$PROJECT_DIR/icon.png" "$DIST_STATIC/icon.png"
 IPA_BYTES=$(stat -c%s "$DIST_STATIC/$IPA_NAME" 2>/dev/null || stat -f%z "$DIST_STATIC/$IPA_NAME")
 VERSION_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-# Keep in sync with ios/HuntingGame/project.yml's CFBundleShortVersionString.
-APP_VERSION="1.0.0"
+
+# SideStore only shows an update when source.json's version string is actually
+# newer than what it last saw — a fixed "1.0.0" every build means the very next
+# build isn't recognized as an update at all. This build number persists in
+# dist-static (gitignored, lives on the server) and just increments forever;
+# 1.0.<N> keeps semver-style comparison happy without needing to hand-bump
+# project.yml's CFBundleShortVersionString for every rebuild.
+BUILD_NUMBER_FILE="$DIST_STATIC/.build_number"
+LAST_BUILD_NUMBER=$(cat "$BUILD_NUMBER_FILE" 2>/dev/null || echo 0)
+BUILD_NUMBER=$((LAST_BUILD_NUMBER + 1))
+echo "$BUILD_NUMBER" | $SUDO tee "$BUILD_NUMBER_FILE" >/dev/null
+APP_VERSION="1.0.$BUILD_NUMBER"
 SOURCE_BASE_URL="${SOURCE_BASE_URL:-https://api.lejacob.eu}"
 
 $SUDO tee "$DIST_STATIC/source.json" >/dev/null <<JSON
@@ -174,7 +184,7 @@ $SUDO tee "$DIST_STATIC/source.json" >/dev/null <<JSON
 }
 JSON
 
-ok "SideStore source updated: $SOURCE_BASE_URL/dist/source.json"
+ok "SideStore source updated: $SOURCE_BASE_URL/dist/source.json (version $APP_VERSION)"
 info "Add that URL once under SideStore's Sources tab (+) — installs and every future"
 info "rebuild's update both come from there instead of a raw IPA link. Needs the"
 info "backend Node process running (and restarted at least once since it gained the"

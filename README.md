@@ -518,7 +518,11 @@ The output is **unsigned**. Options:
   `https://<your-domain>/dist/source.json` (no separate vhost needed).
   Add that URL once under SideStore's Sources tab (+), then installs and
   every future rebuild's update both come from there instead of you
-  re-sending a raw IPA link each time.
+  re-sending a raw IPA link each time. Every run of either script bumps
+  the published version (`1.0.<N>`, an ever-incrementing build counter
+  persisted in `backend/dist-static/.build_number`) so SideStore actually
+  recognizes each rebuild as a new update rather than silently ignoring
+  it as "already installed."
 - **TrollStore** (jailbreak/exploit-dependent, device- and iOS-version
   gated) — installs unsigned IPAs directly with no re-signing needed.
   Check TrollStore's current compatibility list before relying on this.
