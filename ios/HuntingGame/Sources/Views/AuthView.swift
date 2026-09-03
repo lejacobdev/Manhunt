@@ -111,8 +111,7 @@ struct ADATextField: View {
             .font(ADATheme.uiFont(size: 15))
             .foregroundColor(.white)
             .padding()
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
+            .background(GlassFieldBackground())
     }
 }
 
@@ -125,8 +124,28 @@ struct ADASecureField: View {
             .font(ADATheme.uiFont(size: 15))
             .foregroundColor(.white)
             .padding()
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
+            .background(GlassFieldBackground())
+    }
+}
+
+/// A lighter touch of the app's liquid-glass language for form fields — a top
+/// sheen highlight and a thin rim, same visual cue as `glassCard()`'s sheen, but
+/// without its blur material or drop shadow. Fields nested inside an already-glass
+/// card (every ADATextField/ADASecureField usage in this app) would otherwise
+/// stack glass-on-glass and look over-styled.
+private struct GlassFieldBackground: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous)
+            .fill(Color.white.opacity(0.06))
+            .overlay(
+                LinearGradient(colors: [.white.opacity(0.14), .white.opacity(0)], startPoint: .top, endPoint: .center)
+                    .clipShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
+                    .allowsHitTesting(false)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
     }
 }
 

@@ -111,10 +111,24 @@ struct GlassCardModifier: ViewModifier {
             .environment(\.colorScheme, .dark)
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .overlay(
+                // Liquid-glass specular sheen: a soft highlight along the top edge, as
+                // if light is catching the top of a curved glass surface — the same
+                // visual cue as the app icon's sheen, applied to every glass surface in
+                // the app (this modifier backs every card, panel, and sheet) for one
+                // consistent material rather than a one-off icon treatment.
+                LinearGradient(
+                    colors: [.white.opacity(0.18), .white.opacity(0)],
+                    startPoint: .top,
+                    endPoint: .center
+                )
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .allowsHitTesting(false)
+            )
+            .overlay(
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(
                         LinearGradient(
-                            colors: [.white.opacity(0.25), .white.opacity(0.05)],
+                            colors: [.white.opacity(0.35), .white.opacity(0.05)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),

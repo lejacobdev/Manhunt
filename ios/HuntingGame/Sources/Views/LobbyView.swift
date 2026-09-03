@@ -14,88 +14,101 @@ struct LobbyView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    header
+            ZStack {
+                // Same ambient arrival glow as AuthView — "home" shouldn't feel
+                // flatter than "login" just because it's a ScrollView instead of a
+                // centered form.
+                RadialGradient(
+                    colors: [ADATheme.runnerGreen.opacity(0.10), .clear],
+                    center: .top,
+                    startRadius: 20,
+                    endRadius: 500
+                )
+                .edgesIgnoringSafeArea(.all)
 
-                    if let user = authSession.currentUser {
-                        Text("SIGNED IN AS \(user.tagLabel.uppercased())")
-                            .font(ADATheme.telemetryFont(size: 11))
-                            .foregroundColor(.white.opacity(0.4))
-                    }
+                ScrollView {
+                    VStack(spacing: 16) {
+                        header
 
-                    if !presence.incomingInvites.isEmpty {
-                        InviteBannerView(
-                            invites: presence.incomingInvites,
-                            onJoin: { joiningInvite = $0 },
-                            onDecline: { invite in
-                                Task { _ = try? await presence.respondToInvite(invite, accept: false) }
-                            }
-                        )
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-
-                    joinSection
-
-                    Button {
-                        showCreateSheet = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "mappin.and.ellipse")
-                            Text("HOST NEW GAME")
+                        if let user = authSession.currentUser {
+                            Text("SIGNED IN AS \(user.tagLabel.uppercased())")
+                                .font(ADATheme.telemetryFont(size: 11))
+                                .foregroundColor(.white.opacity(0.4))
                         }
-                    }
-                    .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
-                    .padding(.horizontal)
 
-                    HStack(spacing: 10) {
-                        Button {
-                            showFriends = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "person.2.fill")
-                                Text("FRIENDS")
-                            }
+                        if !presence.incomingInvites.isEmpty {
+                            InviteBannerView(
+                                invites: presence.incomingInvites,
+                                onJoin: { joiningInvite = $0 },
+                                onDecline: { invite in
+                                    Task { _ = try? await presence.respondToInvite(invite, accept: false) }
+                                }
+                            )
+                            .transition(.move(edge: .top).combined(with: .opacity))
                         }
-                        .buttonStyle(GlassButtonStyle(tint: .white))
-                        .frame(maxWidth: .infinity)
+
+                        joinSection
 
                         Button {
-                            showHistory = true
+                            showCreateSheet = true
                         } label: {
                             HStack {
-                                Image(systemName: "clock.arrow.circlepath")
-                                Text("HISTORY")
+                                Image(systemName: "mappin.and.ellipse")
+                                Text("HOST NEW GAME")
                             }
                         }
-                        .buttonStyle(GlassButtonStyle(tint: .white))
-                        .frame(maxWidth: .infinity)
-                    }
-                    .padding(.horizontal)
+                        .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
+                        .padding(.horizontal)
 
-                    if let error = viewModel.errorMessage {
-                        Text(error)
+                        HStack(spacing: 10) {
+                            Button {
+                                showFriends = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "person.2.fill")
+                                    Text("FRIENDS")
+                                }
+                            }
+                            .buttonStyle(GlassButtonStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+
+                            Button {
+                                showHistory = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                    Text("HISTORY")
+                                }
+                            }
+                            .buttonStyle(GlassButtonStyle(tint: .white))
+                            .frame(maxWidth: .infinity)
+                        }
+                        .padding(.horizontal)
+
+                        if let error = viewModel.errorMessage {
+                            Text(error)
+                                .font(ADATheme.telemetryFont(size: 12))
+                                .foregroundColor(ADATheme.hunterRed)
+                                .padding(.horizontal)
+                                .transition(.opacity)
+                        }
+
+                        if let session = viewModel.activeSession, let player = viewModel.activePlayer {
+                            sessionStatusCard(session: session, player: player)
+                                .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+
+                        Button("Sign Out") { authSession.signOut() }
                             .font(ADATheme.telemetryFont(size: 12))
-                            .foregroundColor(ADATheme.hunterRed)
-                            .padding(.horizontal)
-                            .transition(.opacity)
+                            .foregroundColor(.white.opacity(0.35))
+                            .padding(.top, 12)
+                            .padding(.bottom, 30)
                     }
-
-                    if let session = viewModel.activeSession, let player = viewModel.activePlayer {
-                        sessionStatusCard(session: session, player: player)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
-
-                    Button("Sign Out") { authSession.signOut() }
-                        .font(ADATheme.telemetryFont(size: 12))
-                        .foregroundColor(.white.opacity(0.35))
-                        .padding(.top, 12)
-                        .padding(.bottom, 30)
+                    .adaptiveContentWidth()
+                    .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
+                    .animation(ADATheme.ambientSpring, value: viewModel.activeSession?.status)
+                    .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
                 }
-                .adaptiveContentWidth()
-                .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
-                .animation(ADATheme.ambientSpring, value: viewModel.activeSession?.status)
-                .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
             }
             .obsidianBackdrop()
             .sheet(isPresented: $showCreateSheet) {
