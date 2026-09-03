@@ -6,6 +6,17 @@ RUN apt-get update && apt-get install -y \
     usbmuxd libimobiledevice-utils \
     && rm -rf /var/lib/apt/lists/*
 
+# SwiftPM shells out to the system `git` to fetch package dependencies (e.g.
+# SocketIO), and git's HTTP/2 support breaks against GitHub specifically when
+# run inside Docker's bridge network — confirmed live: every clone of a
+# perfectly public repo failed with "fatal: expected flush after ref listing"
+# followed by a doomed credential prompt (no TTY to prompt on), while the
+# identical request over HTTP/1.1 succeeded immediately. Root cause is almost
+# certainly MTU/packet-framing mismatch under the bridge's NAT breaking
+# HTTP/2's binary framing — HTTP/1.1's plain-text protocol tolerates it fine.
+# Force HTTP/1.1 globally so this doesn't resurface on some other dependency.
+RUN git config --system http.version HTTP/1.1
+
 # Install xtool AppImage
 RUN ARCH=$(uname -m) && \
     curl -fL "https://github.com/xtool-org/xtool/releases/latest/download/xtool-${ARCH}.AppImage" \
