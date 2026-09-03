@@ -9,7 +9,7 @@ final class SocketService: ObservableObject {
     static let shared = SocketService()
 
     /// The shared production backend — must match APIClient.baseURL.
-    var serverURL = URL(string: "https://api.lejacob.eu")!
+    var serverURL = URL(string: "https://api.lejacob.dev")!
 
     @Published var players: [PlayerState] = []
     @Published var compass: CompassUpdate?

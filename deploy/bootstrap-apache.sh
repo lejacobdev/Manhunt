@@ -2,7 +2,7 @@
 #
 # bootstrap-apache.sh — installs Apache (if needed), enables the required
 # modules, writes /etc/apache2/cloudflare-ips.conf and
-# /etc/apache2/sites-available/api.lejacob.eu.conf from the templates in
+# /etc/apache2/sites-available/api.lejacob.dev.conf from the templates in
 # this repo, enables the site, and reloads Apache.
 #
 # Run as root (or with sudo) from anywhere inside the repo:
@@ -25,7 +25,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 APACHE_TEMPLATE_DIR="${SCRIPT_DIR}/apache"
-DOMAIN="api.lejacob.eu"
+DOMAIN="api.lejacob.dev"
 CLOUDFLARE_CERT_DIR="/etc/cloudflare"
 
 log() { echo "==> $*"; }
@@ -67,7 +67,7 @@ log "Installing ${DOMAIN} Cloudflare IP allowlist..."
 cp "${APACHE_TEMPLATE_DIR}/cloudflare-ips.conf" /etc/apache2/cloudflare-ips.conf
 
 log "Installing ${DOMAIN} vhost (BACKEND_PORT=${BACKEND_PORT})..."
-sed "s/\${BACKEND_PORT}/${BACKEND_PORT}/g" "${APACHE_TEMPLATE_DIR}/api.lejacob.eu.conf" \
+sed "s/\${BACKEND_PORT}/${BACKEND_PORT}/g" "${APACHE_TEMPLATE_DIR}/api.lejacob.dev.conf" \
   > "/etc/apache2/sites-available/${DOMAIN}.conf"
 
 log "Enabling the site..."

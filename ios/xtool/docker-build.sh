@@ -186,7 +186,7 @@ fi
 
 # ── 6. Publish to backend/dist-static + refresh the SideStore/AltStore source ──
 # Served by the backend's own '/dist' express.static route (backend/src/server.ts) —
-# same domain/TLS as api.lejacob.eu already, no separate vhost needed. This is a
+# same domain/TLS as api.lejacob.dev already, no separate vhost needed. This is a
 # proper AltStore/SideStore *source*: add it once in the app's Sources tab and
 # future rebuilds just show up as an update, instead of re-sending a raw IPA link
 # every time. DIST_STATIC/SUDO/APP_VERSION/BUILD_NUMBER/CHANGELOG were already
@@ -195,7 +195,7 @@ $SUDO cp "$IPA_OUT" "$DIST_STATIC/$IPA_NAME"
 $SUDO cp "$PROJECT_DIR/icon.png" "$DIST_STATIC/icon.png"
 IPA_BYTES=$(stat -c%s "$DIST_STATIC/$IPA_NAME" 2>/dev/null || stat -f%z "$DIST_STATIC/$IPA_NAME")
 VERSION_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-SOURCE_BASE_URL="${SOURCE_BASE_URL:-https://api.lejacob.eu}"
+SOURCE_BASE_URL="${SOURCE_BASE_URL:-https://api.lejacob.dev}"
 
 # Keep prior versions (SideStore's per-app "News"/changelog view is this
 # array) rather than overwriting the file with just the newest one — capped at
@@ -220,11 +220,11 @@ jq -n \
     --argjson versions "$MERGED_VERSIONS" \
     '{
       name: "Hunting Game",
-      identifier: "eu.lejacob.huntinggame.source",
+      identifier: "dev.lejacob.huntinggame.source",
       apps: [{
         name: "Hunting Game",
         bundleIdentifier: "com.huntinggame.app",
-        developerName: "lejacob.eu",
+        developerName: "lejacob.dev",
         localizedDescription: "GPS manhunt: hunters vs. runners with live radar, power-ups, and squad play.",
         iconURL: $iconURL,
         versions: $versions

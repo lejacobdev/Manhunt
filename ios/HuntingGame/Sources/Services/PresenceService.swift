@@ -9,7 +9,7 @@ import SocketIO
 final class PresenceService: ObservableObject {
     static let shared = PresenceService()
 
-    var serverURL = URL(string: "https://api.lejacob.eu")!
+    var serverURL = URL(string: "https://api.lejacob.dev")!
 
     @Published var onlineFriendIds: Set<String> = []
     @Published var incomingInvites: [GameInvite] = []

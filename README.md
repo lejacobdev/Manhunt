@@ -114,15 +114,15 @@ Any Node-friendly host works: a plain VPS with pm2, Render, Railway, Fly.io,
 or a container platform — there's no framework-specific lock-in here, it's
 just Express + Socket.IO + Prisma.
 
-### Deploying with Apache behind Cloudflare (what runs api.lejacob.eu)
+### Deploying with Apache behind Cloudflare (what runs api.lejacob.dev)
 
 `docker-compose.yml` at the repo root runs Postgres and the backend in
 Docker, with the backend bound to **127.0.0.1 only** on `BACKEND_PORT`
 (default `8420`) — never exposed to the public internet directly. Apache,
 running on the host (not in Docker), owns ports 80/443 and reverse-proxies
-`api.lejacob.eu` to that loopback port. This is what every build of the app
+`api.lejacob.dev` to that loopback port. This is what every build of the app
 talks to — `APIClient.baseURL` / `SocketService.serverURL` are hardcoded to
-`https://api.lejacob.eu`; there's no per-developer backend to stand up
+`https://api.lejacob.dev`; there's no per-developer backend to stand up
 unless you're working on the server itself.
 
 Traffic path: **client → Cloudflare (public TLS) → this server on 80/443 →
@@ -139,7 +139,7 @@ way in:
   direct-origin-IP bypass; the Origin CA cert alone doesn't stop someone
   from hitting your IP directly over plain HTTP or an untrusted cert.
 
-Prerequisites: a DNS record for `api.lejacob.eu` proxied through Cloudflare
+Prerequisites: a DNS record for `api.lejacob.dev` proxied through Cloudflare
 (orange cloud, not grey/DNS-only), and Cloudflare's SSL/TLS mode set to
 **Full (strict)** — required for Cloudflare to actually validate the Origin
 CA cert rather than accept anything.
@@ -170,7 +170,7 @@ curl http://127.0.0.1:8420/health   # sanity check from the server itself
 
 Get the Origin CA cert from the Cloudflare dashboard (**SSL/TLS → Origin
 Server → Create Certificate**; accept the defaults, it'll cover
-`api.lejacob.eu`), then install it and the vhost:
+`api.lejacob.dev`), then install it and the vhost:
 
 ```bash
 # 5. Install the cert + key, and Cloudflare's origin CA root for the chain
@@ -205,7 +205,7 @@ without touching Apache's running config — drop the certs in and re-run it.
 Verify from your own machine (not the server):
 
 ```bash
-curl https://api.lejacob.eu/health
+curl https://api.lejacob.dev/health
 # {"ok":true,"service":"hunting-game-backend"}
 ```
 
@@ -215,7 +215,7 @@ and `tail -f /var/log/apache2/api_lejacob_ssl_error.log` on the server for
 the actual rejection reason (a wrong cert path or a stale IP range are the
 two usual suspects).
 
-`deploy/apache/api.lejacob.eu.conf` and `cloudflare-ips.conf` in the repo
+`deploy/apache/api.lejacob.dev.conf` and `cloudflare-ips.conf` in the repo
 are the source of truth — if you tweak either, re-run
 `sudo ./deploy/bootstrap-apache.sh` rather than hand-editing
 `/etc/apache2/...` only, or the next redeploy will silently overwrite your
@@ -259,7 +259,7 @@ and redeploys — `docker compose down` leaves it intact; only
 
 If you'd rather not run Cloudflare in front, the same Apache/Docker split
 still works with a plain Let's Encrypt cert instead — swap the `SSLEngine`
-block in `api.lejacob.eu.conf` for `certbot --apache -d api.lejacob.eu` and
+block in `api.lejacob.dev.conf` for `certbot --apache -d api.lejacob.dev` and
 drop the IP allowlist (or replace it with your own).
 
 ### Database schema reference
