@@ -74,6 +74,8 @@ enum ADATheme {
     static let cardCornerRadius: CGFloat = 24
     static let controlCornerRadius: CGFloat = 16
     static let sheetCornerRadius: CGFloat = 32
+    /// Cap for forms and HUD panel columns — see `View.adaptiveContentWidth()`.
+    static let maxContentWidth: CGFloat = 480
 
     // MARK: Motion
 
@@ -124,6 +126,15 @@ extension View {
     /// Applies the app's obsidian backdrop, edge-to-edge.
     func obsidianBackdrop() -> some View {
         background(ADATheme.obsidianBackground.edgesIgnoringSafeArea(.all))
+    }
+
+    /// Caps a form/HUD content column at a comfortable width and centers it. A no-op on
+    /// iPhone (every device width is already under the cap), but keeps forms and the
+    /// live-match HUD panels from stretching edge-to-edge across an iPad's much wider
+    /// screen — full-bleed only makes sense for the map itself, not the controls on it.
+    func adaptiveContentWidth(_ maxWidth: CGFloat = ADATheme.maxContentWidth) -> some View {
+        frame(maxWidth: maxWidth)
+            .frame(maxWidth: .infinity)
     }
 }
 

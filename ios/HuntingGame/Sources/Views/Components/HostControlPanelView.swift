@@ -9,30 +9,31 @@ struct HostControlPanelView: View {
     let onEndGame: () -> Void
 
     @State private var confirmingEndGame = false
+    @State private var isExpanded = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "shield.fill")
-                    .font(.system(size: 12, weight: .bold))
-                Text("HOST CONTROLS: \(players.count)")
-                    .font(ADATheme.telemetryFont(size: 12))
-            }
-            .foregroundColor(ADATheme.spatialCyan)
+            DisclosureHeader(icon: "shield.fill", title: "HOST CONTROLS: \(players.count)", tint: ADATheme.spatialCyan, isExpanded: $isExpanded)
 
-            if players.isEmpty {
-                Text("Waiting for players to report in.")
-                    .font(ADATheme.uiFont(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.4))
-            } else {
-                ScrollView {
-                    VStack(spacing: 8) {
-                        ForEach(players) { player in
-                            row(for: player)
+            if isExpanded {
+                Group {
+                    if players.isEmpty {
+                        Text("Waiting for players to report in.")
+                            .font(ADATheme.uiFont(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 8) {
+                                ForEach(players) { player in
+                                    row(for: player)
+                                }
+                            }
                         }
+                        .frame(maxHeight: 220)
                     }
                 }
-                .frame(maxHeight: 220)
+                .clipped()
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             Button {

@@ -47,6 +47,7 @@ struct MatchReplayView: View {
                         Spacer()
                         controls
                     }
+                    .adaptiveContentWidth()
                 } else {
                     Text("No location data was recorded for this match.")
                         .font(ADATheme.uiFont(size: 13, weight: .medium))

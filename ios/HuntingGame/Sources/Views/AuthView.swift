@@ -80,6 +80,7 @@ struct AuthView: View {
 
                     Spacer()
                 }
+                .adaptiveContentWidth()
                 .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
             }
             .obsidianBackdrop()

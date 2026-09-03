@@ -11,6 +11,7 @@ struct GameView: View {
     @State private var now = Date()
     @State private var focusedPlayerId: String?
     @State private var showReplay = false
+    @State private var isRadarPanelExpanded = true
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
@@ -72,6 +73,7 @@ struct GameView: View {
                         .padding(.bottom, 10)
                 }
             }
+            .adaptiveContentWidth()
 
             if socket.gameOverReason != nil {
                 dimScrim
@@ -179,31 +181,36 @@ struct GameView: View {
 
     private var radarPanel: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "eye.fill")
-                    .font(.system(size: 12, weight: .bold))
-                Text("VISIBLE RUNNERS: \(viewModel.visibleRunners.count)")
-                    .font(ADATheme.telemetryFont(size: 12))
-            }
-            .foregroundColor(ADATheme.hunterRed)
+            DisclosureHeader(icon: "eye.fill", title: "VISIBLE RUNNERS: \(viewModel.visibleRunners.count)", tint: ADATheme.hunterRed, isExpanded: $isRadarPanelExpanded)
 
-            if viewModel.visibleRunners.isEmpty {
-                Text(viewModel.isRadarJammed ? "Radar jammed by an EMP power-up." : "No runners currently in range.")
-                    .font(ADATheme.uiFont(size: 12, weight: .medium))
-                    .foregroundColor(.white.opacity(0.4))
-            } else {
-                ForEach(viewModel.visibleRunners) { runner in
-                    Button {
-                        viewModel.beginCatch(on: runner.id)
-                    } label: {
-                        HStack {
-                            Image(systemName: "figure.run")
-                            Text("CATCH \(runner.username.uppercased())")
+            if isRadarPanelExpanded {
+                Group {
+                    if viewModel.visibleRunners.isEmpty {
+                        Text(viewModel.isRadarJammed ? "Radar jammed by an EMP power-up." : "No runners currently in range.")
+                            .font(ADATheme.uiFont(size: 12, weight: .medium))
+                            .foregroundColor(.white.opacity(0.4))
+                    } else {
+                        ScrollView {
+                            VStack(spacing: 8) {
+                                ForEach(viewModel.visibleRunners) { runner in
+                                    Button {
+                                        viewModel.beginCatch(on: runner.id)
+                                    } label: {
+                                        HStack {
+                                            Image(systemName: "figure.run")
+                                            Text("CATCH \(runner.username.uppercased())")
+                                        }
+                                    }
+                                    .buttonStyle(GlowButtonStyle(tint: ADATheme.hunterRed))
+                                    .transition(.scale.combined(with: .opacity))
+                                }
+                            }
                         }
+                        .frame(maxHeight: 220)
                     }
-                    .buttonStyle(GlowButtonStyle(tint: ADATheme.hunterRed))
-                    .transition(.scale.combined(with: .opacity))
                 }
+                .clipped()
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .padding(18)

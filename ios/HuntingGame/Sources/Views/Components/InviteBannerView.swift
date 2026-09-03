@@ -108,6 +108,7 @@ struct InviteJoinSheet: View {
 
                 Spacer()
             }
+            .adaptiveContentWidth()
             .obsidianBackdrop()
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

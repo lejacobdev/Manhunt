@@ -92,6 +92,7 @@ struct LobbyView: View {
                         .padding(.top, 12)
                         .padding(.bottom, 30)
                 }
+                .adaptiveContentWidth()
                 .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
                 .animation(ADATheme.ambientSpring, value: viewModel.activeSession?.status)
                 .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
@@ -336,6 +337,7 @@ struct CreateGameSheet: View {
                     Spacer(minLength: 20)
                 }
                 .padding(.top)
+                .adaptiveContentWidth()
                 .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
             }
             .obsidianBackdrop()

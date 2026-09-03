@@ -42,6 +42,7 @@ struct MatchHistoryView: View {
                             }
                         }
                         .padding()
+                        .adaptiveContentWidth()
                     }
                 }
             }

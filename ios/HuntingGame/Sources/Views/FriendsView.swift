@@ -71,6 +71,7 @@ struct FriendsView: View {
                     Spacer(minLength: 20)
                 }
                 .padding(.top)
+                .adaptiveContentWidth()
                 .animation(ADATheme.ambientSpring, value: viewModel.lastActionMessage)
                 .animation(ADATheme.controlSpring, value: viewModel.incomingRequests.map(\.id))
             }
