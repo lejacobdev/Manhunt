@@ -7,7 +7,19 @@
 	device family, orientations, UILaunchScreen, etc.) and merges this dictionary on
 	top — see PackLib/Planner.swift. Only the keys HuntingGame actually needs beyond
 	that default are listed here, mirroring project.yml's `info.properties` block.
+
+	CFBundleShortVersionString/CFBundleVersion are a deliberate exception: they
+	override xtool's auto-generated default on purpose. docker-build.sh and
+	xtool-build.sh sed-substitute the two dunder-wrapped tokens below with the
+	real build number right before invoking xtool, then restore them right
+	after (so this checked-in file never ends up modified), so the version
+	actually baked into the .ipa matches the SideStore source's source.json —
+	SideStore refuses to install when the two disagree.
 	-->
+	<key>CFBundleShortVersionString</key>
+	<string>__APP_VERSION__</string>
+	<key>CFBundleVersion</key>
+	<string>__BUILD_NUMBER__</string>
 	<key>CFBundleDisplayName</key>
 	<string>Hunting Game</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

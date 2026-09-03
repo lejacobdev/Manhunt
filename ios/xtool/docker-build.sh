@@ -89,6 +89,65 @@ else
     ok "SDK installed and cached at $CACHE_DIR/swiftpm/"
 fi
 
+# ── 2.5. Compute version + changelog, bake into Info.plist for this build ───
+# SideStore checks the .ipa's own CFBundleShortVersionString against what
+# source.json claims and refuses to install on a mismatch ("Expected version:
+# X, Found version: Y") — so the real version has to be in Info.plist *before*
+# xtool builds, not patched into source.json after the fact.
+step "Computing build version..."
+
+DIST_STATIC="$REPO_ROOT/backend/dist-static"
+# docker compose creates this as root when it sets up the bind mount, so writing
+# here may need sudo.
+SUDO=""
+if ! mkdir -p "$DIST_STATIC" 2>/dev/null || [ ! -w "$DIST_STATIC" ]; then
+    command -v sudo >/dev/null 2>&1 || fail "$DIST_STATIC isn't writable and sudo isn't available."
+    SUDO="sudo"
+    $SUDO mkdir -p "$DIST_STATIC"
+fi
+
+# SideStore only shows an update when source.json's version string actually
+# changes — a fixed "1.0.0" every build means the next build is never
+# recognized as an update. This counter persists in dist-static (gitignored,
+# lives on the server) and just increments forever; 1.0.<N> keeps semver-style
+# comparison happy without hand-bumping project.yml's version for every rebuild.
+BUILD_NUMBER_FILE="$DIST_STATIC/.build_number"
+LAST_BUILD_NUMBER=$(cat "$BUILD_NUMBER_FILE" 2>/dev/null || echo 0)
+BUILD_NUMBER=$((LAST_BUILD_NUMBER + 1))
+echo "$BUILD_NUMBER" | $SUDO tee "$BUILD_NUMBER_FILE" >/dev/null
+APP_VERSION="1.0.$BUILD_NUMBER"
+# Best-effort changelog: the latest commit touching iOS or backend code, so
+# every published version carries *some* real, always-available description
+# of what changed rather than a placeholder. Falls back gracefully if this
+# isn't a git checkout for some reason.
+CHANGELOG=$(cd "$REPO_ROOT" && git log -1 --format=%s -- ios backend 2>/dev/null || true)
+[ -z "$CHANGELOG" ] && CHANGELOG="Build $APP_VERSION."
+ok "Building version $APP_VERSION — $CHANGELOG"
+
+# jq builds source.json below so commit messages (which can contain quotes,
+# $, backticks, etc.) are safely escaped instead of interpolated into a raw
+# JSON heredoc.
+if ! command -v jq >/dev/null 2>&1; then
+    if command -v apt-get >/dev/null 2>&1; then
+        info "jq not found — installing (needed to safely merge source.json's version history)..."
+        if command -v sudo >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq jq
+        else
+            apt-get update -qq && apt-get install -y -qq jq
+        fi
+    else
+        fail "jq is required (to build source.json's changelog) but not found, and apt-get isn't available to install it. Install jq manually and re-run."
+    fi
+fi
+
+# Patched into Info.plist only for the duration of this build, then restored —
+# the trap fires on any exit (success, failure, or Ctrl-C) so the checked-in
+# file is never left modified.
+INFO_PLIST_BACKUP=$(mktemp)
+cp "$PROJECT_DIR/Info.plist" "$INFO_PLIST_BACKUP"
+trap 'cp "$INFO_PLIST_BACKUP" "$PROJECT_DIR/Info.plist"; rm -f "$INFO_PLIST_BACKUP"' EXIT
+sed -i "s/__APP_VERSION__/$APP_VERSION/g; s/__BUILD_NUMBER__/$BUILD_NUMBER/g" "$PROJECT_DIR/Info.plist"
+
 # ── 3. Build the IPA (unsigned, no Apple ID needed) ──────────────────────────
 step "Building $IPA_NAME..."
 mkdir -p "$PROJECT_DIR/build/ipa"
@@ -130,59 +189,47 @@ fi
 # same domain/TLS as api.lejacob.eu already, no separate vhost needed. This is a
 # proper AltStore/SideStore *source*: add it once in the app's Sources tab and
 # future rebuilds just show up as an update, instead of re-sending a raw IPA link
-# every time.
-DIST_STATIC="$REPO_ROOT/backend/dist-static"
-# docker compose creates this as root when it sets up the bind mount, so writing
-# here may need sudo — same fallback as the web-root publish above.
-SUDO=""
-if ! mkdir -p "$DIST_STATIC" 2>/dev/null || [ ! -w "$DIST_STATIC" ]; then
-    command -v sudo >/dev/null 2>&1 || fail "$DIST_STATIC isn't writable and sudo isn't available. IPA is at $IPA_OUT"
-    SUDO="sudo"
-    $SUDO mkdir -p "$DIST_STATIC"
-fi
-
+# every time. DIST_STATIC/SUDO/APP_VERSION/BUILD_NUMBER/CHANGELOG were already
+# computed back in step 2.5, before the build.
 $SUDO cp "$IPA_OUT" "$DIST_STATIC/$IPA_NAME"
 $SUDO cp "$PROJECT_DIR/icon.png" "$DIST_STATIC/icon.png"
 IPA_BYTES=$(stat -c%s "$DIST_STATIC/$IPA_NAME" 2>/dev/null || stat -f%z "$DIST_STATIC/$IPA_NAME")
 VERSION_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-# SideStore only shows an update when source.json's version string is actually
-# newer than what it last saw — a fixed "1.0.0" every build means the very next
-# build isn't recognized as an update at all. This build number persists in
-# dist-static (gitignored, lives on the server) and just increments forever;
-# 1.0.<N> keeps semver-style comparison happy without needing to hand-bump
-# project.yml's CFBundleShortVersionString for every rebuild.
-BUILD_NUMBER_FILE="$DIST_STATIC/.build_number"
-LAST_BUILD_NUMBER=$(cat "$BUILD_NUMBER_FILE" 2>/dev/null || echo 0)
-BUILD_NUMBER=$((LAST_BUILD_NUMBER + 1))
-echo "$BUILD_NUMBER" | $SUDO tee "$BUILD_NUMBER_FILE" >/dev/null
-APP_VERSION="1.0.$BUILD_NUMBER"
 SOURCE_BASE_URL="${SOURCE_BASE_URL:-https://api.lejacob.eu}"
 
-$SUDO tee "$DIST_STATIC/source.json" >/dev/null <<JSON
-{
-  "name": "Hunting Game",
-  "identifier": "eu.lejacob.huntinggame.source",
-  "apps": [
-    {
-      "name": "Hunting Game",
-      "bundleIdentifier": "com.huntinggame.app",
-      "developerName": "lejacob.eu",
-      "localizedDescription": "GPS manhunt: hunters vs. runners with live radar, power-ups, and squad play.",
-      "iconURL": "$SOURCE_BASE_URL/dist/icon.png",
-      "versions": [
-        {
-          "version": "$APP_VERSION",
-          "date": "$VERSION_DATE",
-          "downloadURL": "$SOURCE_BASE_URL/dist/$IPA_NAME",
-          "size": $IPA_BYTES,
-          "minOSVersion": "16.2"
-        }
-      ]
-    }
-  ]
-}
-JSON
+# Keep prior versions (SideStore's per-app "News"/changelog view is this
+# array) rather than overwriting the file with just the newest one — capped at
+# 20 so it doesn't grow forever.
+EXISTING_VERSIONS="[]"
+if [ -f "$DIST_STATIC/source.json" ]; then
+    EXISTING_VERSIONS=$(jq -c '.apps[0].versions // []' "$DIST_STATIC/source.json" 2>/dev/null || echo "[]")
+fi
+
+NEW_VERSION_JSON=$(jq -n \
+    --arg version "$APP_VERSION" \
+    --arg date "$VERSION_DATE" \
+    --arg downloadURL "$SOURCE_BASE_URL/dist/$IPA_NAME" \
+    --argjson size "$IPA_BYTES" \
+    --arg changelog "$CHANGELOG" \
+    '{version: $version, date: $date, downloadURL: $downloadURL, size: $size, minOSVersion: "16.2", localizedDescription: $changelog}')
+
+MERGED_VERSIONS=$(jq -c --argjson newv "$NEW_VERSION_JSON" '[$newv] + . | .[0:20]' <<<"$EXISTING_VERSIONS")
+
+jq -n \
+    --arg iconURL "$SOURCE_BASE_URL/dist/icon.png" \
+    --argjson versions "$MERGED_VERSIONS" \
+    '{
+      name: "Hunting Game",
+      identifier: "eu.lejacob.huntinggame.source",
+      apps: [{
+        name: "Hunting Game",
+        bundleIdentifier: "com.huntinggame.app",
+        developerName: "lejacob.eu",
+        localizedDescription: "GPS manhunt: hunters vs. runners with live radar, power-ups, and squad play.",
+        iconURL: $iconURL,
+        versions: $versions
+      }]
+    }' | $SUDO tee "$DIST_STATIC/source.json" >/dev/null
 
 ok "SideStore source updated: $SOURCE_BASE_URL/dist/source.json (version $APP_VERSION)"
 info "Add that URL once under SideStore's Sources tab (+) — installs and every future"
