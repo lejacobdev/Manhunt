@@ -493,7 +493,7 @@ io.on('connection', (socket: Socket) => {
     const session = activeSessions.get(roomCode);
     if (!session) return;
     const caller = session.get(callerId);
-    if (!caller || caller.userId !== sessionHostCache.get(roomCode)) {
+    if (!caller || !(await isSessionHost(roomCode, caller.userId))) {
       socket.emit('error_event', { reason: 'Only the host can override player status.' });
       return;
     }
@@ -521,7 +521,7 @@ io.on('connection', (socket: Socket) => {
     if (!roomCode || !callerId) return;
     const session = activeSessions.get(roomCode);
     const caller = session?.get(callerId);
-    if (!caller || caller.userId !== sessionHostCache.get(roomCode)) {
+    if (!caller || !(await isSessionHost(roomCode, caller.userId))) {
       socket.emit('error_event', { reason: 'Only the host can end the match.' });
       return;
     }
@@ -633,6 +633,24 @@ function cleanupSocket(socket: Socket) {
 async function resolveSessionId(roomCode: string): Promise<string | undefined> {
   const gameSession = await prisma.gameSession.findUnique({ where: { code: roomCode } });
   return gameSession?.id;
+}
+
+/**
+ * Whether `userId` is the host of `roomCode`. Checks the in-memory cache first, but falls
+ * back to a fresh DB read (repopulating the cache) rather than trusting the cache alone —
+ * `sessionHostCache` is wiped on every process restart (a backend redeploy, a crash), and
+ * without this fallback a real host could get "only the host can..." rejected on live
+ * matches that were already running when the process restarted, until they happened to
+ * trigger a fresh join_room. A restart is common enough here (frequent redeploys) that
+ * this isn't just a theoretical edge case.
+ */
+async function isSessionHost(roomCode: string, userId: string): Promise<boolean> {
+  const cached = sessionHostCache.get(roomCode);
+  if (cached) return cached === userId;
+  const gameSession = await prisma.gameSession.findUnique({ where: { code: roomCode }, select: { hostId: true } });
+  if (!gameSession) return false;
+  sessionHostCache.set(roomCode, gameSession.hostId);
+  return gameSession.hostId === userId;
 }
 
 /** Checks whether a runner has reached the designated extraction point and, if so, marks them safe. */
