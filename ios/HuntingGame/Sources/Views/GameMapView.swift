@@ -1,10 +1,10 @@
 import SwiftUI
 import MapKit
 
-/// The live match map: player/decoy blips, the shrinking Standard-mode safe
-/// zone (an `MKCircle` overlay), and the extraction point marker. Built on
-/// `MKMapView` (like `BoundaryMapView`) rather than SwiftUI's older `Map`
-/// API, which on our iOS 16.2 target has no circle-overlay support.
+/// The live match map: player/decoy blips, the fixed outer play-area boundary and (if
+/// enabled) the jail polygon, and the extraction point marker. Built on `MKMapView`
+/// (like `BoundaryMapView`) rather than SwiftUI's older `Map` API, which on our iOS
+/// 16.2 target has no polygon-overlay support.
 struct GameMapView: UIViewRepresentable {
     struct Blip: Identifiable {
         let id: String
@@ -13,7 +13,12 @@ struct GameMapView: UIViewRepresentable {
     }
 
     let players: [Blip]
-    let zone: ZoneUpdate?
+    /// The fixed outer play-area boundary — leaving it triggers the boundary warning/heart
+    /// drain (see checkBoundaryContainment server-side). Unlike the old shrinking zone this
+    /// replaced, this polygon never changes during a match, so it's only ever added once.
+    var boundsPolygon: [Coordinate] = []
+    /// Jail area, only present when the host enabled jail mode at setup.
+    var jailPolygon: [Coordinate]? = nil
     let extractionPoint: Coordinate?
     let decoys: [DecoyBlip]
     var powerUpSpawns: [PowerUpSpawn] = []
@@ -110,19 +115,27 @@ struct GameMapView: UIViewRepresentable {
             mapView.addAnnotations(toAdd)
         }
 
-        if let zone {
-            let existingCircle = mapView.overlays.first as? MKCircle
-            if existingCircle == nil || existingCircle!.coordinate.latitude != zone.center.lat
-                || existingCircle!.coordinate.longitude != zone.center.lng || existingCircle!.radius != zone.radiusMeters {
-                mapView.removeOverlays(mapView.overlays)
-                let circle = MKCircle(
-                    center: CLLocationCoordinate2D(latitude: zone.center.lat, longitude: zone.center.lng),
-                    radius: zone.radiusMeters
+        // Both polygons come from immutable GameSettings — set once at game creation and
+        // never touched again during a match — so unlike the old shrinking zone this
+        // replaced, there's no per-tick reshaping to diff; just add them once.
+        if !context.coordinator.polygonsAdded {
+            context.coordinator.polygonsAdded = true
+            if boundsPolygon.count >= 3 {
+                let boundary = TaggedPolygon(
+                    coordinates: boundsPolygon.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) },
+                    count: boundsPolygon.count
                 )
-                mapView.addOverlay(circle)
+                boundary.kind = .boundary
+                mapView.addOverlay(boundary)
             }
-        } else if !mapView.overlays.isEmpty {
-            mapView.removeOverlays(mapView.overlays)
+            if let jailPolygon, jailPolygon.count >= 3 {
+                let jail = TaggedPolygon(
+                    coordinates: jailPolygon.map { CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng) },
+                    count: jailPolygon.count
+                )
+                jail.kind = .jail
+                mapView.addOverlay(jail)
+            }
         }
 
         if let focusPlayerId, focusPlayerId != context.coordinator.lastFocusedId,
@@ -152,13 +165,20 @@ struct GameMapView: UIViewRepresentable {
         var hasCentered = false
         var lastFocusedId: String?
         var lastRecenterRequest = 0
+        var polygonsAdded = false
         var onSelectSpawn: ((String) -> Void)?
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
-            guard let circle = overlay as? MKCircle else { return MKOverlayRenderer(overlay: overlay) }
-            let renderer = MKCircleRenderer(circle: circle)
-            renderer.strokeColor = UIColor(ADATheme.tacticalAmber)
-            renderer.fillColor = UIColor(ADATheme.tacticalAmber).withAlphaComponent(0.08)
+            guard let polygon = overlay as? TaggedPolygon else { return MKOverlayRenderer(overlay: overlay) }
+            let renderer = MKPolygonRenderer(polygon: polygon)
+            switch polygon.kind {
+            case .boundary:
+                renderer.strokeColor = UIColor(ADATheme.tacticalAmber)
+                renderer.fillColor = UIColor(ADATheme.tacticalAmber).withAlphaComponent(0.05)
+            case .jail:
+                renderer.strokeColor = UIColor(ADATheme.stealthPurple)
+                renderer.fillColor = UIColor(ADATheme.stealthPurple).withAlphaComponent(0.12)
+            }
             renderer.lineWidth = 2
             return renderer
         }
@@ -205,6 +225,14 @@ struct GameMapView: UIViewRepresentable {
             mapView.deselectAnnotation(view.annotation, animated: true)
         }
     }
+}
+
+/// A boundary/jail overlay tagged with which one it is, so the renderer can color them
+/// distinctly (boundary in the same amber the old shrinking zone used, jail in a purple
+/// otherwise unused on this map).
+private final class TaggedPolygon: MKPolygon {
+    enum Kind { case boundary, jail }
+    var kind: Kind = .boundary
 }
 
 private final class BlipAnnotation: NSObject, MKAnnotation {

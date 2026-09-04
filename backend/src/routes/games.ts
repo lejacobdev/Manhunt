@@ -15,18 +15,31 @@ gamesRouter.use(requireAuth);
 
 const pointSchema = z.object({ lat: z.number(), lng: z.number() });
 
-const createSessionSchema = z.object({
-  durationMinutes: z.number().min(5).max(240),
-  radarIntervalSec: z.number().min(15).max(600),
-  boundsPolygon: z.array(pointSchema).min(3),
-  powerUpCount: z.number().min(1).max(30).optional(),
-  mode: z.enum(['STANDARD', 'INFECTION', 'SQUAD']).optional(),
-  // The host plays too — same role choice as anyone joining, no separate
-  // supervisor/observer role forced on them. Host-only admin actions (end
-  // game, override a catch) are authorized via GameSession.hostId instead.
-  role: z.enum(['HUNTER', 'RUNNER', 'SPECTATOR']),
-  squad: z.string().max(40).optional(),
-});
+const createSessionSchema = z
+  .object({
+    durationMinutes: z.number().min(5).max(240),
+    radarIntervalSec: z.number().min(15).max(600),
+    boundsPolygon: z.array(pointSchema).min(3),
+    powerUpCount: z.number().min(1).max(30).optional(),
+    mode: z.enum(['STANDARD', 'INFECTION', 'SQUAD']).optional(),
+    // The host plays too — same role choice as anyone joining, no separate
+    // supervisor/observer role forced on them. Host-only admin actions (end
+    // game, override a catch) are authorized via GameSession.hostId instead.
+    role: z.enum(['HUNTER', 'RUNNER', 'SPECTATOR']),
+    squad: z.string().max(40).optional(),
+    jailEnabled: z.boolean().optional(),
+    jailPolygon: z.array(pointSchema).optional(),
+    gamblingEnabled: z.boolean().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.jailEnabled && (data.jailPolygon?.length ?? 0) < 3) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Draw a jail area with at least 3 points when jail mode is enabled.',
+        path: ['jailPolygon'],
+      });
+    }
+  });
 
 gamesRouter.post('/', async (req: AuthedRequest, res) => {
   const parsed = createSessionSchema.safeParse(req.body);
@@ -42,6 +55,9 @@ gamesRouter.post('/', async (req: AuthedRequest, res) => {
     boundsPolygon: parsed.data.boundsPolygon,
     powerUpCount: parsed.data.powerUpCount,
     mode: parsed.data.mode,
+    jailEnabled: parsed.data.jailEnabled,
+    jailPolygon: parsed.data.jailPolygon,
+    gamblingEnabled: parsed.data.gamblingEnabled,
   });
   const player = await gameService.joinSession(session.id, req.user!.userId, parsed.data.role, parsed.data.squad);
   return res.status(201).json({ session, player });

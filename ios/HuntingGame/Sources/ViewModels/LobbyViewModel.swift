@@ -14,6 +14,9 @@ final class LobbyViewModel: ObservableObject {
     @Published var durationMinutes: Double = 60
     @Published var radarIntervalSec: Double = 120
     @Published var boundaryPoints: [Coordinate] = []
+    @Published var jailEnabled = false
+    @Published var jailPoints: [Coordinate] = []
+    @Published var gamblingEnabled = false
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var activeSession: GameSession?
@@ -38,6 +41,10 @@ final class LobbyViewModel: ObservableObject {
             errorMessage = "Enter a squad name before hosting a SQUAD mode game."
             return
         }
+        if jailEnabled && jailPoints.count < 3 {
+            errorMessage = "Draw a jail area with at least 3 points, or turn jail mode off."
+            return
+        }
         isLoading = true
         defer { isLoading = false }
         do {
@@ -47,7 +54,10 @@ final class LobbyViewModel: ObservableObject {
                 boundsPolygon: boundaryPoints,
                 mode: selectedMode,
                 role: hostRole,
-                squad: selectedMode == .squad ? hostSquadName : nil
+                squad: selectedMode == .squad ? hostSquadName : nil,
+                jailEnabled: jailEnabled,
+                jailPolygon: jailEnabled ? jailPoints : [],
+                gamblingEnabled: gamblingEnabled
             )
             activePlayer = player
             activeSession = session

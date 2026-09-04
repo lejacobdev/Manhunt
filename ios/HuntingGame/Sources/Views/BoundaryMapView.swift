@@ -14,6 +14,9 @@ struct BoundaryMapView: UIViewRepresentable {
     /// recenters on it once, the first time it becomes available — after that the
     /// host is free to pan away to draw a boundary anywhere.
     var userCoordinate: CLLocationCoordinate2D?
+    /// Lets a second instance of this view (e.g. drawing the jail area in step 2 of
+    /// setup) render visually distinct from the outer play-area boundary.
+    var strokeColor: UIColor = .systemGreen
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -72,7 +75,7 @@ struct BoundaryMapView: UIViewRepresentable {
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let polyline = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
             let renderer = MKPolylineRenderer(polyline: polyline)
-            renderer.strokeColor = .systemGreen
+            renderer.strokeColor = parent.strokeColor
             renderer.lineWidth = 3
             return renderer
         }

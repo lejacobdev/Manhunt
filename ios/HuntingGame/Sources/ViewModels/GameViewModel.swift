@@ -27,6 +27,27 @@ final class GameViewModel: ObservableObject {
     @Published var currentHeadingDegrees: Double = 0
     @Published var powerUpSpawns: [PowerUpSpawn] = []
 
+    // MARK: - Hearts / jail / gamble state
+
+    @Published var hearts: Int
+    @Published var isJailed: Bool = false
+    @Published var isOut: Bool = false
+    @Published var eliminationReason: String?
+    /// The runner's own incoming "did you get caught?" popup.
+    @Published var incomingCatchRequest: CatchRequest?
+    /// Hunter-side "was it an accident?" prompt, after a runner taps No.
+    @Published var pendingDenyConfirm: DenyConfirmRequest?
+    /// The hunter's own "waiting for a response" state, keyed by the runner they asked.
+    @Published var pendingCatchRequestRunnerId: String?
+    @Published var isCoinFlipping: Bool = false
+    @Published var gambleChoicePending: GambleChoice?
+    @Published var lastGambleOutcome: GambleResult?
+    @Published var boundaryOutside: Bool = false
+    @Published var boundaryWarning: Bool = false
+    @Published var jailOutside: Bool = false
+    @Published var jailCountdownRemaining: Int?
+    private var jailCountdownTimer: Timer?
+
     private var cancellables = Set<AnyCancellable>()
     private var invisibilityTimer: Timer?
     private var watchSyncTimer: Timer?
@@ -48,6 +69,7 @@ final class GameViewModel: ObservableObject {
         self.mode = session.mode
         self.arrestCode = gamePlayer.arrestCode
         self.isCaught = gamePlayer.isCaught
+        self.hearts = gamePlayer.hearts
         self.gamePlayerId = gamePlayer.id
         self.sessionId = gamePlayer.sessionId
         self.mySquad = gamePlayer.squad
@@ -93,6 +115,7 @@ final class GameViewModel: ObservableObject {
         socket.disconnect()
         invisibilityTimer?.invalidate()
         watchSyncTimer?.invalidate()
+        jailCountdownTimer?.invalidate()
         watchConnectivity.onAction = nil
         watchConnectivity.sendIdle()
         LiveActivityManager.shared.end()
@@ -227,6 +250,131 @@ final class GameViewModel: ObservableObject {
                 HapticsEngine.shared.catchFailed()
             }
             .store(in: &cancellables)
+
+        socket.$incomingCatchRequest
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] request in
+                self?.incomingCatchRequest = request
+                if request != nil { HapticsEngine.shared.lightTap() }
+            }
+            .store(in: &cancellables)
+
+        socket.$pendingDenyConfirm
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] request in
+                self?.pendingDenyConfirm = request
+            }
+            .store(in: &cancellables)
+
+        socket.catchRequestCancelledSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                // Reaches both a runner (their incoming popup should close) and a hunter
+                // (their own "waiting for response" state should clear) — harmless no-op
+                // for whichever side this particular event doesn't apply to.
+                self?.incomingCatchRequest = nil
+                self?.pendingCatchRequestRunnerId = nil
+            }
+            .store(in: &cancellables)
+
+        socket.catchRequestExpiredSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.pendingCatchRequestRunnerId = nil
+            }
+            .store(in: &cancellables)
+
+        socket.gambleResultSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] result in
+                guard let self else { return }
+                self.lastGambleOutcome = result
+                self.isCoinFlipping = false
+                self.gambleChoicePending = nil
+                if result.hunterId == self.gamePlayerId {
+                    if result.heartsLostBy == "HUNTER" {
+                        // Real dip, then heal back — matches what the server actually
+                        // persisted (nothing), purely a visual "took a hit" flourish.
+                        self.hearts = result.hunterHeartsAfterLoss
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.hearts = result.hunterHeartsRemaining }
+                    } else {
+                        self.hearts = result.hunterHeartsRemaining
+                    }
+                }
+                if result.runnerId == self.gamePlayerId {
+                    self.hearts = result.runnerHeartsRemaining
+                }
+                HapticsEngine.shared.lightTap()
+            }
+            .store(in: &cancellables)
+
+        socket.heartsUpdateSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                guard let self, event.playerId == self.gamePlayerId else { return }
+                self.hearts = event.hearts
+                if event.cause == "BOUNDARY" { HapticsEngine.shared.catchFailed() }
+            }
+            .store(in: &cancellables)
+
+        socket.playerJailedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                guard let self, event.runnerId == self.gamePlayerId else { return }
+                self.isCaught = true
+                self.isJailed = true
+                HapticsEngine.shared.catchFailed()
+                self.pushWatchSnapshot()
+            }
+            .store(in: &cancellables)
+
+        socket.playerEliminatedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                guard let self, event.playerId == self.gamePlayerId else { return }
+                self.isOut = true
+                self.eliminationReason = event.reason
+                self.jailCountdownTimer?.invalidate()
+                self.jailCountdownRemaining = nil
+                HapticsEngine.shared.catchFailed()
+                LiveActivityManager.shared.end()
+                self.pushWatchSnapshot()
+            }
+            .store(in: &cancellables)
+
+        socket.boundaryStatusSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                self?.boundaryOutside = event.outside
+                self?.boundaryWarning = event.warning
+            }
+            .store(in: &cancellables)
+
+        socket.jailStatusSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                guard let self else { return }
+                self.jailOutside = event.outside
+                self.jailCountdownTimer?.invalidate()
+                if event.outside, let deadlineMs = event.deadlineMs {
+                    var remaining = deadlineMs / 1000
+                    self.jailCountdownRemaining = remaining
+                    self.jailCountdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+                        Task { @MainActor in
+                            remaining -= 1
+                            if remaining <= 0 {
+                                timer.invalidate()
+                                self?.jailCountdownRemaining = nil
+                            } else {
+                                self?.jailCountdownRemaining = remaining
+                            }
+                        }
+                    }
+                } else {
+                    self.jailCountdownRemaining = nil
+                }
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Power-ups
@@ -257,10 +405,17 @@ final class GameViewModel: ObservableObject {
 
     // MARK: - Catch flow
 
+    /// INFECTION mode keeps the old code-entry sheet; every other mode uses the new
+    /// real-time request the runner answers on their own device.
     func beginCatch(on runnerId: String) {
         HapticsEngine.shared.lightTap()
-        catchTargetId = runnerId
-        catchCodeEntry = ""
+        if mode == .infection {
+            catchTargetId = runnerId
+            catchCodeEntry = ""
+        } else {
+            pendingCatchRequestRunnerId = runnerId
+            socket.requestCatch(runnerId: runnerId)
+        }
     }
 
     func confirmCatch() {
@@ -272,6 +427,47 @@ final class GameViewModel: ObservableObject {
     func cancelCatch() {
         catchTargetId = nil
         catchCodeEntry = ""
+    }
+
+    func cancelPendingCatchRequest() {
+        guard let runnerId = pendingCatchRequestRunnerId else { return }
+        socket.cancelCatchRequest(runnerId: runnerId)
+        pendingCatchRequestRunnerId = nil
+    }
+
+    func acceptCatch() {
+        guard let request = incomingCatchRequest else { return }
+        HapticsEngine.shared.catchFailed()
+        socket.respondToCatch(hunterId: request.hunterId, decision: "accept")
+        incomingCatchRequest = nil
+    }
+
+    func gambleCatch(choice: GambleChoice) {
+        guard let request = incomingCatchRequest else { return }
+        HapticsEngine.shared.lightTap()
+        gambleChoicePending = choice
+        isCoinFlipping = true
+        socket.respondToCatch(hunterId: request.hunterId, decision: "gamble", gambleChoice: choice.rawValue)
+        incomingCatchRequest = nil
+    }
+
+    func denyCatch() {
+        guard let request = incomingCatchRequest else { return }
+        HapticsEngine.shared.lightTap()
+        socket.respondToCatch(hunterId: request.hunterId, decision: "deny")
+        incomingCatchRequest = nil
+    }
+
+    func confirmDenyWasAccidental() {
+        guard let denyConfirm = pendingDenyConfirm else { return }
+        socket.acknowledgeDenyWasAccidental(requestId: denyConfirm.requestId)
+        pendingDenyConfirm = nil
+        pendingCatchRequestRunnerId = nil
+    }
+
+    func dismissGambleResult() {
+        lastGambleOutcome = nil
+        isCoinFlipping = false
     }
 
     // MARK: - Squad mode

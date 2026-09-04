@@ -35,6 +35,9 @@ export interface PlayerState {
   arrestCode: string;
   isCaught: boolean;
   isExtracted: boolean;
+  isJailed: boolean;
+  isOut: boolean;
+  hearts: number;
   inventory: PowerUpType[];
   activeBuffs: Partial<Record<PowerUpType, ActiveBuff>>;
   lastUpdate: number;
@@ -75,6 +78,24 @@ export const MAX_ACCURACY_METERS = 30;
 /** Extraction win condition: a runner within this radius of an extraction point is safe. */
 export const EXTRACTION_RADIUS_METERS = 20;
 
-/** How far outside the current shrinking zone a runner can stray before being auto-caught by it. */
-export const ZONE_GRACE_METERS = 10;
-export const ZONE_GRACE_MS = 20_000;
+/** Starting hearts per role — hunters get more, making it comparatively riskier for a
+ *  runner to gamble away one of their own scarcer hearts. Set explicitly in joinSession;
+ *  the Prisma column default only backfills pre-existing rows. */
+export const HUNTER_STARTING_HEARTS = 5;
+export const RUNNER_STARTING_HEARTS = 3;
+
+/** Boundary ("storm") containment — leaving the outer play-area polygon (either role)
+ *  warns first, then drains a heart every tick while still outside. Replaces the old
+ *  shrinking-zone instant-catch entirely. */
+export const BOUNDARY_BUFFER_METERS = 10;
+export const BOUNDARY_WARNING_GRACE_MS = 8_000;
+export const BOUNDARY_DAMAGE_TICK_MS = 8_000;
+
+/** Jail containment — a jailed runner who strays past jail+buffer gets an urgent
+ *  countdown; failing to return within it is full elimination, not just re-jailing. */
+export const JAIL_BUFFER_METERS = 10;
+export const JAIL_VIOLATION_COUNTDOWN_MS = 10_000;
+
+/** A catch request a runner never answers (backgrounded app, etc.) auto-expires so it
+ *  can't permanently block the hunter from requesting again. */
+export const CATCH_REQUEST_TIMEOUT_MS = 20_000;

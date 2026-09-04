@@ -54,7 +54,7 @@ export function usePowerUp(
   if (!player.inventory.includes(type)) {
     return { ok: false, error: `Player does not hold a ${type} power-up.` };
   }
-  if (player.isCaught) {
+  if (player.isCaught || player.isOut) {
     return { ok: false, error: 'Caught players cannot use power-ups.' };
   }
 

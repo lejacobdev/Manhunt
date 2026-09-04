@@ -65,6 +65,9 @@ struct SpectatorDashboardView: View {
                 }
                 HStack(spacing: 6) {
                     Text(player.role.displayName.uppercased())
+                    if player.role == .hunter || player.role == .runner {
+                        Label("\(player.hearts)", systemImage: "heart.fill")
+                    }
                     Spacer(minLength: 4)
                     statusBadge(for: player)
                 }
@@ -80,7 +83,11 @@ struct SpectatorDashboardView: View {
 
     private func statusBadge(for player: PlayerState) -> some View {
         Group {
-            if player.isExtracted {
+            if player.isOut {
+                Text("OUT").foregroundColor(ADATheme.hunterRed)
+            } else if player.isJailed {
+                Text("JAILED").foregroundColor(ADATheme.tacticalAmber)
+            } else if player.isExtracted {
                 Text("SAFE").foregroundColor(ADATheme.runnerGreen)
             } else if player.isCaught {
                 Text("CAUGHT").foregroundColor(ADATheme.hunterRed)

@@ -14,7 +14,6 @@ final class SocketService: ObservableObject {
     @Published var players: [PlayerState] = []
     @Published var compass: CompassUpdate?
     @Published var radar: RadarBroadcast?
-    @Published var zone: ZoneUpdate?
     @Published var extractionPoint: Coordinate?
     @Published var matchStartedAt: Date?
     @Published var lastCatchFailure: String?
@@ -23,9 +22,14 @@ final class SocketService: ObservableObject {
     @Published var inventory: [PowerUpType] = []
     @Published var isConnected: Bool = false
     @Published var gameOverReason: String?
+    /// The runner's own incoming "did you get caught?" popup.
+    @Published var incomingCatchRequest: CatchRequest?
+    /// Hunter-side "was it an accident?" prompt, after a runner taps No.
+    @Published var pendingDenyConfirm: DenyConfirmRequest?
+    @Published var lastGambleResult: GambleResult?
 
-    /// Fires with the caught player's id whenever a catch/infection/zone event lands.
-    /// hunterId is nil for a zone-enforced catch (no hunter involved).
+    /// Fires with the caught player's id whenever a catch/infection event lands.
+    /// hunterId is nil when no hunter was involved (kept for backward shape compatibility).
     let playerCaughtSubject = PassthroughSubject<(runnerId: String, hunterId: String?, reason: String?), Never>()
     let playerInfectedSubject = PassthroughSubject<(runnerId: String, hunterId: String), Never>()
     let playerExtractedSubject = PassthroughSubject<String, Never>()
@@ -33,6 +37,20 @@ final class SocketService: ObservableObject {
     /// Fires with the spawn's id whenever anyone (not just this player) collects it, so
     /// every client can drop the matching pin from its map.
     let powerUpCollectedSubject = PassthroughSubject<String, Never>()
+    /// Fires on the hunter's own client once their request is stored server-side.
+    let catchRequestSentSubject = PassthroughSubject<(runnerId: String, requestId: String), Never>()
+    /// Fires on the hunter's own client when their request timed out unanswered.
+    let catchRequestExpiredSubject = PassthroughSubject<(runnerId: String, requestId: String), Never>()
+    /// Fires on the runner's own client (carries the hunter's id) whenever their incoming
+    /// request/popup should be dismissed — the hunter cancelled it, confirmed a deny was
+    /// accidental, or it simply expired.
+    let catchRequestCancelledSubject = PassthroughSubject<String, Never>()
+    let gambleResultSubject = PassthroughSubject<GambleResult, Never>()
+    let heartsUpdateSubject = PassthroughSubject<(playerId: String, hearts: Int, cause: String), Never>()
+    let playerJailedSubject = PassthroughSubject<(runnerId: String, hunterId: String), Never>()
+    let playerEliminatedSubject = PassthroughSubject<(playerId: String, role: String, reason: String), Never>()
+    let boundaryStatusSubject = PassthroughSubject<(outside: Bool, warning: Bool), Never>()
+    let jailStatusSubject = PassthroughSubject<(outside: Bool, deadlineMs: Int?), Never>()
 
     private var manager: SocketManager?
     private var socket: SocketIOClient?
@@ -83,7 +101,6 @@ final class SocketService: ObservableObject {
         players = []
         compass = nil
         radar = nil
-        zone = nil
         extractionPoint = nil
         matchStartedAt = nil
         lastCatchFailure = nil
@@ -91,6 +108,9 @@ final class SocketService: ObservableObject {
         lastAntiCheatWarning = nil
         inventory = []
         gameOverReason = nil
+        incomingCatchRequest = nil
+        pendingDenyConfirm = nil
+        lastGambleResult = nil
     }
 
     func sendLocationUpdate(lat: Double, lng: Double, speed: Double, accuracy: Double, battery: Int, isMovingOnFoot: Bool) {
@@ -104,8 +124,31 @@ final class SocketService: ObservableObject {
         ])
     }
 
+    /// INFECTION mode only — every other mode uses the request/accept/gamble flow below.
     func attemptCatch(runnerId: String, arrestCode: String) {
         socket?.emit("attempt_catch", ["runnerId": runnerId, "arrestCode": arrestCode])
+    }
+
+    /// STANDARD/SQUAD catch flow: no arrest code, just a real-time request the runner
+    /// answers on their own device.
+    func requestCatch(runnerId: String) {
+        socket?.emit("request_catch", ["runnerId": runnerId])
+    }
+
+    func cancelCatchRequest(runnerId: String) {
+        socket?.emit("cancel_catch_request", ["runnerId": runnerId])
+    }
+
+    /// The runner's answer to a pending request. `decision` is "accept" | "gamble" | "deny".
+    func respondToCatch(hunterId: String, decision: String, gambleChoice: String? = nil) {
+        var payload: [String: Any] = ["hunterId": hunterId, "decision": decision]
+        if let gambleChoice { payload["gambleChoice"] = gambleChoice }
+        socket?.emit("respond_catch", payload)
+    }
+
+    /// Hunter confirms a runner's "no, that wasn't a catch" really was accidental.
+    func acknowledgeDenyWasAccidental(requestId: String) {
+        socket?.emit("catch_deny_ack", ["requestId": requestId])
     }
 
     func collectPowerUp(spawnId: String) {
@@ -160,11 +203,6 @@ final class SocketService: ObservableObject {
         socket.on("radar_broadcast") { [weak self] data, _ in
             guard let self, let raw = data.first else { return }
             self.radar = Self.decode(raw)
-        }
-
-        socket.on("zone_update") { [weak self] data, _ in
-            guard let self, let raw = data.first else { return }
-            self.zone = Self.decode(raw)
         }
 
         socket.on("extraction_point") { [weak self] data, _ in
@@ -228,6 +266,101 @@ final class SocketService: ObservableObject {
         socket.on("catch_failed") { [weak self] data, _ in
             guard let dict = data.first as? [String: Any] else { return }
             self?.lastCatchFailure = dict["reason"] as? String
+        }
+
+        // MARK: Request/accept/gamble catch flow (STANDARD/SQUAD)
+
+        socket.on("catch_requested") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any],
+                  let requestId = dict["requestId"] as? String,
+                  let hunterId = dict["hunterId"] as? String,
+                  let hunterUsername = dict["hunterUsername"] as? String else { return }
+            self?.incomingCatchRequest = CatchRequest(requestId: requestId, hunterId: hunterId, hunterUsername: hunterUsername)
+        }
+
+        socket.on("catch_request_sent") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any],
+                  let runnerId = dict["runnerId"] as? String,
+                  let requestId = dict["requestId"] as? String else { return }
+            self?.catchRequestSentSubject.send((runnerId, requestId))
+        }
+
+        socket.on("catch_request_expired") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any],
+                  let runnerId = dict["runnerId"] as? String,
+                  let requestId = dict["requestId"] as? String else { return }
+            self.catchRequestExpiredSubject.send((runnerId, requestId))
+            // The hunter's own stale "was it an accident?" prompt (if any) is about this
+            // same request — clear it alongside the "your request timed out" job above.
+            if self.pendingDenyConfirm?.requestId == requestId { self.pendingDenyConfirm = nil }
+        }
+
+        socket.on("catch_request_cancelled") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any], let hunterId = dict["hunterId"] as? String else { return }
+            self.catchRequestCancelledSubject.send(hunterId)
+            self.incomingCatchRequest = nil
+        }
+
+        socket.on("catch_deny_confirm") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any],
+                  let requestId = dict["requestId"] as? String,
+                  let runnerUsername = dict["runnerUsername"] as? String else { return }
+            self?.pendingDenyConfirm = DenyConfirmRequest(requestId: requestId, runnerUsername: runnerUsername)
+        }
+
+        socket.on("gamble_result") { [weak self] data, _ in
+            guard let self, let raw = data.first, let result: GambleResult = Self.decode(raw) else { return }
+            self.lastGambleResult = result
+            self.gambleResultSubject.send(result)
+            if let index = self.players.firstIndex(where: { $0.id == result.hunterId }) {
+                self.players[index].hearts = result.hunterHeartsRemaining
+            }
+            if let index = self.players.firstIndex(where: { $0.id == result.runnerId }) {
+                self.players[index].hearts = result.runnerHeartsRemaining
+            }
+        }
+
+        socket.on("hearts_update") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any],
+                  let playerId = dict["playerId"] as? String,
+                  let hearts = dict["hearts"] as? Int,
+                  let cause = dict["cause"] as? String else { return }
+            self.heartsUpdateSubject.send((playerId, hearts, cause))
+            if let index = self.players.firstIndex(where: { $0.id == playerId }) {
+                self.players[index].hearts = hearts
+            }
+        }
+
+        socket.on("player_jailed") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any],
+                  let runnerId = dict["runnerId"] as? String,
+                  let hunterId = dict["hunterId"] as? String else { return }
+            self.playerJailedSubject.send((runnerId, hunterId))
+            if let index = self.players.firstIndex(where: { $0.id == runnerId }) {
+                self.players[index].isCaught = true
+                self.players[index].isJailed = true
+            }
+        }
+
+        socket.on("player_eliminated") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any],
+                  let playerId = dict["playerId"] as? String,
+                  let role = dict["role"] as? String,
+                  let reason = dict["reason"] as? String else { return }
+            self.playerEliminatedSubject.send((playerId, role, reason))
+            if let index = self.players.firstIndex(where: { $0.id == playerId }) {
+                self.players[index].isOut = true
+            }
+        }
+
+        socket.on("boundary_status") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any], let outside = dict["outside"] as? Bool else { return }
+            self?.boundaryStatusSubject.send((outside, dict["warning"] as? Bool ?? false))
+        }
+
+        socket.on("jail_status") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any], let outside = dict["outside"] as? Bool else { return }
+            self?.jailStatusSubject.send((outside, dict["deadlineMs"] as? Int))
         }
 
         socket.on("error_event") { [weak self] data, _ in

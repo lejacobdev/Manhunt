@@ -106,6 +106,10 @@ struct GameSettings: Codable, Equatable {
     let radarIntervalSec: Int
     let boundsPolygon: [Coordinate]
     let extractionPoint: Coordinate?
+    /// Optional/absent on sessions created before this feature shipped.
+    let jailEnabled: Bool?
+    let jailPolygon: [Coordinate]?
+    let gamblingEnabled: Bool?
 }
 
 struct GameSession: Codable, Identifiable {
@@ -127,6 +131,7 @@ struct GamePlayer: Codable, Identifiable {
     let squad: String?
     let isCaught: Bool
     let arrestCode: String
+    let hearts: Int
 }
 
 /// Live, in-memory state broadcast over the socket for every player in a room.
@@ -145,21 +150,56 @@ struct PlayerState: Codable, Identifiable, Equatable {
     var arrestCode: String
     var isCaught: Bool
     var isExtracted: Bool
+    var isJailed: Bool
+    var isOut: Bool
+    var hearts: Int
     var inventory: [PowerUpType]
 
     static func == (lhs: PlayerState, rhs: PlayerState) -> Bool {
         lhs.id == rhs.id && lhs.lat == rhs.lat && lhs.lng == rhs.lng && lhs.isCaught == rhs.isCaught
             && lhs.isExtracted == rhs.isExtracted && lhs.battery == rhs.battery
+            && lhs.isJailed == rhs.isJailed && lhs.isOut == rhs.isOut && lhs.hearts == rhs.hearts
     }
 }
 
-/// The Standard-mode shrinking safe zone — mirrors backend ZoneService.ZoneState.
-struct ZoneUpdate: Codable {
-    let center: Coordinate
-    let radiusMeters: Double
-    let fullRadiusMeters: Double
-    let finalRadiusMeters: Double
-    let progress: Double
+/// The runner's response to a hunter's catch request, or the hunter's own "is this
+/// accidental?" follow-up — both carry the same `requestId` so a hunter with more than
+/// one pending request out (to different runners) can tell them apart.
+struct CatchRequest: Identifiable, Equatable {
+    let requestId: String
+    let hunterId: String
+    let hunterUsername: String
+    var id: String { requestId }
+}
+
+/// Hunter-side prompt shown after a runner taps "No, that wasn't a catch."
+struct DenyConfirmRequest: Identifiable, Equatable {
+    let requestId: String
+    let runnerUsername: String
+    var id: String { requestId }
+}
+
+enum GambleChoice: String {
+    case heads
+    case tails
+}
+
+/// The server-authoritative outcome of a gamble — both the hunter's and runner's clients
+/// animate their coin flip to the same `result`.
+struct GambleResult: Codable, Equatable {
+    let hunterId: String
+    let runnerId: String
+    let gambleChoice: String
+    let result: String
+    let heartsLostBy: String
+    /// The hunter's baseline going into this gamble (already reflects any prior storm damage).
+    let hunterHeartsBefore: Int
+    /// Transient dip for animation only — equals `hunterHeartsBefore` when the runner lost instead.
+    let hunterHeartsAfterLoss: Int
+    /// Always equals `hunterHeartsBefore` — a hunter's gamble loss heals back immediately.
+    let hunterHeartsRemaining: Int
+    /// Fully persistent — a runner's gamble loss never heals back.
+    let runnerHeartsRemaining: Int
 }
 
 struct DecoyBlip: Codable, Identifiable {

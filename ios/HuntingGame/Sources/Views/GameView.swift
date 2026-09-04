@@ -26,7 +26,8 @@ struct GameView: View {
         ZStack {
             GameMapView(
                 players: mapAnnotations,
-                zone: socket.zone,
+                boundsPolygon: viewModel.sessionSettings.boundsPolygon,
+                jailPolygon: viewModel.sessionSettings.jailPolygon,
                 extractionPoint: socket.extractionPoint,
                 decoys: socket.radar?.decoys ?? [],
                 powerUpSpawns: viewModel.powerUpSpawns,
@@ -63,32 +64,64 @@ struct GameView: View {
             // the radar, it used to render underneath both and never actually show.
             recenterButton
             toastBanner
+            containmentWarningBanner
 
             if socket.gameOverReason != nil {
                 dimScrim
                 gameOverOverlay
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
+            } else if viewModel.isOut {
+                dimScrim
+                eliminatedOverlay
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
             } else if viewModel.isExtracted {
                 dimScrim
                 extractedOverlay
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
-            } else if viewModel.isCaught {
+            } else if viewModel.isCaught && !viewModel.isJailed {
                 dimScrim
                 caughtOverlay
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
             }
 
-            if viewModel.catchTargetId != nil {
+            if viewModel.catchTargetId != nil && viewModel.mode == .infection {
                 dimScrim
                     .onTapGesture { viewModel.cancelCatch() }
                 catchCodeSheet
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+
+            if viewModel.incomingCatchRequest != nil {
+                dimScrim
+                catchRequestPopup
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            if let denyConfirm = viewModel.pendingDenyConfirm {
+                dimScrim
+                denyConfirmSheet(denyConfirm)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            }
+
+            if viewModel.isCoinFlipping || viewModel.lastGambleOutcome != nil {
+                dimScrim
+                CoinFlipView(
+                    myChoice: viewModel.gambleChoicePending,
+                    outcome: viewModel.lastGambleOutcome,
+                    isSelf: viewModel.gamePlayerId,
+                    onContinue: viewModel.dismissGambleResult
+                )
+                .transition(.scale(scale: 0.85).combined(with: .opacity))
+            }
         }
         .animation(ADATheme.ambientSpring, value: viewModel.isCaught)
         .animation(ADATheme.ambientSpring, value: viewModel.isExtracted)
+        .animation(ADATheme.ambientSpring, value: viewModel.isOut)
         .animation(ADATheme.ambientSpring, value: socket.gameOverReason)
         .animation(ADATheme.ambientSpring, value: viewModel.catchTargetId)
+        .animation(ADATheme.controlSpring, value: viewModel.incomingCatchRequest)
+        .animation(ADATheme.controlSpring, value: viewModel.pendingDenyConfirm)
+        .animation(ADATheme.controlSpring, value: viewModel.isCoinFlipping)
         .animation(ADATheme.controlSpring, value: viewModel.role)
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
@@ -228,17 +261,15 @@ struct GameView: View {
                         .font(ADATheme.telemetryFont(size: 12))
                         .foregroundColor(.white.opacity(0.5))
                 }
-                if let zone = socket.zone, viewModel.mode == .standard {
-                    Text("ZONE: \(Int(zone.radiusMeters))M")
-                        .font(ADATheme.telemetryFont(size: 12))
-                        .foregroundColor(ADATheme.tacticalAmber)
-                }
             }
 
             Spacer()
 
             VStack(alignment: .trailing, spacing: 8) {
                 HStack(spacing: 8) {
+                    if viewModel.isJailed {
+                        StatusBadge(icon: "lock.fill", text: "JAILED", tint: ADATheme.tacticalAmber)
+                    }
                     if viewModel.isInvisible {
                         StatusBadge(icon: "eye.slash.fill", text: "STEALTH \(viewModel.invisibilityRemainingSec)s", tint: ADATheme.stealthPurple)
                     }
@@ -280,6 +311,9 @@ struct GameView: View {
     private var leftDockPanels: [AnyView] {
         var panels: [AnyView] = []
         if viewModel.role == .hunter || viewModel.role == .runner {
+            panels.append(AnyView(
+                HeartsRowView(hearts: viewModel.hearts, maxHearts: viewModel.role == .hunter ? 5 : 3)
+            ))
             panels.append(AnyView(
                 PowerUpDeckView(inventory: viewModel.inventory, onActivate: viewModel.usePowerUp, isExpanded: $isEquipmentPanelExpanded)
             ))
@@ -453,6 +487,7 @@ struct GameView: View {
         switch socket.gameOverReason {
         case "TIME_EXPIRED": return "Time expired — the runners survived."
         case "ALL_RUNNERS_RESOLVED": return "All runners caught or extracted."
+        case "ALL_HUNTERS_ELIMINATED": return "All hunters were eliminated — the runners win!"
         case "HOST_ENDED": return "The host ended the match early."
         default: return "The match has ended."
         }
@@ -496,6 +531,149 @@ struct GameView: View {
         .padding(32)
         .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.hunterRed)
         .padding(.horizontal, 40)
+    }
+
+    private var eliminatedOverlay: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "xmark.seal.fill")
+                .font(.system(size: 36, weight: .bold))
+                .foregroundColor(ADATheme.hunterRed)
+                .shadow(color: ADATheme.hunterRed, radius: 12)
+
+            Text("YOU'RE OUT")
+                .font(ADATheme.displayFont(size: 20))
+                .foregroundColor(.white)
+
+            Text(eliminationReasonLabel)
+                .font(ADATheme.uiFont(size: 13, weight: .medium))
+                .foregroundColor(.white.opacity(0.5))
+
+            Text("Spectate the rest of the match from here.")
+                .font(ADATheme.uiFont(size: 13, weight: .medium))
+                .foregroundColor(.white.opacity(0.5))
+        }
+        .padding(32)
+        .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.hunterRed)
+        .padding(.horizontal, 40)
+    }
+
+    private var eliminationReasonLabel: String {
+        switch viewModel.eliminationReason {
+        case "GAMBLE": return "You gambled and lost your last heart."
+        case "BOUNDARY": return "You ran out of hearts outside the play area."
+        case "JAIL_BREACH": return "You didn't make it back to the jail zone in time."
+        default: return "You've been eliminated."
+        }
+    }
+
+    /// The runner's incoming "did you get caught?" popup — the new request-based catch
+    /// flow's core interaction, replacing the hunter's old code-entry sheet.
+    private var catchRequestPopup: some View {
+        VStack(spacing: 16) {
+            Text("DID YOU GET CAUGHT BY \(viewModel.incomingCatchRequest?.hunterUsername.uppercased() ?? "")?")
+                .font(ADATheme.telemetryFont(size: 15))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+
+            if viewModel.sessionSettings.gamblingEnabled == true {
+                Text("Gambling risks a heart, but never sends you to jail.")
+                    .font(ADATheme.uiFont(size: 11, weight: .medium))
+                    .foregroundColor(.white.opacity(0.45))
+            }
+
+            VStack(spacing: 10) {
+                Button {
+                    viewModel.acceptCatch()
+                } label: {
+                    HStack {
+                        Image(systemName: "hand.raised.fill")
+                        Text("YES, I WAS CAUGHT")
+                    }
+                }
+                .buttonStyle(GlowButtonStyle(tint: ADATheme.hunterRed))
+
+                if viewModel.sessionSettings.gamblingEnabled == true {
+                    HStack(spacing: 10) {
+                        Button {
+                            viewModel.gambleCatch(choice: .heads)
+                        } label: {
+                            HStack { Image(systemName: "circle.fill"); Text("GAMBLE: HEADS") }
+                        }
+                        .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
+
+                        Button {
+                            viewModel.gambleCatch(choice: .tails)
+                        } label: {
+                            HStack { Image(systemName: "circle"); Text("GAMBLE: TAILS") }
+                        }
+                        .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
+                    }
+                }
+
+                Button("NO, THAT WASN'T A CATCH") {
+                    viewModel.denyCatch()
+                }
+                .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+            }
+        }
+        .padding(.vertical, 26)
+        .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.hunterRed)
+        .padding(.horizontal, 24)
+    }
+
+    /// Hunter-side follow-up after a runner taps "No" — a genuine disagreement here
+    /// falls back to the host's existing override control, not a new arbitration flow.
+    private func denyConfirmSheet(_ request: DenyConfirmRequest) -> some View {
+        VStack(spacing: 16) {
+            Text("\(request.runnerUsername.uppercased()) SAYS THAT WASN'T A CATCH")
+                .font(ADATheme.telemetryFont(size: 14))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+            Text("Was it an accident?")
+                .font(ADATheme.uiFont(size: 12, weight: .medium))
+                .foregroundColor(.white.opacity(0.5))
+            Button("YES, IT WAS AN ACCIDENT") {
+                viewModel.confirmDenyWasAccidental()
+            }
+            .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
+        }
+        .padding(24)
+        .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.tacticalAmber)
+        .padding(.horizontal, 30)
+    }
+
+    /// A persistent (not auto-dismissing) warning for straying outside the play area or,
+    /// with higher priority, outside the jail zone — clears the instant the server reports
+    /// back inside, no local timer of its own beyond the jail countdown display.
+    private var containmentWarningBanner: some View {
+        VStack {
+            if viewModel.jailOutside {
+                Text("LEAVE THE JAIL ZONE — RETURN IN \(viewModel.jailCountdownRemaining ?? 10)s")
+                    .font(ADATheme.telemetryFont(size: 12))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.hunterRed)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 130)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            } else if viewModel.boundaryOutside {
+                Text("OUTSIDE THE PLAY AREA — RETURN OR LOSE HEARTS")
+                    .font(ADATheme.telemetryFont(size: 12))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.tacticalAmber)
+                    .padding(.horizontal, 24)
+                    .padding(.top, 130)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+            Spacer()
+        }
+        .animation(ADATheme.controlSpring, value: viewModel.jailOutside)
+        .animation(ADATheme.controlSpring, value: viewModel.boundaryOutside)
     }
 
     private var catchCodeSheet: some View {

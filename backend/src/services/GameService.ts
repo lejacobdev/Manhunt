@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateArrestCode, generateGameCode } from '../utils/arrestCode';
 import { overpassSpawner } from './OverpassSpawner';
-import { GameMode, Point2D, PowerUpType } from '../types';
+import { GameMode, HUNTER_STARTING_HEARTS, Point2D, PowerUpType, RUNNER_STARTING_HEARTS } from '../types';
 
 export interface CreateSessionInput {
   hostId: string;
@@ -11,6 +11,9 @@ export interface CreateSessionInput {
   boundsPolygon: Point2D[];
   powerUpCount?: number;
   mode?: GameMode;
+  jailEnabled?: boolean;
+  jailPolygon?: Point2D[];
+  gamblingEnabled?: boolean;
 }
 
 export interface GameSettings {
@@ -18,6 +21,9 @@ export interface GameSettings {
   radarIntervalSec: number;
   boundsPolygon: Point2D[];
   extractionPoint?: Point2D;
+  jailEnabled?: boolean;
+  jailPolygon?: Point2D[];
+  gamblingEnabled?: boolean;
 }
 
 export class GameService {
@@ -42,6 +48,9 @@ export class GameService {
       radarIntervalSec: input.radarIntervalSec,
       boundsPolygon: input.boundsPolygon,
       extractionPoint,
+      jailEnabled: input.jailEnabled ?? false,
+      jailPolygon: input.jailEnabled ? input.jailPolygon : undefined,
+      gamblingEnabled: input.gamblingEnabled ?? false,
     };
 
     const session = await prisma.gameSession.create({
@@ -94,6 +103,8 @@ export class GameService {
     });
     if (existing) return existing;
 
+    const hearts = role === 'HUNTER' ? HUNTER_STARTING_HEARTS : role === 'RUNNER' ? RUNNER_STARTING_HEARTS : 0;
+
     return prisma.gamePlayer.create({
       data: {
         sessionId,
@@ -103,6 +114,7 @@ export class GameService {
         arrestCode: generateArrestCode(),
         inventory: [],
         activeBuffs: {},
+        hearts,
       },
     });
   }
@@ -146,14 +158,52 @@ export class GameService {
     });
   }
 
-  /** Standard mode: a runner caught outside the shrinking safe zone for too long is auto-eliminated by the zone itself. */
-  public async recordZoneCatch(sessionId: string, playerId: string) {
+  /** A runner accepted a catch request — jailed (confined, still in the match) if jail mode
+   *  is on for this session, otherwise resolved exactly like the old code-entry catch. */
+  public async recordCatchAccepted(sessionId: string, hunterPlayerId: string, runnerPlayerId: string, jailed: boolean) {
     await prisma.gamePlayer.update({
-      where: { id: playerId },
-      data: { isCaught: true, caughtAt: new Date() },
+      where: { id: runnerPlayerId },
+      data: { isCaught: true, caughtAt: new Date(), isJailed: jailed },
     });
     return prisma.gameEvent.create({
-      data: { sessionId, type: 'ZONE_SHRINK_CATCH', payload: { playerId, timestamp: new Date().toISOString() } },
+      data: { sessionId, type: 'CATCH', payload: { hunterPlayerId, runnerPlayerId, jailed, timestamp: new Date().toISOString() } },
+    });
+  }
+
+  /** A gamble's final, persisted heart totals — `hunterHeartsAfter` is always the hunter's
+   *  pre-gamble baseline (a hunter's gamble loss heals back immediately; only a runner's
+   *  loss persists), so this write is a no-op for the hunter unless they were unaffected. */
+  public async recordGambleResult(
+    sessionId: string,
+    hunterPlayerId: string,
+    runnerPlayerId: string,
+    gambleChoice: 'heads' | 'tails',
+    result: 'heads' | 'tails',
+    heartsLostBy: 'HUNTER' | 'RUNNER',
+    hunterHeartsAfter: number,
+    runnerHeartsAfter: number
+  ) {
+    await prisma.gamePlayer.update({ where: { id: hunterPlayerId }, data: { hearts: hunterHeartsAfter } });
+    await prisma.gamePlayer.update({ where: { id: runnerPlayerId }, data: { hearts: runnerHeartsAfter } });
+    return prisma.gameEvent.create({
+      data: {
+        sessionId,
+        type: 'GAMBLE',
+        payload: { hunterPlayerId, runnerPlayerId, gambleChoice, result, heartsLostBy, hunterHeartsAfter, runnerHeartsAfter },
+      },
+    });
+  }
+
+  /** Full elimination — either role, via boundary/storm damage, a lost-all-hearts gamble
+   *  (runner only), or breaking jail. Distinct from `isCaught`: a jailed runner is caught
+   *  but not out; this is the terminal "now a spectator" state. */
+  public async recordPlayerOut(sessionId: string, playerId: string, reason: 'GAMBLE' | 'BOUNDARY' | 'JAIL_BREACH') {
+    await prisma.gamePlayer.update({
+      where: { id: playerId },
+      data: { isOut: true, outAt: new Date() },
+    });
+    return prisma.gameEvent.create({
+      data: { sessionId, type: 'PLAYER_OUT', payload: { playerId, reason, timestamp: new Date().toISOString() } },
     });
   }
 

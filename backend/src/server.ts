@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { createServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import * as turf from '@turf/turf';
@@ -14,7 +15,7 @@ import { invitesRouter } from './routes/invites';
 import { prisma } from './lib/prisma';
 import { gameService, GameSettings } from './services/GameService';
 import { checkAccuracy, checkMotion, checkSpeed, checkTeleport } from './services/AntiCheatService';
-import { computeZoneState, distanceOutsideZone } from './services/ZoneService';
+import { distanceOutsidePolygonMeters } from './services/BoundaryService';
 import {
   DecoyMap,
   currentDecoyPosition,
@@ -27,16 +28,20 @@ import {
 } from './services/PowerUpService';
 import {
   AuthTokenPayload,
+  BOUNDARY_BUFFER_METERS,
+  BOUNDARY_DAMAGE_TICK_MS,
+  BOUNDARY_WARNING_GRACE_MS,
+  CATCH_REQUEST_TIMEOUT_MS,
   CATCH_VERIFICATION_RADIUS_METERS,
   POWER_UP_COLLECTION_RADIUS_METERS,
   EXTRACTION_RADIUS_METERS,
   GameMode,
+  JAIL_BUFFER_METERS,
+  JAIL_VIOLATION_COUNTDOWN_MS,
   PlayerState,
   PowerUpType,
   THERMAL_VISION_INTERVAL_MS,
   THERMAL_VISION_RADIUS_METERS,
-  ZONE_GRACE_MS,
-  ZONE_GRACE_METERS,
 } from './types';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-do-not-use-in-production';
@@ -75,8 +80,18 @@ export const sessionSettingsCache: Map<string, GameSettings> = new Map();
 export const sessionStartedAtCache: Map<string, number> = new Map();
 // roomCode -> ghost decoys currently live
 const decoys: DecoyMap = new Map();
-// roomCode -> gamePlayerId -> epoch ms of when they were first detected outside the shrinking zone
-const zoneViolationSince: Map<string, Map<string, number>> = new Map();
+// roomCode -> gamePlayerId -> epoch ms of when they were first detected outside the outer
+// boundary polygon (either role) — drives the boundary "storm" warning + heart drain.
+const boundaryViolationSince: Map<string, Map<string, number>> = new Map();
+// roomCode -> gamePlayerId -> epoch ms of the last boundary damage tick applied to them
+const boundaryLastDamageAt: Map<string, Map<string, number>> = new Map();
+// roomCode -> gamePlayerId -> epoch ms of when a jailed runner was first detected outside
+// the jail polygon — a 10s countdown from this moment, not a slow drain like the boundary.
+const jailViolationSince: Map<string, Map<string, number>> = new Map();
+// roomCode -> runnerId -> the one pending catch request targeting them (a runner can only
+// be asked about one catch at a time; a hunter, however, may have requests out to several
+// runners at once, hence requestId to disambiguate which one a later deny-confirm is about).
+const pendingCatchRequests: Map<string, Map<string, { requestId: string; hunterId: string; hunterUsername: string; requestedAt: number }>> = new Map();
 // roomCode -> the session's host userId, so host-only admin actions (end game, override a
 // catch) can be authorized without a separate SUPERVISOR role — the host plays a normal
 // role (hunter/runner/spectator) and keeps these powers regardless of which one.
@@ -175,6 +190,10 @@ io.on('connection', (socket: Socket) => {
       }
 
       socket.join(roomCode);
+      // A personal room keyed by the player's own id — lets 1:1 events (a catch request,
+      // a gamble result, a personal boundary/jail warning) target exactly one player via
+      // io.to(gamePlayerId).emit(...) without needing to track socket ids directly.
+      socket.join(gamePlayerId);
       socket.data.roomCode = roomCode;
       socket.data.gamePlayerId = gamePlayerId;
       sessionModes.set(roomCode, gamePlayer.session.mode as GameMode);
@@ -202,6 +221,9 @@ io.on('connection', (socket: Socket) => {
         arrestCode: gamePlayer.arrestCode,
         isCaught: gamePlayer.isCaught,
         isExtracted: gamePlayer.isExtracted,
+        isJailed: gamePlayer.isJailed,
+        isOut: gamePlayer.isOut,
+        hearts: gamePlayer.hearts,
         inventory: (gamePlayer.inventory as PowerUpType[]) ?? [],
         activeBuffs: {},
         lastUpdate: Date.now(),
@@ -257,7 +279,9 @@ io.on('connection', (socket: Socket) => {
       const session = activeSessions.get(roomCode);
       if (!session || !session.has(gamePlayerId)) return;
       const p = session.get(gamePlayerId)!;
-      if (p.isCaught || p.isExtracted) return;
+      // A jailed runner must keep reporting location so jail containment can still be
+      // checked — everything else that's caught (non-jailed) or fully out stops here.
+      if ((p.isCaught && !p.isJailed) || p.isExtracted || p.isOut) return;
 
       pruneExpiredBuffs(p);
 
@@ -302,10 +326,16 @@ io.on('connection', (socket: Socket) => {
       const gameSessionId = await resolveSessionId(roomCode);
 
       if (p.role === 'RUNNER' && gameSessionId) {
-        await checkExtraction(roomCode, gameSessionId, p, session, mode);
-        if (mode === 'STANDARD' && !p.isCaught && !p.isExtracted) {
-          await checkZoneContainment(roomCode, gameSessionId, p, session);
+        if (p.isJailed) {
+          await checkJailContainment(roomCode, gameSessionId, p, session);
+        } else if (!p.isCaught && !p.isExtracted && !p.isOut) {
+          await checkExtraction(roomCode, gameSessionId, p, session, mode);
+          if (!p.isExtracted && mode !== 'INFECTION') {
+            await checkBoundaryContainment(roomCode, gameSessionId, p, session, mode);
+          }
         }
+      } else if (p.role === 'HUNTER' && gameSessionId && mode !== 'INFECTION' && !p.isOut) {
+        await checkBoundaryContainment(roomCode, gameSessionId, p, session, mode);
       }
 
       const allPlayers = Array.from(session.values());
@@ -318,11 +348,14 @@ io.on('connection', (socket: Socket) => {
       // A hunter can pick up and use INVISIBILITY_10MIN too — spawns aren't role-restricted
       // — so the runner's compass has to exclude an invisible hunter the same way the
       // hunter's own radar already excludes an invisible runner, or "invisibility" only
-      // works for one direction of the matchup.
+      // works for one direction of the matchup. !isOut excludes an eliminated player of
+      // either role from threatening/appearing to the other side.
       const hunters = allPlayers.filter(
-        (x) => x.role === 'HUNTER' && hasFix(x) && !isBuffActive(x, 'INVISIBILITY_10MIN')
+        (x) => x.role === 'HUNTER' && hasFix(x) && !x.isOut && !isBuffActive(x, 'INVISIBILITY_10MIN')
       );
-      const runners = allPlayers.filter((x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted && hasFix(x));
+      const runners = allPlayers.filter(
+        (x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted && !x.isOut && hasFix(x)
+      );
 
       if (p.role === 'RUNNER' && !p.isCaught && hunters.length > 0) {
         let minDist = Infinity;
@@ -448,6 +481,218 @@ io.on('connection', (socket: Socket) => {
       }
     }
   );
+
+  /**
+   * STANDARD/SQUAD replacement for the code-entry attempt_catch above: no arrest code,
+   * just a real-time request the runner has to answer (accept / gamble / deny). Same
+   * proximity/role/squad/safe-zone validation as attempt_catch, minus the code check.
+   */
+  socket.on('request_catch', async ({ runnerId }: { runnerId: string }) => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const hunterId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !hunterId) return;
+
+    const session = activeSessions.get(roomCode);
+    if (!session) return;
+    const hunter = session.get(hunterId);
+    const runner = session.get(runnerId);
+    const mode = sessionModes.get(roomCode) ?? 'STANDARD';
+
+    if (!hunter) return;
+    if (mode === 'INFECTION') {
+      socket.emit('catch_failed', { reason: 'This match uses the code-entry catch flow.' });
+      return;
+    }
+
+    if (mode === 'SQUAD') {
+      if (!hunter.squad || !runner?.squad || hunter.squad === runner.squad) {
+        socket.emit('catch_failed', { reason: 'Squad mode: you can only tag members of other squads.' });
+        return;
+      }
+    } else if (hunter.role !== 'HUNTER') {
+      socket.emit('catch_failed', { reason: 'Only hunters may attempt a catch.' });
+      return;
+    }
+
+    if (!runner || runner.isCaught || runner.isExtracted || runner.isOut) {
+      socket.emit('catch_failed', { reason: 'Target is not an active runner.' });
+      return;
+    }
+
+    const distance = turf.distance(turf.point([hunter.lng, hunter.lat]), turf.point([runner.lng, runner.lat]), {
+      units: 'meters',
+    });
+    if (distance > CATCH_VERIFICATION_RADIUS_METERS) {
+      socket.emit('catch_failed', {
+        reason: `Physical distance (${Math.round(distance)}m) exceeds ${CATCH_VERIFICATION_RADIUS_METERS}m verification radius.`,
+      });
+      return;
+    }
+    if (isWithinAnySafeZone(session, { lat: runner.lat, lng: runner.lng })) {
+      socket.emit('catch_failed', { reason: 'Target is protected inside an active safe zone.' });
+      return;
+    }
+
+    const requests = pendingCatchRequests.get(roomCode) ?? new Map();
+    pendingCatchRequests.set(roomCode, requests);
+    const existing = requests.get(runnerId);
+    if (existing && existing.hunterId !== hunterId) {
+      socket.emit('catch_failed', { reason: 'Another hunter already has a pending request with this runner.' });
+      return;
+    }
+
+    const requestId = randomUUID();
+    requests.set(runnerId, { requestId, hunterId, hunterUsername: hunter.username, requestedAt: Date.now() });
+    socket.emit('catch_request_sent', { runnerId, requestId });
+    io.to(runnerId).emit('catch_requested', { requestId, hunterId, hunterUsername: hunter.username });
+  });
+
+  /** Hunter-initiated cancel of their own pending request. */
+  socket.on('cancel_catch_request', ({ runnerId }: { runnerId: string }) => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const hunterId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !hunterId) return;
+    const requests = pendingCatchRequests.get(roomCode);
+    const pending = requests?.get(runnerId);
+    if (!pending || pending.hunterId !== hunterId) return;
+    requests!.delete(runnerId);
+    io.to(runnerId).emit('catch_request_cancelled', { hunterId });
+  });
+
+  /** The runner's answer to a pending catch request: accept it, gamble on it, or deny it. */
+  socket.on(
+    'respond_catch',
+    async ({
+      hunterId,
+      decision,
+      gambleChoice,
+    }: {
+      hunterId: string;
+      decision: 'accept' | 'gamble' | 'deny';
+      gambleChoice?: 'heads' | 'tails';
+    }) => {
+      const roomCode = socket.data.roomCode as string | undefined;
+      const runnerId = socket.data.gamePlayerId as string | undefined;
+      if (!roomCode || !runnerId) return;
+      const session = activeSessions.get(roomCode);
+      if (!session) return;
+      const requests = pendingCatchRequests.get(roomCode);
+      const pending = requests?.get(runnerId);
+      if (!pending || pending.hunterId !== hunterId) {
+        socket.emit('error_event', { reason: 'No pending catch request from that hunter.' });
+        return;
+      }
+      const runner = session.get(runnerId);
+      const hunter = session.get(hunterId);
+      if (!runner || !hunter) return;
+
+      if (decision === 'deny') {
+        // Doesn't resolve anything — hands it to the hunter to confirm it was accidental.
+        // The pending entry stays exactly as it is; a genuine disagreement (the hunter
+        // won't confirm) just falls back to the host's existing host_override control,
+        // or the stale-request sweep eventually clears it.
+        io.to(hunter.id).emit('catch_deny_confirm', { requestId: pending.requestId, runnerUsername: runner.username });
+        return;
+      }
+
+      requests!.delete(runnerId);
+      const gameSessionId = await resolveSessionId(roomCode);
+      if (!gameSessionId) return;
+      const settings = sessionSettingsCache.get(roomCode);
+      const mode = sessionModes.get(roomCode) ?? 'STANDARD';
+
+      if (decision === 'accept') {
+        const jail = !!settings?.jailEnabled;
+        runner.isCaught = true;
+        runner.isJailed = jail;
+        await gameService.recordCatchAccepted(gameSessionId, hunter.id, runner.id, jail);
+        if (jail) {
+          io.to(roomCode).emit('player_jailed', { runnerId: runner.id, hunterId: hunter.id, timestamp: new Date().toISOString() });
+        } else {
+          io.to(roomCode).emit('player_caught', { runnerId: runner.id, hunterId: hunter.id, timestamp: new Date().toISOString() });
+        }
+        await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+        return;
+      }
+
+      // decision === 'gamble'
+      if (!settings?.gamblingEnabled || !gambleChoice) {
+        socket.emit('error_event', { reason: 'Gambling is not enabled for this match.' });
+        return;
+      }
+      const result: 'heads' | 'tails' = Math.random() < 0.5 ? 'heads' : 'tails';
+      const runnerWins = gambleChoice === result;
+      const heartsLostBy: 'HUNTER' | 'RUNNER' = runnerWins ? 'HUNTER' : 'RUNNER';
+
+      // The hunter's own baseline going into this gamble — already reflects any prior
+      // boundary damage. A hunter's loss always heals back to this exact value; only a
+      // runner's loss is ever allowed to persist.
+      const hunterHeartsBefore = hunter.hearts;
+      let hunterHeartsAfterLoss = hunter.hearts;
+
+      if (runnerWins) {
+        hunterHeartsAfterLoss = Math.max(0, hunterHeartsBefore - 1);
+        hunter.hearts = hunterHeartsBefore; // heal-back — the persisted value never actually changes
+      } else {
+        runner.hearts = Math.max(0, runner.hearts - 1);
+      }
+
+      await gameService.recordGambleResult(
+        gameSessionId,
+        hunter.id,
+        runner.id,
+        gambleChoice,
+        result,
+        heartsLostBy,
+        hunter.hearts,
+        runner.hearts
+      );
+
+      io.to(roomCode).emit('gamble_result', {
+        hunterId: hunter.id,
+        runnerId: runner.id,
+        gambleChoice,
+        result,
+        heartsLostBy,
+        hunterHeartsBefore,
+        hunterHeartsAfterLoss,
+        hunterHeartsRemaining: hunter.hearts,
+        runnerHeartsRemaining: runner.hearts,
+        timestamp: new Date().toISOString(),
+      });
+
+      // A hunter can never reach 0 via gambling alone (the loss always heals) — only a
+      // runner can be eliminated on this path.
+      if (runner.hearts <= 0) {
+        runner.isOut = true;
+        await gameService.recordPlayerOut(gameSessionId, runner.id, 'GAMBLE');
+        io.to(roomCode).emit('player_eliminated', {
+          playerId: runner.id,
+          role: 'RUNNER',
+          reason: 'GAMBLE',
+          timestamp: new Date().toISOString(),
+        });
+        await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+      }
+    }
+  );
+
+  /** Hunter confirms a runner's "no, that wasn't a catch" really was accidental — drops the
+   *  pending request with no consequence to either side. */
+  socket.on('catch_deny_ack', ({ requestId }: { requestId: string }) => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const hunterId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !hunterId) return;
+    const requests = pendingCatchRequests.get(roomCode);
+    if (!requests) return;
+    for (const [runnerId, req] of requests.entries()) {
+      if (req.requestId === requestId && req.hunterId === hunterId) {
+        requests.delete(runnerId);
+        io.to(runnerId).emit('catch_request_cancelled', { hunterId });
+        break;
+      }
+    }
+  });
 
   /** Squad mode: revive a caught teammate within arm's reach. */
   socket.on('revive_teammate', async ({ targetId }: { targetId: string }) => {
@@ -630,9 +875,28 @@ function cleanupSocket(socket: Socket) {
       sessionStartedAtCache.delete(roomCode);
       sessionHostCache.delete(roomCode);
       decoys.delete(roomCode);
-      zoneViolationSince.delete(roomCode);
+      boundaryViolationSince.delete(roomCode);
+      boundaryLastDamageAt.delete(roomCode);
+      jailViolationSince.delete(roomCode);
+      pendingCatchRequests.delete(roomCode);
     }
   }
+
+  // A leaving player might be the target or the requester of a pending catch request —
+  // either way it no longer makes sense to leave it live.
+  const requests = pendingCatchRequests.get(roomCode);
+  if (requests) {
+    requests.delete(gamePlayerId);
+    for (const [runnerId, req] of Array.from(requests.entries())) {
+      if (req.hunterId === gamePlayerId) {
+        requests.delete(runnerId);
+        io.to(runnerId).emit('catch_request_cancelled', { hunterId: gamePlayerId });
+      }
+    }
+  }
+  boundaryViolationSince.get(roomCode)?.delete(gamePlayerId);
+  boundaryLastDamageAt.get(roomCode)?.delete(gamePlayerId);
+  jailViolationSince.get(roomCode)?.delete(gamePlayerId);
   lastFix.delete(gamePlayerId);
 }
 
@@ -706,30 +970,91 @@ async function checkExtraction(
   }
 }
 
-/** Standard mode: auto-catches a runner who has strayed outside the shrinking safe zone for too long. */
-async function checkZoneContainment(
+/**
+ * Boundary ("storm") containment — replaces the old shrinking-zone auto-catch. Applies to
+ * both roles: outside the fixed outer boundsPolygon (+ GPS buffer) for a warning grace
+ * period, then loses a heart every damage tick while still outside. Returning inside stops
+ * it. Reaching 0 hearts this way is a full elimination (isOut), not an instant catch.
+ */
+async function checkBoundaryContainment(
+  roomCode: string,
+  gameSessionId: string,
+  player: PlayerState,
+  session: Map<string, PlayerState>,
+  mode: GameMode
+) {
+  const settings = sessionSettingsCache.get(roomCode);
+  if (!settings) return;
+
+  const outsideBy = distanceOutsidePolygonMeters({ lat: player.lat, lng: player.lng }, settings.boundsPolygon);
+  const effectiveBuffer = Math.max(BOUNDARY_BUFFER_METERS, player.accuracy);
+  const violations = boundaryViolationSince.get(roomCode) ?? new Map<string, number>();
+  boundaryViolationSince.set(roomCode, violations);
+  const ticks = boundaryLastDamageAt.get(roomCode) ?? new Map<string, number>();
+  boundaryLastDamageAt.set(roomCode, ticks);
+
+  if (outsideBy <= effectiveBuffer) {
+    if (violations.delete(player.id)) {
+      ticks.delete(player.id);
+      io.to(player.id).emit('boundary_status', { outside: false });
+    }
+    return;
+  }
+
+  const now = Date.now();
+  const since = violations.get(player.id);
+  if (!since) {
+    violations.set(player.id, now);
+    io.to(player.id).emit('boundary_status', { outside: true, warning: true });
+    return;
+  }
+  if (now - since < BOUNDARY_WARNING_GRACE_MS) return;
+  const lastDamage = ticks.get(player.id) ?? since;
+  if (now - lastDamage < BOUNDARY_DAMAGE_TICK_MS) return;
+  ticks.set(player.id, now);
+
+  player.hearts = Math.max(0, player.hearts - 1);
+  await prisma.gamePlayer.update({ where: { id: player.id }, data: { hearts: player.hearts } });
+  io.to(roomCode).emit('hearts_update', { playerId: player.id, hearts: player.hearts, cause: 'BOUNDARY' });
+
+  if (player.hearts <= 0) {
+    violations.delete(player.id);
+    ticks.delete(player.id);
+    player.isOut = true;
+    await gameService.recordPlayerOut(gameSessionId, player.id, 'BOUNDARY');
+    io.to(roomCode).emit('player_eliminated', {
+      playerId: player.id,
+      role: player.role,
+      reason: 'BOUNDARY',
+      timestamp: new Date().toISOString(),
+    });
+    if (player.role === 'HUNTER') {
+      await checkHunterEliminationWinCondition(roomCode, gameSessionId, session, mode);
+    } else {
+      await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+    }
+  }
+}
+
+/** A jailed runner who strays outside jail+buffer gets an urgent countdown (not a slow
+ *  drain like the boundary) — failing to return in time is a full elimination, not
+ *  re-jailing. Runner-only: hunters are never jailed. */
+async function checkJailContainment(
   roomCode: string,
   gameSessionId: string,
   runner: PlayerState,
   session: Map<string, PlayerState>
 ) {
   const settings = sessionSettingsCache.get(roomCode);
-  const startedAtMs = sessionStartedAtCache.get(roomCode);
-  if (!settings || !startedAtMs) return;
+  if (!settings?.jailEnabled || !settings.jailPolygon || !runner.isJailed) return;
 
-  const zone = computeZoneState(settings.boundsPolygon, new Date(startedAtMs), settings.durationMinutes);
-  const outsideBy = distanceOutsideZone({ lat: runner.lat, lng: runner.lng }, zone);
+  const outsideBy = distanceOutsidePolygonMeters({ lat: runner.lat, lng: runner.lng }, settings.jailPolygon);
+  const effectiveBuffer = Math.max(JAIL_BUFFER_METERS, runner.accuracy);
+  const violations = jailViolationSince.get(roomCode) ?? new Map<string, number>();
+  jailViolationSince.set(roomCode, violations);
 
-  const violations = zoneViolationSince.get(roomCode) ?? new Map<string, number>();
-  zoneViolationSince.set(roomCode, violations);
-
-  // The flat 10m grace band doesn't account for the fix's own reported GPS error — a
-  // runner standing still with 20-30m of horizontal accuracy (normal in tree cover or
-  // near buildings) can read as having "left" the zone purely from GPS noise, and get
-  // auto-caught without ever having moved. Widen the tolerance to whichever is bigger.
-  const effectiveGrace = Math.max(ZONE_GRACE_METERS, runner.accuracy);
-  if (outsideBy <= effectiveGrace) {
-    violations.delete(runner.id);
+  if (outsideBy <= effectiveBuffer) {
+    if (violations.delete(runner.id)) io.to(runner.id).emit('jail_status', { outside: false });
     return;
   }
 
@@ -737,21 +1062,22 @@ async function checkZoneContainment(
   const since = violations.get(runner.id);
   if (!since) {
     violations.set(runner.id, now);
+    io.to(runner.id).emit('jail_status', { outside: true, deadlineMs: JAIL_VIOLATION_COUNTDOWN_MS });
     return;
   }
+  if (now - since < JAIL_VIOLATION_COUNTDOWN_MS) return;
 
-  if (now - since >= ZONE_GRACE_MS) {
-    violations.delete(runner.id);
-    runner.isCaught = true;
-    await gameService.recordZoneCatch(gameSessionId, runner.id);
-    io.to(roomCode).emit('player_caught', {
-      runnerId: runner.id,
-      hunterId: null,
-      reason: 'ZONE',
-      timestamp: new Date().toISOString(),
-    });
-    await checkStandardWinCondition(roomCode, gameSessionId, session, 'STANDARD');
-  }
+  violations.delete(runner.id);
+  runner.isOut = true;
+  runner.isJailed = false;
+  await gameService.recordPlayerOut(gameSessionId, runner.id, 'JAIL_BREACH');
+  io.to(roomCode).emit('player_eliminated', {
+    playerId: runner.id,
+    role: 'RUNNER',
+    reason: 'JAIL_BREACH',
+    timestamp: new Date().toISOString(),
+  });
+  await checkStandardWinCondition(roomCode, gameSessionId, session, sessionModes.get(roomCode) ?? 'STANDARD');
 }
 
 async function checkStandardWinCondition(
@@ -760,14 +1086,35 @@ async function checkStandardWinCondition(
   session: Map<string, PlayerState>,
   mode: GameMode
 ) {
-  if (mode !== 'STANDARD') return;
+  // Widened from STANDARD-only: this previously silently no-op'd for SQUAD mode entirely
+  // (a pre-existing gap), which would leave SQUAD matches with the new hearts/jail system
+  // unable to ever end via elimination.
+  if (mode !== 'STANDARD' && mode !== 'SQUAD') return;
   const activeRunners = Array.from(session.values()).filter(
-    (x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted
+    (x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted && !x.isOut
   );
   if (activeRunners.length === 0) {
     await gameService.endSession(gameSessionId);
     sessionStartedAtCache.delete(roomCode);
     io.to(roomCode).emit('game_over', { reason: 'ALL_RUNNERS_RESOLVED' });
+  }
+}
+
+/** New win condition: if every hunter has been eliminated (boundary damage only — gambling
+ *  never eliminates a hunter, see the heal-back logic in respond_catch), the runners win
+ *  early. Only ever called right after a hunter's isOut actually flips true. */
+async function checkHunterEliminationWinCondition(
+  roomCode: string,
+  gameSessionId: string,
+  session: Map<string, PlayerState>,
+  mode: GameMode
+) {
+  if (mode === 'INFECTION') return;
+  const activeHunters = Array.from(session.values()).filter((x) => x.role === 'HUNTER' && !x.isOut);
+  if (activeHunters.length === 0) {
+    await gameService.endSession(gameSessionId);
+    sessionStartedAtCache.delete(roomCode);
+    io.to(roomCode).emit('game_over', { reason: 'ALL_HUNTERS_ELIMINATED' });
   }
 }
 
@@ -789,18 +1136,21 @@ async function endMatchIfExpired(roomCode: string): Promise<boolean> {
 }
 
 // Periodically flush buffered location fixes to Postgres for post-game analytics/replay,
-// broadcast the current shrinking-zone state for Standard-mode matches, and act as a
-// backstop for match-timer expiry in case no player sent a location update right at the deadline.
+// expire stale catch requests a runner never answered, and act as a backstop for
+// match-timer expiry in case no player sent a location update right at the deadline.
 setInterval(async () => {
   for (const roomCode of activeSessions.keys()) {
     if (await endMatchIfExpired(roomCode)) continue;
+  }
 
-    const mode = sessionModes.get(roomCode);
-    const settings = sessionSettingsCache.get(roomCode);
-    const startedAtMs = sessionStartedAtCache.get(roomCode);
-    if (mode === 'STANDARD' && settings && startedAtMs) {
-      const zone = computeZoneState(settings.boundsPolygon, new Date(startedAtMs), settings.durationMinutes);
-      io.to(roomCode).emit('zone_update', zone);
+  const now = Date.now();
+  for (const [roomCode, requests] of pendingCatchRequests.entries()) {
+    for (const [runnerId, req] of Array.from(requests.entries())) {
+      if (now - req.requestedAt >= CATCH_REQUEST_TIMEOUT_MS) {
+        requests.delete(runnerId);
+        io.to(req.hunterId).emit('catch_request_expired', { runnerId, requestId: req.requestId });
+        io.to(runnerId).emit('catch_request_cancelled', { hunterId: req.hunterId });
+      }
     }
   }
 

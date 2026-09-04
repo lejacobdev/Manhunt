@@ -79,6 +79,9 @@ struct HostControlPanelView: View {
             }
             HStack(spacing: 6) {
                 Label("\(player.battery)%", systemImage: batteryIcon(for: player.battery))
+                if player.role == .hunter || player.role == .runner {
+                    Label("\(player.hearts)", systemImage: "heart.fill")
+                }
                 Spacer(minLength: 4)
                 statusBadge(for: player)
                 if player.role == .hunter || player.role == .runner {
@@ -101,7 +104,13 @@ struct HostControlPanelView: View {
 
     private func statusBadge(for player: PlayerState) -> some View {
         Group {
-            if player.isExtracted {
+            if player.isOut {
+                Text("OUT")
+                    .foregroundColor(ADATheme.hunterRed)
+            } else if player.isJailed {
+                Text("JAILED")
+                    .foregroundColor(ADATheme.tacticalAmber)
+            } else if player.isExtracted {
                 Text("SAFE")
                     .foregroundColor(ADATheme.runnerGreen)
             } else if player.isCaught {

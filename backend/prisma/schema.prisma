@@ -150,6 +150,10 @@ model GamePlayer {
   batteryLevel Int        @default(100)
   inventory    Json       @default("[]")
   activeBuffs  Json       @default("{}")
+  hearts       Int        @default(3)
+  isJailed     Boolean    @default(false)
+  isOut        Boolean    @default(false)
+  outAt        DateTime?
   joinedAt     DateTime   @default(now())
 
   session GameSession @relation(fields: [sessionId], references: [id])
