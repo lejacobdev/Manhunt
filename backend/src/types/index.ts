@@ -61,6 +61,9 @@ export const MAX_HUMAN_SPEED_MPS = 9.72; // ~35 km/h sprint ceiling for anti-che
 export const ADRENALINE_SPEED_MPS = 12.5; // raised ceiling while ADRENALINE is active
 export const SAFE_ZONE_RADIUS_METERS = 30;
 export const CATCH_VERIFICATION_RADIUS_METERS = 15;
+/** Power-up pickup is lower-stakes than a catch, so it gets a more forgiving base radius
+ *  — the actual check also widens this by the collector's own reported GPS accuracy. */
+export const POWER_UP_COLLECTION_RADIUS_METERS = 25;
 export const EMP_JAMMER_RADIUS_METERS = 200;
 export const THERMAL_VISION_RADIUS_METERS = 300;
 export const THERMAL_VISION_INTERVAL_MS = 1000;

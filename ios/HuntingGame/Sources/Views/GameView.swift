@@ -16,6 +16,7 @@ struct GameView: View {
     @State private var isEquipmentPanelExpanded = false
     /// Bumped by the "recenter on me" button; see `GameMapView.recenterRequest`.
     @State private var recenterRequestToken = 0
+    @State private var toastDismissWorkItem: DispatchWorkItem?
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
@@ -57,6 +58,7 @@ struct GameView: View {
             // Drawn after (so on top of) the dock/radar above — on the right, behind
             // the radar, it used to render underneath both and never actually show.
             recenterButton
+            toastBanner
 
             if socket.gameOverReason != nil {
                 dimScrim
@@ -89,21 +91,13 @@ struct GameView: View {
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
             now = tick
         }
-        .alert("Catch failed", isPresented: Binding(
-            get: { viewModel.showCatchFailure != nil },
-            set: { if !$0 { viewModel.showCatchFailure = nil } }
-        )) {
-            Button("OK", role: .cancel) { viewModel.showCatchFailure = nil }
-        } message: {
-            Text(viewModel.showCatchFailure ?? "")
-        }
-        .alert("Notice", isPresented: Binding(
-            get: { socket.lastErrorMessage != nil },
-            set: { if !$0 { socket.lastErrorMessage = nil } }
-        )) {
-            Button("OK", role: .cancel) { socket.lastErrorMessage = nil }
-        } message: {
-            Text(socket.lastErrorMessage ?? "")
+        // Transient notices (a failed catch, "too far to collect", anti-cheat warnings)
+        // auto-dismiss instead of blocking on a tap — a modal alert mid-chase is exactly
+        // the wrong interaction for something the player should just glance at and keep
+        // moving. Both sources funnel into the one toast banner below.
+        .onChange(of: activeToastMessage) { newValue in
+            guard newValue != nil else { return }
+            scheduleToastDismiss()
         }
     }
 
@@ -141,6 +135,52 @@ struct GameView: View {
             // Clears a collapsed left-column dock panel sitting below it.
             .padding(.bottom, 92)
         }
+    }
+
+    /// A failed catch or a server-rejected action ("too far to collect"), shown as a
+    /// brief non-blocking banner rather than a modal alert — see `scheduleToastDismiss`.
+    private var activeToastMessage: String? {
+        viewModel.showCatchFailure ?? socket.lastErrorMessage
+    }
+
+    private var toastBanner: some View {
+        VStack {
+            if let message = activeToastMessage {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 13, weight: .bold))
+                    Text(message)
+                        .font(ADATheme.uiFont(size: 12, weight: .semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .foregroundColor(ADATheme.tacticalAmber)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.tacticalAmber)
+                .padding(.horizontal, 24)
+                .padding(.top, 130)
+                .transition(.move(edge: .top).combined(with: .opacity))
+                .allowsHitTesting(false)
+            }
+            Spacer()
+        }
+        .animation(ADATheme.controlSpring, value: activeToastMessage)
+    }
+
+    /// Auto-clears whichever transient notice is currently showing after a beat —
+    /// cancels any previous pending clear first, so a second notice landing mid-display
+    /// gets its own full timer instead of vanishing early on the first one's schedule.
+    /// Clears both underlying sources rather than just the one currently displayed:
+    /// `activeToastMessage` only shows one at a time, so the other is either already
+    /// nil or itself stale and due to go regardless.
+    private func scheduleToastDismiss() {
+        toastDismissWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            viewModel.showCatchFailure = nil
+            socket.lastErrorMessage = nil
+        }
+        toastDismissWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
     /// The runner's proximity compass — shrunk down and docked above the right-hand

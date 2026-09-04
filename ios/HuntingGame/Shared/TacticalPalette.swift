@@ -38,7 +38,12 @@ extension Color {
 enum TacticalPalette {
     static let obsidianBackground = Color(hex: "#090B10")
     static let hunterRed = Color(hex: "#D93A4A")
-    static let runnerGreen = Color(hex: "#1AA262")
+    // Brighter than the icon's flat fill green (#1AA262) on purpose: GlowButtonStyle's
+    // shadow glow scales with how luminous the tint itself is, and the darker/more
+    // muted flat green nearly disappeared as a glow against the dark background —
+    // the icon can afford to be duotone-flat, a HUD button that needs to read as
+    // "the go/safe action" from across the room can't.
+    static let runnerGreen = Color(hex: "#22C55E")
     static let tacticalAmber = Color(hex: "#F5A524")
     static let spatialCyan = Color(hex: "#49D4FF")
     static let stealthPurple = Color(hex: "#A78BFA")

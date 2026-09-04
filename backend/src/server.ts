@@ -28,6 +28,7 @@ import {
 import {
   AuthTokenPayload,
   CATCH_VERIFICATION_RADIUS_METERS,
+  POWER_UP_COLLECTION_RADIUS_METERS,
   EXTRACTION_RADIUS_METERS,
   GameMode,
   PlayerState,
@@ -545,7 +546,11 @@ io.on('connection', (socket: Socket) => {
       turf.point([spawn.longitude, spawn.latitude]),
       { units: 'meters' }
     );
-    if (distance > CATCH_VERIFICATION_RADIUS_METERS) {
+    // Widen by the collector's own reported GPS accuracy — same reasoning as the zone-grace
+    // fix: a flat radius smaller than plausible GPS error means a player standing right on
+    // top of the spawn can still get rejected as "too far" purely from signal noise.
+    const effectiveRadius = Math.max(POWER_UP_COLLECTION_RADIUS_METERS, player.accuracy);
+    if (distance > effectiveRadius) {
       socket.emit('error_event', { reason: 'Too far from the power-up to collect it.' });
       return;
     }
