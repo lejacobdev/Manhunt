@@ -42,8 +42,6 @@ struct GameView: View {
             // underneath — the map was never actually interactive.
             .overlay(Color.black.opacity(0.18).edgesIgnoringSafeArea(.all).allowsHitTesting(false))
 
-            recenterButton
-
             VStack {
                 topBar
                 Spacer()
@@ -55,6 +53,10 @@ struct GameView: View {
                 bottomDock
             }
             .adaptiveContentWidth(ADATheme.dockContentWidth)
+
+            // Drawn after (so on top of) the dock/radar above — on the right, behind
+            // the radar, it used to render underneath both and never actually show.
+            recenterButton
 
             if socket.gameOverReason != nil {
                 dimScrim
@@ -113,14 +115,16 @@ struct GameView: View {
             .transition(.opacity)
     }
 
-    /// Google Maps-style "snap back to me" button, floating over the trailing edge of
-    /// the map — the map free-pans now (see the hit-testing fix above), so there needs
-    /// to be a way back to your own position after wandering off to look around.
+    /// Google Maps-style "snap back to me" button, floating above the left dock
+    /// column (equipment/radar-list/revive) — the map free-pans now (see the
+    /// hit-testing fix above), so there needs to be a way back to your own position
+    /// after wandering off to look around. Deliberately on the *left*: the runner's
+    /// compass gauge docks above the right column, and a right-aligned button there
+    /// used to sit right behind it, invisible and untappable.
     private var recenterButton: some View {
         VStack {
             Spacer()
             HStack {
-                Spacer()
                 Button {
                     HapticsEngine.shared.lightTap()
                     recenterRequestToken += 1
@@ -131,11 +135,11 @@ struct GameView: View {
                 }
                 .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
                 .clipShape(Circle())
+                Spacer()
             }
-            .padding(.trailing, 16)
-            // Sits just above the radar (runner) / dock (everyone else) rather than
-            // overlapping either.
-            .padding(.bottom, viewModel.role == .runner ? ADATheme.dockPanelWidth + 90 : 190)
+            .padding(.leading, 16)
+            // Clears a collapsed left-column dock panel sitting below it.
+            .padding(.bottom, 92)
         }
     }
 
