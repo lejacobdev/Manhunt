@@ -23,17 +23,18 @@ struct PowerUpDeckView: View {
                             .font(ADATheme.uiFont(size: 11, weight: .medium))
                             .foregroundColor(.white.opacity(0.35))
                     } else {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 10) {
-                                // Indexed rather than keyed by PowerUpType.id: a player can hold
-                                // duplicates of the same power-up, and ForEach requires unique ids.
-                                ForEach(Array(inventory.enumerated()), id: \.offset) { _, item in
-                                    PowerUpChip(item: item) {
-                                        HapticsEngine.shared.powerUpActivated()
-                                        onActivate(item)
-                                    }
-                                    .transition(.scale.combined(with: .opacity))
+                        // Stacked vertically, sized to content rather than a fixed/scrolling
+                        // row — the panel's own height grows and shrinks with how many
+                        // items are actually held instead of hiding extras behind a scroll.
+                        VStack(spacing: 8) {
+                            // Indexed rather than keyed by PowerUpType.id: a player can hold
+                            // duplicates of the same power-up, and ForEach requires unique ids.
+                            ForEach(Array(inventory.enumerated()), id: \.offset) { _, item in
+                                PowerUpChip(item: item) {
+                                    HapticsEngine.shared.powerUpActivated()
+                                    onActivate(item)
                                 }
+                                .transition(.scale.combined(with: .opacity))
                             }
                         }
                     }
@@ -58,9 +59,13 @@ private struct PowerUpChip: View {
                     .font(.system(size: 16, weight: .bold))
                 Text(item.displayName.uppercased())
                     .font(ADATheme.telemetryFont(size: 12))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
+            .frame(maxWidth: .infinity)
             .background(tint.opacity(0.2))
             .foregroundColor(tint)
             .overlay(

@@ -217,7 +217,7 @@ io.on('connection', (socket: Socket) => {
         socket.join(`${roomCode}_observers`);
       }
 
-      io.to(roomCode).emit('player_joined', Array.from(session.values()));
+      io.to(roomCode).emit('player_joined', publicRoster(session));
 
       const settings = sessionSettingsCache.get(roomCode);
       if (settings?.extractionPoint) {
@@ -315,7 +315,13 @@ io.on('connection', (socket: Socket) => {
       // sitting in the Gulf of Guinea, and every other player's compass/radar briefly
       // reports a "nearest hunter" or "visible runner" thousands of km away.
       const hasFix = (x: PlayerState) => x.accuracy < 9999;
-      const hunters = allPlayers.filter((x) => x.role === 'HUNTER' && hasFix(x));
+      // A hunter can pick up and use INVISIBILITY_10MIN too — spawns aren't role-restricted
+      // — so the runner's compass has to exclude an invisible hunter the same way the
+      // hunter's own radar already excludes an invisible runner, or "invisibility" only
+      // works for one direction of the matchup.
+      const hunters = allPlayers.filter(
+        (x) => x.role === 'HUNTER' && hasFix(x) && !isBuffActive(x, 'INVISIBILITY_10MIN')
+      );
       const runners = allPlayers.filter((x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted && hasFix(x));
 
       if (p.role === 'RUNNER' && !p.isCaught && hunters.length > 0) {
@@ -368,7 +374,7 @@ io.on('connection', (socket: Socket) => {
         }
       }
 
-      io.to(`${roomCode}_observers`).emit('roster_update', allPlayers);
+      io.to(`${roomCode}_observers`).emit('roster_update', publicRoster(session));
     }
   );
 
@@ -628,6 +634,25 @@ function cleanupSocket(socket: Socket) {
     }
   }
   lastFix.delete(gamePlayerId);
+}
+
+/**
+ * Roster snapshot for broadcasts that reach more than just the player themself
+ * (player_joined, roster_update — the latter continuously, to the host and any
+ * spectators). Hunter radar and the runner compass already exclude an invisible
+ * player from their respective feeds, but these two events send the raw roster
+ * with real coordinates to everyone in the room/observers group regardless — an
+ * invisible player's exact live position was still rendering as a map pin for
+ * the host and spectators the whole time INVISIBILITY_10MIN was active. Masks
+ * an invisible player's position to the same lat0/lng0 sentinel already used
+ * elsewhere in this codebase for "no valid position", which the client already
+ * needs to treat as un-plottable for that other reason.
+ */
+function publicRoster(session: Map<string, PlayerState>): PlayerState[] {
+  return Array.from(session.values()).map((p) => {
+    if (!isBuffActive(p, 'INVISIBILITY_10MIN')) return p;
+    return { ...p, lat: 0, lng: 0 };
+  });
 }
 
 async function resolveSessionId(roomCode: string): Promise<string | undefined> {

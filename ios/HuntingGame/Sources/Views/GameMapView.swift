@@ -170,6 +170,13 @@ struct GameMapView: UIViewRepresentable {
                 ?? MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
             view.annotation = annotation
             view.animatesWhenAdded = true
+            // MKMarkerAnnotationView's default collision behavior (.circle) hides pins
+            // that overlap at the current zoom level — that's the "pins vanish zoomed out,
+            // pop back in zoomed in" bug. Every blip here is meaningful game state (a
+            // player, a decoy, a power-up), never decorative, so nothing should ever be
+            // silently dropped for visual tidiness.
+            view.collisionMode = .none
+            view.displayPriority = .required
             switch blip.kind {
             case .player(let role):
                 view.markerTintColor = UIColor(ADATheme.accent(for: role))

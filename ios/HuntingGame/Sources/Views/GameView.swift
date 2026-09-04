@@ -48,7 +48,11 @@ struct GameView: View {
                 Spacer()
                 // Nothing here floats mid-screen: everything below hugs the bottom
                 // edge, so the map stays visible through the middle of the screen.
-                if viewModel.role == .runner {
+                // Only floats up here — aligned above the right dock column — when
+                // that column is actually occupied by the host panel; a non-host
+                // runner has nothing on the right, so their radar lives in the
+                // bottom dock's right slot instead (see rightDockPanels).
+                if viewModel.role == .runner && viewModel.isHost {
                     radarDock
                 }
                 bottomDock
@@ -291,6 +295,19 @@ struct GameView: View {
 
     private var rightDockPanels: [AnyView] {
         var panels: [AnyView] = []
+        // A non-host runner has no host panel to dock the compass above (see the
+        // `radarDock` placement further up), so it takes this slot instead.
+        if viewModel.role == .runner && !viewModel.isHost {
+            panels.append(AnyView(
+                SpatialRadarView(
+                    distanceMeters: viewModel.nearestHunterDistance,
+                    bearingDegrees: viewModel.nearestHunterBearing,
+                    currentHeading: viewModel.currentHeadingDegrees,
+                    role: viewModel.role,
+                    diameter: ADATheme.dockPanelWidth
+                )
+            ))
+        }
         if viewModel.role == .spectator {
             panels.append(AnyView(
                 SpectatorDashboardView(players: viewModel.allPlayers, focusedPlayerId: focusedPlayerId, onFocus: { focusedPlayerId = $0 })
@@ -527,8 +544,12 @@ struct GameView: View {
         // (lat/lng 0,0) the moment you joined. Render your own pin from
         // live GPS instead, and drop the stale roster copy of yourself so
         // there's no ghost pin sitting at (0,0).
+        //
+        // The server also broadcasts (0,0) deliberately for anyone else who's
+        // currently INVISIBILITY_10MIN-buffed (masking their real position from
+        // the host/spectator roster feed) — same sentinel, same fix: don't plot it.
         var blips = viewModel.allPlayers
-            .filter { $0.id != viewModel.gamePlayerId }
+            .filter { $0.id != viewModel.gamePlayerId && !($0.lat == 0 && $0.lng == 0) }
             .map { GameMapView.Blip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role) }
 
         if let selfCoordinate = viewModel.currentLocation?.coordinate {
