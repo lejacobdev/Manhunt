@@ -221,6 +221,7 @@ jq -n \
     '{
       name: "Hunting Game",
       identifier: "dev.lejacob.huntinggame.source",
+      iconURL: $iconURL,
       apps: [{
         name: "Hunting Game",
         bundleIdentifier: "com.huntinggame.app",
