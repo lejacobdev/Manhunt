@@ -30,13 +30,22 @@ final class SocketService: ObservableObject {
     let playerInfectedSubject = PassthroughSubject<(runnerId: String, hunterId: String), Never>()
     let playerExtractedSubject = PassthroughSubject<String, Never>()
     let playerRevivedSubject = PassthroughSubject<(playerId: String, revivedById: String), Never>()
+    /// Fires with the spawn's id whenever anyone (not just this player) collects it, so
+    /// every client can drop the matching pin from its map.
+    let powerUpCollectedSubject = PassthroughSubject<String, Never>()
 
     private var manager: SocketManager?
     private var socket: SocketIOClient?
     private var roomCode: String?
     private var gamePlayerId: String?
 
-    private static let iso8601 = ISO8601DateFormatter()
+    // Must accept fractional seconds — the backend stamps this with JS's
+    // Date.toISOString(), which always includes milliseconds.
+    private static let iso8601: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
 
     private init() {}
 
@@ -229,6 +238,11 @@ final class SocketService: ObservableObject {
         socket.on("anti_cheat_warning") { [weak self] data, _ in
             guard let dict = data.first as? [String: Any] else { return }
             self?.lastAntiCheatWarning = dict["reason"] as? String
+        }
+
+        socket.on("powerup_collected") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any], let spawnId = dict["spawnId"] as? String else { return }
+            self?.powerUpCollectedSubject.send(spawnId)
         }
 
         socket.on("inventory_update") { [weak self] data, _ in

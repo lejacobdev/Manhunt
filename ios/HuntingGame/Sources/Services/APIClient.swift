@@ -192,6 +192,14 @@ final class APIClient {
         try await get("/games/\(code)/replay")
     }
 
+    // MARK: - Power-ups
+
+    func fetchPowerUpSpawns(sessionId: String) async throws -> [PowerUpSpawn] {
+        struct Response: Decodable { let spawns: [PowerUpSpawn] }
+        let resp: Response = try await get("/powerups/session/\(sessionId)")
+        return resp.spawns
+    }
+
     /// Returns the readable rows plus a count of any that couldn't be decoded, rather
     /// than throwing when a single row is unreadable — see `Lenient`. The caller
     /// surfaces the skipped count so dropped matches are visible, not silent.

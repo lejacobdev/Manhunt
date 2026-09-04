@@ -16,6 +16,9 @@ struct GameMapView: UIViewRepresentable {
     let zone: ZoneUpdate?
     let extractionPoint: Coordinate?
     let decoys: [DecoyBlip]
+    var powerUpSpawns: [PowerUpSpawn] = []
+    /// Fires with the tapped spawn's id when its map pin is selected.
+    var onSelectSpawn: ((String) -> Void)? = nil
     /// The real point to center on once known — nil until it's available (e.g. before the
     /// first GPS fix, or before replay data has loaded). Passing an already-defaulted
     /// fallback here instead of nil would defeat `hasCentered`: the one-shot recenter below
@@ -26,6 +29,11 @@ struct GameMapView: UIViewRepresentable {
     /// the map re-centers on that player once (not continuously; the viewer can still
     /// pan freely afterward). Changing it to a different id re-centers again.
     var focusPlayerId: String? = nil
+    /// "Recenter on me" (Google Maps-style): bump this counter to re-center on
+    /// `recenterTargetId` even if that id hasn't changed since the last request — unlike
+    /// `focusPlayerId`, which only fires on an id *change*, this fires on every tap.
+    var recenterRequest: Int = 0
+    var recenterTargetId: String? = nil
 
     /// Used only for the very first camera position, before `initialCenter` is known.
     private static let defaultFallbackCenter = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
@@ -58,6 +66,9 @@ struct GameMapView: UIViewRepresentable {
         }
         if let extractionPoint {
             desired["extraction"] = (CLLocationCoordinate2D(latitude: extractionPoint.lat, longitude: extractionPoint.lng), .extraction)
+        }
+        for spawn in powerUpSpawns {
+            desired["spawn:\(spawn.id)"] = (CLLocationCoordinate2D(latitude: spawn.latitude, longitude: spawn.longitude), .powerUpSpawn(spawn.id, spawn.type))
         }
 
         let existing = mapView.annotations.compactMap { $0 as? BlipAnnotation }
@@ -121,6 +132,18 @@ struct GameMapView: UIViewRepresentable {
         } else if focusPlayerId == nil {
             context.coordinator.lastFocusedId = nil
         }
+
+        // "Recenter on me": distinct from the focus mechanism above because it must fire
+        // on every tap, not just when the target id changes — tapping the button twice in a
+        // row with nothing else changing should still snap the camera back both times.
+        if recenterRequest != context.coordinator.lastRecenterRequest {
+            context.coordinator.lastRecenterRequest = recenterRequest
+            if let recenterTargetId, let target = players.first(where: { $0.id == recenterTargetId }) {
+                mapView.setRegion(MKCoordinateRegion(center: target.coordinate, latitudinalMeters: 400, longitudinalMeters: 400), animated: true)
+            }
+        }
+
+        context.coordinator.onSelectSpawn = onSelectSpawn
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -128,6 +151,8 @@ struct GameMapView: UIViewRepresentable {
     final class Coordinator: NSObject, MKMapViewDelegate {
         var hasCentered = false
         var lastFocusedId: String?
+        var lastRecenterRequest = 0
+        var onSelectSpawn: ((String) -> Void)?
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
             guard let circle = overlay as? MKCircle else { return MKOverlayRenderer(overlay: overlay) }
@@ -149,14 +174,28 @@ struct GameMapView: UIViewRepresentable {
             case .player(let role):
                 view.markerTintColor = UIColor(ADATheme.accent(for: role))
                 view.glyphImage = UIImage(systemName: role == .hunter ? "figure.run" : "figure.walk")
+                view.canShowCallout = false
             case .decoy:
                 view.markerTintColor = UIColor(ADATheme.spatialCyan)
                 view.glyphImage = UIImage(systemName: "person.fill.questionmark")
+                view.canShowCallout = false
             case .extraction:
                 view.markerTintColor = UIColor(ADATheme.runnerGreen)
                 view.glyphImage = UIImage(systemName: "flag.checkered")
+                view.canShowCallout = false
+            case .powerUpSpawn(_, let type):
+                view.markerTintColor = UIColor(ADATheme.accent(for: type))
+                view.glyphImage = UIImage(systemName: type.iconName)
+                view.canShowCallout = true
+                view.detailCalloutAccessoryView = nil
             }
             return view
+        }
+
+        func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
+            guard let blip = view.annotation as? BlipAnnotation, case .powerUpSpawn(let spawnId, _) = blip.kind else { return }
+            onSelectSpawn?(spawnId)
+            mapView.deselectAnnotation(view.annotation, animated: true)
         }
     }
 }
@@ -166,9 +205,11 @@ private final class BlipAnnotation: NSObject, MKAnnotation {
         case player(PlayerRole)
         case decoy
         case extraction
+        case powerUpSpawn(String, PowerUpType)
     }
 
     var blipId: String = ""
     @objc dynamic var coordinate = CLLocationCoordinate2D()
     var kind: Kind = .decoy
+    var title: String? { if case .powerUpSpawn(_, let type) = kind { return type.displayName } else { return nil } }
 }

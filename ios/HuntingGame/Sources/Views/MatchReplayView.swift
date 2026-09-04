@@ -102,7 +102,12 @@ struct MatchReplayView: View {
     private func load() async {
         do {
             let replay = try await APIClient.shared.fetchReplay(code: sessionCode)
+            // The backend stamps every field with JS's Date.toISOString(), which always
+            // includes milliseconds ("...ss.sssZ") — ISO8601DateFormatter's default options
+            // don't parse that fractional-seconds suffix and silently return nil for every
+            // single point, which emptied `tracks` and made every replay show as "no data".
             let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let parsed = replay.players.map { player -> ParsedTrack in
                 let points = player.track
                     .compactMap { pt -> (Date, Double, Double)? in

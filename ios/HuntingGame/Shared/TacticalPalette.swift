@@ -31,14 +31,18 @@ extension Color {
     }
 }
 
+// This is the same palette baked into ios/xtool/icon.png — the app icon and
+// every in-app surface are drawn from one designed color system rather than
+// stock iOS system colors (the old #FF2D55/#30D158/etc.), so the icon in a
+// SideStore listing and the HUD it opens into read as the same product.
 enum TacticalPalette {
-    static let obsidianBackground = Color(hex: "#05070A")
-    static let hunterRed = Color(hex: "#FF2D55")
-    static let runnerGreen = Color(hex: "#30D158")
-    static let tacticalAmber = Color(hex: "#FF9F0A")
-    static let spatialCyan = Color(hex: "#64D2FF")
-    static let stealthPurple = Color(hex: "#BF5AF2")
-    static let neutralGray = Color(hex: "#8E8E93")
+    static let obsidianBackground = Color(hex: "#090B10")
+    static let hunterRed = Color(hex: "#D93A4A")
+    static let runnerGreen = Color(hex: "#1AA262")
+    static let tacticalAmber = Color(hex: "#F5A524")
+    static let spatialCyan = Color(hex: "#49D4FF")
+    static let stealthPurple = Color(hex: "#A78BFA")
+    static let neutralGray = Color(hex: "#9BA1AC")
 
     static func dangerColor(distanceMeters: Int) -> Color {
         switch distanceMeters {

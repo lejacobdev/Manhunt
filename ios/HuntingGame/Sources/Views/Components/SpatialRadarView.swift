@@ -9,10 +9,16 @@ struct SpatialRadarView: View {
     let bearingDegrees: Double?
     let currentHeading: Double
     let role: PlayerRole
+    /// Outer diameter of the gauge. Every internal measurement is derived from this as a
+    /// fraction of the original 260pt design, so the whole thing scales down cleanly for
+    /// the dock-sized placement instead of clipping/overflowing its glass card.
+    var diameter: CGFloat = 260
 
     @State private var pulseScale: CGFloat = 1.0
     @State private var scanRotation: Double = 0.0
     @State private var ringPulse: CGFloat = 1.0
+
+    private var scale: CGFloat { diameter / 260 }
 
     var body: some View {
         ZStack {
@@ -22,17 +28,17 @@ struct SpatialRadarView: View {
                     RadialGradient(
                         colors: [accentColor.opacity(haloOpacity), .clear],
                         center: .center,
-                        startRadius: 40,
-                        endRadius: 140
+                        startRadius: 40 * scale,
+                        endRadius: 140 * scale
                     )
                 )
-                .frame(width: 280, height: 280)
+                .frame(width: 280 * scale, height: 280 * scale)
                 .scaleEffect(ringPulse)
 
             // Concentric radar rings & crosshair grid.
             Canvas { context, size in
                 let center = CGPoint(x: size.width / 2, y: size.height / 2)
-                let radii: [CGFloat] = [40, 80, 120]
+                let radii: [CGFloat] = [40 * scale, 80 * scale, 120 * scale]
 
                 for radius in radii {
                     var path = Path()
@@ -40,14 +46,15 @@ struct SpatialRadarView: View {
                     context.stroke(path, with: .color(Color.white.opacity(0.12)), lineWidth: 1)
                 }
 
+                let inset: CGFloat = 10 * scale
                 var reticlePath = Path()
-                reticlePath.move(to: CGPoint(x: center.x, y: 10))
-                reticlePath.addLine(to: CGPoint(x: center.x, y: size.height - 10))
-                reticlePath.move(to: CGPoint(x: 10, y: center.y))
-                reticlePath.addLine(to: CGPoint(x: size.width - 10, y: center.y))
+                reticlePath.move(to: CGPoint(x: center.x, y: inset))
+                reticlePath.addLine(to: CGPoint(x: center.x, y: size.height - inset))
+                reticlePath.move(to: CGPoint(x: inset, y: center.y))
+                reticlePath.addLine(to: CGPoint(x: size.width - inset, y: center.y))
                 context.stroke(reticlePath, with: .color(Color.white.opacity(0.08)), lineWidth: 1)
             }
-            .frame(width: 240, height: 240)
+            .frame(width: 240 * scale, height: 240 * scale)
 
             // Rotating radar sweep beam.
             Circle()
@@ -59,7 +66,7 @@ struct SpatialRadarView: View {
                         endAngle: .degrees(scanRotation - 90)
                     )
                 )
-                .frame(width: 240, height: 240)
+                .frame(width: 240 * scale, height: 240 * scale)
                 .rotationEffect(.degrees(scanRotation))
 
             // Bearing needle + distance readout.
@@ -67,33 +74,35 @@ struct SpatialRadarView: View {
                 if hasSignal {
                     VStack {
                         Image(systemName: "triangle.fill")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 16 * scale, weight: .bold))
                             .foregroundColor(accentColor)
-                            .shadow(color: accentColor, radius: 8)
+                            .shadow(color: accentColor, radius: 8 * scale)
                             .scaleEffect(pulseScale)
                         Spacer()
                     }
-                    .frame(height: 220)
+                    .frame(height: 220 * scale)
                     .rotationEffect(.degrees((bearingDegrees ?? 0) - currentHeading))
                     .animation(ADATheme.spatialSpring, value: (bearingDegrees ?? 0) - currentHeading)
                 }
 
-                VStack(spacing: 2) {
+                VStack(spacing: 2 * scale) {
                     Text(distanceMeters.map(String.init) ?? "--")
-                        .font(ADATheme.displayFont(size: 38))
+                        .font(ADATheme.displayFont(size: 38 * scale))
                         .foregroundColor(.white)
                         .contentTransition(.numericText())
                         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: distanceMeters)
+                        .minimumScaleFactor(0.5)
+                        .lineLimit(1)
 
                     Text(hasSignal ? "METERS" : "ACQUIRING")
-                        .font(ADATheme.telemetryFont(size: 10))
+                        .font(ADATheme.telemetryFont(size: 10 * scale))
                         .foregroundColor(.white.opacity(0.6))
                         .tracking(2)
                 }
             }
         }
-        .frame(width: 260, height: 260)
-        .glassCard(cornerRadius: 130, tint: accentColor)
+        .frame(width: diameter, height: diameter)
+        .glassCard(cornerRadius: diameter / 2, tint: accentColor)
         .onAppear {
             withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) {
                 scanRotation = 360

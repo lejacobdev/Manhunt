@@ -25,6 +25,7 @@ final class GameViewModel: ObservableObject {
     /// as its own @StateObject/@ObservedObject.
     @Published var currentLocation: CLLocation?
     @Published var currentHeadingDegrees: Double = 0
+    @Published var powerUpSpawns: [PowerUpSpawn] = []
 
     private var cancellables = Set<AnyCancellable>()
     private var invisibilityTimer: Timer?
@@ -34,6 +35,7 @@ final class GameViewModel: ObservableObject {
     private let minSendInterval: TimeInterval = 2.0
 
     let gamePlayerId: String
+    let sessionId: String
     let mySquad: String?
     let sessionSettings: GameSettings
     let roomCode: String
@@ -47,6 +49,7 @@ final class GameViewModel: ObservableObject {
         self.arrestCode = gamePlayer.arrestCode
         self.isCaught = gamePlayer.isCaught
         self.gamePlayerId = gamePlayer.id
+        self.sessionId = gamePlayer.sessionId
         self.mySquad = gamePlayer.squad
         self.sessionSettings = session.settings
         self.roomCode = session.code
@@ -70,6 +73,19 @@ final class GameViewModel: ObservableObject {
             Task { @MainActor in self?.pushWatchSnapshot() }
         }
         pushWatchSnapshot()
+
+        if role == .hunter || role == .runner {
+            Task { [weak self] in await self?.loadPowerUpSpawns() }
+        }
+    }
+
+    private func loadPowerUpSpawns() async {
+        do {
+            powerUpSpawns = try await APIClient.shared.fetchPowerUpSpawns(sessionId: sessionId)
+        } catch {
+            // Non-fatal: the map just won't show spawn pins this session:
+            // the player can still receive power-ups via other means (drops, etc).
+        }
     }
 
     func stop() {
@@ -193,6 +209,13 @@ final class GameViewModel: ObservableObject {
                     self.isCaught = false
                     self.pushWatchSnapshot()
                 }
+            }
+            .store(in: &cancellables)
+
+        socket.powerUpCollectedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] spawnId in
+                self?.powerUpSpawns.removeAll { $0.id == spawnId }
             }
             .store(in: &cancellables)
 

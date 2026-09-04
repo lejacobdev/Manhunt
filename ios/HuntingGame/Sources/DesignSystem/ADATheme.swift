@@ -14,7 +14,7 @@ enum ADATheme {
     // MARK: Surfaces
 
     static let obsidianBackground = TacticalPalette.obsidianBackground
-    static let obsidianBackgroundElevated = Color(hex: "#0C0F14")
+    static let obsidianBackgroundElevated = Color(hex: "#1A1F2E")
     static let surfaceGlass = Color.white.opacity(0.08)
     static let borderGlass = Color.white.opacity(0.15)
 

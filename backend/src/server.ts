@@ -308,8 +308,14 @@ io.on('connection', (socket: Socket) => {
       }
 
       const allPlayers = Array.from(session.values());
-      const hunters = allPlayers.filter((x) => x.role === 'HUNTER');
-      const runners = allPlayers.filter((x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted);
+      // A player is seeded into the session map at lat 0/lng 0, accuracy 9999 the moment
+      // they join — before their phone has produced a first real GPS fix. Without this
+      // guard, a hunter/runner who just joined (or hasn't granted location yet) reads as
+      // sitting in the Gulf of Guinea, and every other player's compass/radar briefly
+      // reports a "nearest hunter" or "visible runner" thousands of km away.
+      const hasFix = (x: PlayerState) => x.accuracy < 9999;
+      const hunters = allPlayers.filter((x) => x.role === 'HUNTER' && hasFix(x));
+      const runners = allPlayers.filter((x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted && hasFix(x));
 
       if (p.role === 'RUNNER' && !p.isCaught && hunters.length > 0) {
         let minDist = Infinity;
@@ -669,7 +675,12 @@ async function checkZoneContainment(
   const violations = zoneViolationSince.get(roomCode) ?? new Map<string, number>();
   zoneViolationSince.set(roomCode, violations);
 
-  if (outsideBy <= ZONE_GRACE_METERS) {
+  // The flat 10m grace band doesn't account for the fix's own reported GPS error — a
+  // runner standing still with 20-30m of horizontal accuracy (normal in tree cover or
+  // near buildings) can read as having "left" the zone purely from GPS noise, and get
+  // auto-caught without ever having moved. Widen the tolerance to whichever is bigger.
+  const effectiveGrace = Math.max(ZONE_GRACE_METERS, runner.accuracy);
+  if (outsideBy <= effectiveGrace) {
     violations.delete(runner.id);
     return;
   }

@@ -13,6 +13,9 @@ struct GameView: View {
     @State private var showReplay = false
     /// Starts collapsed — lives in the bottom dock now, not floating over the map.
     @State private var isRadarPanelExpanded = false
+    @State private var isEquipmentPanelExpanded = false
+    /// Bumped by the "recenter on me" button; see `GameMapView.recenterRequest`.
+    @State private var recenterRequestToken = 0
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
@@ -25,11 +28,21 @@ struct GameView: View {
                 zone: socket.zone,
                 extractionPoint: socket.extractionPoint,
                 decoys: socket.radar?.decoys ?? [],
+                powerUpSpawns: viewModel.powerUpSpawns,
+                onSelectSpawn: viewModel.collectPowerUp,
                 initialCenter: viewModel.currentLocation?.coordinate,
-                focusPlayerId: focusedPlayerId
+                focusPlayerId: focusedPlayerId,
+                recenterRequest: recenterRequestToken,
+                recenterTargetId: viewModel.gamePlayerId
             )
             .edgesIgnoringSafeArea(.all)
-            .overlay(Color.black.opacity(0.18).edgesIgnoringSafeArea(.all))
+            // allowsHitTesting(false) is load-bearing: a plain Color overlay is opaque to
+            // hit-testing by default, so without this every pan/pinch/tap aimed at the map
+            // was being swallowed by this dimming layer instead of reaching the MKMapView
+            // underneath — the map was never actually interactive.
+            .overlay(Color.black.opacity(0.18).edgesIgnoringSafeArea(.all).allowsHitTesting(false))
+
+            recenterButton
 
             VStack {
                 topBar
@@ -37,14 +50,7 @@ struct GameView: View {
                 // Nothing here floats mid-screen: everything below hugs the bottom
                 // edge, so the map stays visible through the middle of the screen.
                 if viewModel.role == .runner {
-                    SpatialRadarView(
-                        distanceMeters: viewModel.nearestHunterDistance,
-                        bearingDegrees: viewModel.nearestHunterBearing,
-                        currentHeading: viewModel.currentHeadingDegrees,
-                        role: viewModel.role
-                    )
-                    .transition(.scale.combined(with: .opacity))
-                    .padding(.bottom, 10)
+                    radarDock
                 }
                 bottomDock
             }
@@ -89,6 +95,14 @@ struct GameView: View {
         } message: {
             Text(viewModel.showCatchFailure ?? "")
         }
+        .alert("Notice", isPresented: Binding(
+            get: { socket.lastErrorMessage != nil },
+            set: { if !$0 { socket.lastErrorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) { socket.lastErrorMessage = nil }
+        } message: {
+            Text(socket.lastErrorMessage ?? "")
+        }
     }
 
     // MARK: - Chrome
@@ -97,6 +111,51 @@ struct GameView: View {
         Color.black.opacity(0.65)
             .edgesIgnoringSafeArea(.all)
             .transition(.opacity)
+    }
+
+    /// Google Maps-style "snap back to me" button, floating over the trailing edge of
+    /// the map — the map free-pans now (see the hit-testing fix above), so there needs
+    /// to be a way back to your own position after wandering off to look around.
+    private var recenterButton: some View {
+        VStack {
+            Spacer()
+            HStack {
+                Spacer()
+                Button {
+                    HapticsEngine.shared.lightTap()
+                    recenterRequestToken += 1
+                } label: {
+                    Image(systemName: "location.fill")
+                        .font(.system(size: 18, weight: .bold))
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                .clipShape(Circle())
+            }
+            .padding(.trailing, 16)
+            // Sits just above the radar (runner) / dock (everyone else) rather than
+            // overlapping either.
+            .padding(.bottom, viewModel.role == .runner ? ADATheme.dockPanelWidth + 90 : 190)
+        }
+    }
+
+    /// The runner's proximity compass — shrunk down and docked above the right-hand
+    /// column (where the host panel lives) instead of a huge circle dominating the
+    /// screen, with its own left/right edges matching that column's.
+    private var radarDock: some View {
+        HStack {
+            Spacer()
+            SpatialRadarView(
+                distanceMeters: viewModel.nearestHunterDistance,
+                bearingDegrees: viewModel.nearestHunterBearing,
+                currentHeading: viewModel.currentHeadingDegrees,
+                role: viewModel.role,
+                diameter: ADATheme.dockPanelWidth
+            )
+            .transition(.scale.combined(with: .opacity))
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
     }
 
     private var topBar: some View {
@@ -157,20 +216,37 @@ struct GameView: View {
     // MARK: - Bottom dock
     //
     // Every HUD element that isn't the top bar or (for a runner) the spatial
-    // compass lives here: a row hugging the bottom edge, side panels flanking the
-    // power-up tray rather than any of it floating mid-screen over the map. Side
-    // panels are collected into one list and dealt alternately left/right, so the
-    // dock stays roughly balanced whether one panel is showing or several are —
-    // a host who's also a hunter with a revivable squadmate nearby, say.
+    // compass lives here: a row hugging the bottom edge, two fixed-width columns
+    // with nothing but a flexible Spacer between them — nothing floats mid-screen
+    // over the map. Panels are grouped by what they're *for* rather than dealt out
+    // to balance a count: the left column is your own gear/situational info
+    // (equipment, the hunter's nearby-runners list, a squad revive prompt), the
+    // right column is match administration/observation (spectator roster, host
+    // controls). Splitting it this way — instead of the previous "alternate
+    // left/right by however many panels are active" — is also what fixed a real
+    // layout bug: with two fixed 150pt columns and nothing else needing width in
+    // between, there's no longer any leftover gap for a third item to be crushed
+    // into (that crush is what wrapped "TACTICAL EQUIPMENT" into an unreadable
+    // one-syllable-per-line column spanning the full screen height).
 
-    private var dockSidePanels: [AnyView] {
+    private var leftDockPanels: [AnyView] {
         var panels: [AnyView] = []
+        if viewModel.role == .hunter || viewModel.role == .runner {
+            panels.append(AnyView(
+                PowerUpDeckView(inventory: viewModel.inventory, onActivate: viewModel.usePowerUp, isExpanded: $isEquipmentPanelExpanded)
+            ))
+        }
         if viewModel.role == .hunter {
             panels.append(AnyView(radarPanel))
         }
         if let squadmate = viewModel.revivableSquadmate() {
             panels.append(AnyView(revivePanel(for: squadmate)))
         }
+        return panels
+    }
+
+    private var rightDockPanels: [AnyView] {
+        var panels: [AnyView] = []
         if viewModel.role == .spectator {
             panels.append(AnyView(
                 SpectatorDashboardView(players: viewModel.allPlayers, focusedPlayerId: focusedPlayerId, onFocus: { focusedPlayerId = $0 })
@@ -184,26 +260,12 @@ struct GameView: View {
         return panels
     }
 
-    private var leftDockPanels: [AnyView] {
-        dockSidePanels.enumerated().filter { $0.offset % 2 == 0 }.map(\.element)
-    }
-
-    private var rightDockPanels: [AnyView] {
-        dockSidePanels.enumerated().filter { $0.offset % 2 != 0 }.map(\.element)
-    }
-
     private var bottomDock: some View {
         HStack(alignment: .bottom, spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(leftDockPanels.enumerated()), id: \.offset) { _, panel in
                     panel.frame(width: ADATheme.dockPanelWidth)
                 }
-            }
-
-            Spacer(minLength: 4)
-
-            if viewModel.role == .hunter || viewModel.role == .runner {
-                PowerUpDeckView(inventory: viewModel.inventory, onActivate: viewModel.usePowerUp)
             }
 
             Spacer(minLength: 4)
@@ -216,7 +278,7 @@ struct GameView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 10)
-        .animation(ADATheme.controlSpring, value: dockSidePanels.count)
+        .animation(ADATheme.controlSpring, value: leftDockPanels.count + rightDockPanels.count)
     }
 
     private var radarPanel: some View {
