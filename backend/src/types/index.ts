@@ -41,8 +41,6 @@ export interface PlayerState {
   inventory: PowerUpType[];
   activeBuffs: Partial<Record<PowerUpType, ActiveBuff>>;
   lastUpdate: number;
-  /** Set once by the server on join_room; the last full radar/roster push each socket received. */
-  lastRadarPushAt?: number;
 }
 
 export interface AuthTokenPayload {
@@ -52,7 +50,10 @@ export interface AuthTokenPayload {
 
 /** Per section 1.3 of the design spec. */
 export const POWER_UP_DURATIONS_MS: Record<PowerUpType, number> = {
-  INVISIBILITY_10MIN: 10 * 60 * 1000,
+  // The type/raw-string name (and its display copy) still says "10MIN" — renaming it would
+  // touch a value persisted in PowerUpSpawn rows and player inventories/activeBuffs across
+  // every existing session, for no gameplay benefit. Only the duration actually changed.
+  INVISIBILITY_10MIN: 60 * 1000,
   GHOST_DECOY: 3 * 60 * 1000,
   EMP_JAMMER: 60 * 1000,
   THERMAL_VISION: 45 * 1000,
@@ -69,7 +70,6 @@ export const CATCH_VERIFICATION_RADIUS_METERS = 15;
 export const POWER_UP_COLLECTION_RADIUS_METERS = 25;
 export const EMP_JAMMER_RADIUS_METERS = 200;
 export const THERMAL_VISION_RADIUS_METERS = 300;
-export const THERMAL_VISION_INTERVAL_MS = 1000;
 export const GHOST_DECOY_SPEED_MPS = 1.4; // brisk walking pace for the simulated foot path
 
 /** Location updates worse than this horizontal accuracy are rejected server-side (GPS spoofing/signal guard). */

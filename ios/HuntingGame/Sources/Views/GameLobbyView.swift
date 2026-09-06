@@ -181,7 +181,6 @@ struct GameLobbyView: View {
                     tint: viewModel.isBoundarySet ? ADATheme.runnerGreen : ADATheme.tacticalAmber
                 )
                 settingsRow(icon: "clock.fill", text: "\(Int(viewModel.durationMinutes)) minute match")
-                settingsRow(icon: "dot.radiowaves.left.and.right", text: "Radar every \(Int(viewModel.radarIntervalSec))s")
                 settingsRow(icon: "lock.fill", text: viewModel.jailEnabled ? "Jail mode enabled" : "Jail mode off")
                 settingsRow(icon: "circle.grid.2x2.fill", text: viewModel.gamblingEnabled ? "Gambling enabled" : "Gambling off")
             }
@@ -255,9 +254,6 @@ private struct LobbySetupSheet: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("DURATION: \(Int(viewModel.durationMinutes)) MIN")
                         Slider(value: $viewModel.durationMinutes, in: 10...180, step: 5)
-                            .tint(ADATheme.spatialCyan)
-                        Text("RADAR INTERVAL: \(Int(viewModel.radarIntervalSec))S")
-                        Slider(value: $viewModel.radarIntervalSec, in: 15...300, step: 15)
                             .tint(ADATheme.spatialCyan)
                     }
                     .font(ADATheme.telemetryFont(size: 12))

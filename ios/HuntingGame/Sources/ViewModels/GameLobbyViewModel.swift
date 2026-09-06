@@ -18,7 +18,6 @@ final class GameLobbyViewModel: ObservableObject {
     // host last saved — a non-host's copies are overwritten live by settings_updated too,
     // so their read-only summary always reflects the current values.
     @Published var durationMinutes: Double
-    @Published var radarIntervalSec: Double
     /// The play area being drawn, before it's saved. Once `session.settings.boundsPolygon`
     /// has 3+ points the area is locked in server-side, so this stops being editable —
     /// see `isBoundarySet`.
@@ -41,7 +40,6 @@ final class GameLobbyViewModel: ObservableObject {
         self.session = session
         self.player = player
         self.durationMinutes = Double(session.settings.durationMinutes)
-        self.radarIntervalSec = Double(session.settings.radarIntervalSec)
         self.boundaryPoints = session.settings.boundsPolygon
         self.jailEnabled = session.settings.jailEnabled ?? false
         self.jailPoints = session.settings.jailPolygon ?? []
@@ -72,7 +70,6 @@ final class GameLobbyViewModel: ObservableObject {
                 // and shouldn't be clobbered by the echo of their own save.
                 guard !self.isHost else { return }
                 self.durationMinutes = Double(settings.durationMinutes)
-                self.radarIntervalSec = Double(settings.radarIntervalSec)
                 self.boundaryPoints = settings.boundsPolygon
                 self.jailEnabled = settings.jailEnabled ?? false
                 self.jailPoints = settings.jailPolygon ?? []
@@ -118,7 +115,6 @@ final class GameLobbyViewModel: ObservableObject {
             let updated = try await APIClient.shared.updateSessionSettings(
                 code: session.code,
                 durationMinutes: Int(durationMinutes),
-                radarIntervalSec: Int(radarIntervalSec),
                 // Only ever sent the one time it's actually unset — once the play area is
                 // locked in, resending the same points would just be rejected server-side.
                 boundsPolygon: isBoundarySet ? nil : boundaryPoints,

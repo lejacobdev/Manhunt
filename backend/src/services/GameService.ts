@@ -7,7 +7,6 @@ import { GameMode, HUNTER_STARTING_HEARTS, Point2D, PowerUpType, RUNNER_STARTING
 export interface CreateSessionInput {
   hostId: string;
   durationMinutes: number;
-  radarIntervalSec: number;
   /** Empty is valid — setup can finish later from the lobby via `setBoundary`, and the
    *  match can't start until it's been set (see the `/start` route's guard). */
   boundsPolygon: Point2D[];
@@ -29,7 +28,6 @@ const POWER_UP_TYPES: PowerUpType[] = [
 
 export interface GameSettings {
   durationMinutes: number;
-  radarIntervalSec: number;
   boundsPolygon: Point2D[];
   extractionPoint?: Point2D;
   jailEnabled?: boolean;
@@ -51,7 +49,6 @@ export class GameService {
 
     const settings: GameSettings = {
       durationMinutes: input.durationMinutes,
-      radarIntervalSec: input.radarIntervalSec,
       boundsPolygon: input.boundsPolygon,
       extractionPoint,
       jailEnabled: input.jailEnabled ?? false,

@@ -41,7 +41,6 @@ import {
   JAIL_VIOLATION_COUNTDOWN_MS,
   PlayerState,
   PowerUpType,
-  THERMAL_VISION_INTERVAL_MS,
   THERMAL_VISION_RADIUS_METERS,
   ZONE_BROADCAST_INTERVAL_MS,
 } from './types';
@@ -402,34 +401,29 @@ io.on('connection', (socket: Socket) => {
       }
 
       if (p.role === 'HUNTER') {
-        const settings = sessionSettingsCache.get(roomCode);
-        const baseIntervalMs = (settings?.radarIntervalSec ?? 5) * 1000;
+        // Radar used to only refresh on a timer (radarIntervalSec, with a faster forced
+        // rate under Thermal Vision) — now it's pushed on every accepted location update
+        // for every hunter alike, the same live cadence the runner's own compass already
+        // gets. Thermal Vision's real effect (piercing INVISIBILITY_10MIN within range)
+        // is unchanged below; only the "everyone else waits, thermal refreshes faster"
+        // timing gate is gone.
         const thermalActive = isBuffActive(p, 'THERMAL_VISION');
-        const effectiveIntervalMs = thermalActive ? THERMAL_VISION_INTERVAL_MS : baseIntervalMs;
-        const sinceLastPush = now - (p.lastRadarPushAt ?? 0);
-
-        // Tactical radar per spec 1.1: hunters get periodic pings, not a continuous
-        // feed — except Thermal Vision, which forces a 1-second refresh.
-        if (sinceLastPush >= effectiveIntervalMs) {
-          p.lastRadarPushAt = now;
-
-          if (isBuffActive(p, 'EMP_JAMMER')) {
-            socket.emit('radar_broadcast', { runners: [], decoys: [], jammed: true });
-          } else {
-            const hunterPt = turf.point([p.lng, p.lat]);
-            const visibleRunners = runners.filter((r) => {
-              if (!isBuffActive(r, 'INVISIBILITY_10MIN')) return true;
-              if (!thermalActive) return false;
-              const dist = turf.distance(hunterPt, turf.point([r.lng, r.lat]), { units: 'meters' });
-              return dist <= THERMAL_VISION_RADIUS_METERS;
-            });
-            pruneExpiredDecoys(decoys, roomCode);
-            const liveDecoys = (decoys.get(roomCode) ?? []).map((d) => {
-              const pos = currentDecoyPosition(d);
-              return { lat: pos.lat, lng: pos.lng, isDecoy: true };
-            });
-            socket.emit('radar_broadcast', { runners: visibleRunners, decoys: liveDecoys, jammed: false });
-          }
+        if (isBuffActive(p, 'EMP_JAMMER')) {
+          socket.emit('radar_broadcast', { runners: [], decoys: [], jammed: true });
+        } else {
+          const hunterPt = turf.point([p.lng, p.lat]);
+          const visibleRunners = runners.filter((r) => {
+            if (!isBuffActive(r, 'INVISIBILITY_10MIN')) return true;
+            if (!thermalActive) return false;
+            const dist = turf.distance(hunterPt, turf.point([r.lng, r.lat]), { units: 'meters' });
+            return dist <= THERMAL_VISION_RADIUS_METERS;
+          });
+          pruneExpiredDecoys(decoys, roomCode);
+          const liveDecoys = (decoys.get(roomCode) ?? []).map((d) => {
+            const pos = currentDecoyPosition(d);
+            return { lat: pos.lat, lng: pos.lng, isDecoy: true };
+          });
+          socket.emit('radar_broadcast', { runners: visibleRunners, decoys: liveDecoys, jammed: false });
         }
       }
 

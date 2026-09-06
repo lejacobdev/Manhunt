@@ -19,7 +19,6 @@ const pointSchema = z.object({ lat: z.number(), lng: z.number() });
 const createSessionSchema = z
   .object({
     durationMinutes: z.number().min(5).max(240),
-    radarIntervalSec: z.number().min(15).max(600),
     // Empty is valid now — hosting opens the lobby immediately, and the play area gets
     // drawn from inside it (via PATCH /:code/settings) before the host can start.
     boundsPolygon: z.array(pointSchema).optional().default([]),
@@ -54,7 +53,6 @@ gamesRouter.post('/', async (req: AuthedRequest, res) => {
   const session = await gameService.createSession({
     hostId: req.user!.userId,
     durationMinutes: parsed.data.durationMinutes,
-    radarIntervalSec: parsed.data.radarIntervalSec,
     boundsPolygon: parsed.data.boundsPolygon,
     powerUpCount: parsed.data.powerUpCount,
     mode: parsed.data.mode,
@@ -94,7 +92,6 @@ gamesRouter.post('/:code/join', async (req: AuthedRequest, res) => {
 
 const updateSettingsSchema = z.object({
   durationMinutes: z.number().min(5).max(240).optional(),
-  radarIntervalSec: z.number().min(15).max(600).optional(),
   // Only meaningful the first time — see the guard below. Once spawns exist they're tied to
   // this exact shape, so a later redraw would strand them outside the new play area.
   boundsPolygon: z.array(pointSchema).optional(),

@@ -38,7 +38,6 @@ final class LobbyViewModel: ObservableObject {
         do {
             let (player, session) = try await api.createGame(
                 durationMinutes: 60,
-                radarIntervalSec: 120,
                 boundsPolygon: [],
                 mode: hostMode,
                 role: hostRole,

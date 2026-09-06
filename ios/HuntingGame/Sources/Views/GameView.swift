@@ -185,10 +185,13 @@ struct GameView: View {
         }
     }
 
-    /// A failed catch or a server-rejected action ("too far to collect"), shown as a
-    /// brief non-blocking banner rather than a modal alert — see `scheduleToastDismiss`.
+    /// A failed catch, a server-rejected action ("too far to collect"), or a location
+    /// update the anti-cheat pipeline silently dropped (bad GPS accuracy, non-foot
+    /// motion, an implausible jump) — shown as a brief non-blocking banner rather than
+    /// a modal alert. Without this, a rejected fix left the radar/compass looking frozen
+    /// with no visible reason why. See `scheduleToastDismiss`.
     private var activeToastMessage: String? {
-        viewModel.showCatchFailure ?? socket.lastErrorMessage
+        viewModel.showCatchFailure ?? socket.lastErrorMessage ?? socket.lastAntiCheatWarning
     }
 
     private var toastBanner: some View {
@@ -226,6 +229,7 @@ struct GameView: View {
         let work = DispatchWorkItem {
             viewModel.showCatchFailure = nil
             socket.lastErrorMessage = nil
+            socket.lastAntiCheatWarning = nil
         }
         toastDismissWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)

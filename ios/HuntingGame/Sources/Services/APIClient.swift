@@ -152,10 +152,9 @@ final class APIClient {
     /// The host plays too — no separate supervisor/observer role forced on them. They pick
     /// role/squad just like anyone joining, and get host-only admin actions (end game,
     /// override a catch) via GameSession.hostId instead.
-    func createGame(durationMinutes: Int, radarIntervalSec: Int, boundsPolygon: [Coordinate], mode: GameMode, role: PlayerRole, squad: String?, jailEnabled: Bool = false, jailPolygon: [Coordinate] = [], gamblingEnabled: Bool = false) async throws -> (player: GamePlayer, session: GameSession) {
+    func createGame(durationMinutes: Int, boundsPolygon: [Coordinate], mode: GameMode, role: PlayerRole, squad: String?, jailEnabled: Bool = false, jailPolygon: [Coordinate] = [], gamblingEnabled: Bool = false) async throws -> (player: GamePlayer, session: GameSession) {
         struct Body: Encodable {
             let durationMinutes: Int
-            let radarIntervalSec: Int
             let boundsPolygon: [Coordinate]
             let mode: String
             let role: String
@@ -169,7 +168,6 @@ final class APIClient {
             "/games",
             body: Body(
                 durationMinutes: durationMinutes,
-                radarIntervalSec: radarIntervalSec,
                 boundsPolygon: boundsPolygon,
                 mode: mode.rawValue,
                 role: role.rawValue,
@@ -204,10 +202,9 @@ final class APIClient {
     /// Host-only lobby edit. `boundsPolygon` only actually does anything the first time —
     /// once the play area is set, spawns are already tied to that exact shape and the
     /// server rejects a redraw.
-    func updateSessionSettings(code: String, durationMinutes: Int?, radarIntervalSec: Int?, boundsPolygon: [Coordinate]?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, gamblingEnabled: Bool?) async throws -> GameSession {
+    func updateSessionSettings(code: String, durationMinutes: Int?, boundsPolygon: [Coordinate]?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, gamblingEnabled: Bool?) async throws -> GameSession {
         struct Body: Encodable {
             let durationMinutes: Int?
-            let radarIntervalSec: Int?
             let boundsPolygon: [Coordinate]?
             let jailEnabled: Bool?
             let jailPolygon: [Coordinate]?
@@ -216,7 +213,7 @@ final class APIClient {
         struct Response: Decodable { let session: GameSession }
         let resp: Response = try await patch(
             "/games/\(code)/settings",
-            body: Body(durationMinutes: durationMinutes, radarIntervalSec: radarIntervalSec, boundsPolygon: boundsPolygon, jailEnabled: jailEnabled, jailPolygon: jailPolygon, gamblingEnabled: gamblingEnabled)
+            body: Body(durationMinutes: durationMinutes, boundsPolygon: boundsPolygon, jailEnabled: jailEnabled, jailPolygon: jailPolygon, gamblingEnabled: gamblingEnabled)
         )
         return resp.session
     }

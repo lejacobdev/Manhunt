@@ -84,7 +84,9 @@ enum PowerUpType: String, Codable, CaseIterable, Identifiable, Hashable {
 
     var durationSeconds: Int {
         switch self {
-        case .invisibility: return 600
+        // Raw value/display name still say "10MIN" — see the matching backend constant
+        // for why that's not being renamed along with the actual duration.
+        case .invisibility: return 60
         case .ghostDecoy: return 180
         case .empJammer: return 60
         case .thermalVision: return 45
@@ -103,7 +105,6 @@ struct Coordinate: Codable, Equatable {
 /// chosen when a session was created.
 struct GameSettings: Codable, Equatable {
     let durationMinutes: Int
-    let radarIntervalSec: Int
     let boundsPolygon: [Coordinate]
     let extractionPoint: Coordinate?
     /// Optional/absent on sessions created before this feature shipped.
