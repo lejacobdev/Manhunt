@@ -13,6 +13,7 @@ import { gamesRouter } from './routes/games';
 import { powerUpsRouter } from './routes/powerups';
 import { invitesRouter } from './routes/invites';
 import { usersRouter } from './routes/users';
+import { pushRouter } from './routes/push';
 import { prisma } from './lib/prisma';
 import { gameService, GameSettings } from './services/GameService';
 import { checkAccuracy, checkMotion, checkSpeed, checkTeleport } from './services/AntiCheatService';
@@ -67,6 +68,7 @@ app.use('/games', gamesRouter);
 app.use('/powerups', powerUpsRouter);
 app.use('/invites', invitesRouter);
 app.use('/users', usersRouter);
+app.use('/push', pushRouter);
 
 /**
  * The landing page a friend QR points at. The QR encodes an https:// URL rather than the

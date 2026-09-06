@@ -66,19 +66,4 @@ final class LobbyViewModel: ObservableObject {
         }
     }
 
-    /// Recovers a still-running or still-in-lobby game this account belongs to, so Mission
-    /// Control can offer a way back in after the app was relaunched — not just while this
-    /// one in-memory view model instance happens to still remember it from create/join.
-    /// Clears the stale card entirely once nothing qualifies any more (the match ended) —
-    /// leaving the last-known session sitting here would keep showing e.g. "ACTIVE" for a
-    /// match that's actually over, since GET /active/mine deliberately excludes ended ones.
-    func refreshActiveSession() async {
-        guard let result = try? await api.activeSession() else {
-            activeSession = nil
-            activePlayer = nil
-            return
-        }
-        activeSession = result.session
-        activePlayer = result.player
-    }
 }

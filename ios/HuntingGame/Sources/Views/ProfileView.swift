@@ -27,11 +27,19 @@ struct ProfileView: View {
                             .padding(.horizontal)
                         }
 
-                        Button("SIGN OUT") { authSession.signOut() }
-                            .font(ADATheme.telemetryFont(size: 11))
-                            .foregroundColor(.white.opacity(0.3))
-                            .tracking(1.5)
-                            .padding(.top, 4)
+                        Button("SIGN OUT") {
+                            Task {
+                                // Unregister while the auth token is still valid to make the
+                                // call with — a signed-out device shouldn't keep receiving
+                                // this account's pushes.
+                                await PushNotificationManager.shared.unregisterCurrentToken()
+                                authSession.signOut()
+                            }
+                        }
+                        .font(ADATheme.telemetryFont(size: 11))
+                        .foregroundColor(.white.opacity(0.3))
+                        .tracking(1.5)
+                        .padding(.top, 4)
                     }
                     .padding(.vertical, 20)
                     .adaptiveContentWidth()

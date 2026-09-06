@@ -275,6 +275,12 @@ final class APIClient {
         try await get("/users/\(userId)/profile")
     }
 
+    /// Top 100 by the chosen stat, plus the caller's own standing even if they fall outside
+    /// that top 100.
+    func leaderboard(sort: LeaderboardSort) async throws -> Leaderboard {
+        try await get("/users/leaderboard", queryItems: [URLQueryItem(name: "sort", value: sort.rawValue)])
+    }
+
     /// Resolves the "username#tag" a scanned friend QR carries into a real account, so the
     /// scanner can show who it found before actually sending the request.
     func lookupUser(username: String, userTag: String) async throws -> AppUser {
@@ -291,6 +297,26 @@ final class APIClient {
     func clearHistory() async throws {
         struct Response: Decodable { let ok: Bool }
         let _: Response = try await post("/games/history/clear", body: EmptyBody())
+    }
+
+    /// Removes a single finished match from this account's own history — the swipe-to-
+    /// delete row action.
+    func hideHistoryEntry(playerId: String) async throws {
+        try await delete("/games/history/\(playerId)/hide")
+    }
+
+    // MARK: - Push notifications
+
+    func registerDeviceToken(_ token: String) async throws {
+        struct Body: Encodable { let token: String }
+        struct Response: Decodable { let ok: Bool }
+        let _: Response = try await post("/push/register", body: Body(token: token))
+    }
+
+    func unregisterDeviceToken(_ token: String) async throws {
+        struct Body: Encodable { let token: String }
+        struct Response: Decodable { let ok: Bool }
+        let _: Response = try await post("/push/unregister", body: Body(token: token))
     }
 
     // MARK: - Core request helpers

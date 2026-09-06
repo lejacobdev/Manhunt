@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct HuntingGameApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var authSession = AuthSession.shared
 
     var body: some Scene {
@@ -16,6 +17,7 @@ struct HuntingGameApp: App {
 struct RootView: View {
     @EnvironmentObject var authSession: AuthSession
     @StateObject private var presence = PresenceService.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Group {
@@ -34,13 +36,27 @@ struct RootView: View {
             DeepLinkRouter.shared.handle(url)
         }
         .onAppear {
-            if authSession.isAuthenticated { presence.start() }
+            if authSession.isAuthenticated {
+                presence.start()
+                PushNotificationManager.shared.requestAuthorizationIfNeeded()
+                PushNotificationManager.shared.flushPendingTokenIfNeeded()
+            }
+            Task { await UpdateChecker.shared.checkIfNeeded() }
         }
         .onChange(of: authSession.isAuthenticated) { isAuthenticated in
             if isAuthenticated {
                 presence.start()
+                PushNotificationManager.shared.requestAuthorizationIfNeeded()
+                PushNotificationManager.shared.flushPendingTokenIfNeeded()
             } else {
                 presence.stop()
+            }
+        }
+        // Catches "left it running for a day, came back" the same way a fresh launch
+        // would — .onAppear alone only fires once per process lifetime.
+        .onChange(of: scenePhase) { phase in
+            if phase == .active {
+                Task { await UpdateChecker.shared.checkIfNeeded() }
             }
         }
     }

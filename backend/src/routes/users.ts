@@ -167,6 +167,107 @@ async function computeProfile(userId: string) {
   };
 }
 
+type LeaderboardSort = 'wins' | 'catches' | 'extractions' | 'matches';
+const LEADERBOARD_SORTS: LeaderboardSort[] = ['wins', 'catches', 'extractions', 'matches'];
+
+interface LeaderboardRow {
+  user: { id: string; username: string; userTag: string; avatarUrl: string | null };
+  matchesPlayed: number;
+  wins: number;
+  winRatePercent: number;
+  catchesMade: number;
+  extractions: number;
+}
+
+/**
+ * Ranks every player with at least one finished match. Unlike `computeProfile` (one query
+ * per profile view, fine at that scale), this computes every user's totals in a single pass
+ * over the same underlying rows — fetching once and aggregating in memory beats issuing one
+ * query per user, and the win-condition logic (mirrors the match's own: a runner surviving
+ * or extracting, a hunter resolving every runner) doesn't translate cleanly into a single
+ * SQL aggregate anyway.
+ */
+async function computeLeaderboard(sort: LeaderboardSort) {
+  const endedPlayers = await prisma.gamePlayer.findMany({
+    where: { session: { status: 'ENDED' } },
+    include: {
+      session: { include: { players: true } },
+      user: { select: { id: true, username: true, userTag: true, avatarUrl: true } },
+    },
+  });
+
+  interface Accum {
+    user: LeaderboardRow['user'];
+    matchesPlayed: number;
+    wins: number;
+    catchesMade: number;
+    extractions: number;
+  }
+  const byUser = new Map<string, Accum>();
+  const playerIdToUserId = new Map<string, string>();
+
+  for (const p of endedPlayers) {
+    playerIdToUserId.set(p.id, p.userId);
+    const acc = byUser.get(p.userId) ?? { user: p.user, matchesPlayed: 0, wins: 0, catchesMade: 0, extractions: 0 };
+    acc.matchesPlayed += 1;
+    if (p.isExtracted) acc.extractions += 1;
+    if (p.role === 'RUNNER') {
+      if (p.isExtracted || (!p.isCaught && !p.isOut)) acc.wins += 1;
+    } else if (p.role === 'HUNTER') {
+      const runners = p.session.players.filter((x) => x.role === 'RUNNER');
+      if (runners.length > 0 && runners.every((r) => (r.isCaught || r.isOut) && !r.isExtracted)) acc.wins += 1;
+    }
+    byUser.set(p.userId, acc);
+  }
+
+  const sessionIds = Array.from(new Set(endedPlayers.map((p) => p.sessionId)));
+  if (sessionIds.length > 0) {
+    const catchEvents = await prisma.gameEvent.findMany({
+      where: { sessionId: { in: sessionIds }, type: 'CATCH' },
+      select: { payload: true },
+    });
+    for (const event of catchEvents) {
+      const payload = (event.payload ?? {}) as Record<string, unknown>;
+      const hunterPlayerId = typeof payload.hunterPlayerId === 'string' ? payload.hunterPlayerId : undefined;
+      const userId = hunterPlayerId ? playerIdToUserId.get(hunterPlayerId) : undefined;
+      const acc = userId ? byUser.get(userId) : undefined;
+      if (acc) acc.catchesMade += 1;
+    }
+  }
+
+  const rows: LeaderboardRow[] = Array.from(byUser.values()).map((acc) => ({
+    user: acc.user,
+    matchesPlayed: acc.matchesPlayed,
+    wins: acc.wins,
+    winRatePercent: acc.matchesPlayed > 0 ? Math.round((acc.wins / acc.matchesPlayed) * 100) : 0,
+    catchesMade: acc.catchesMade,
+    extractions: acc.extractions,
+  }));
+
+  const key: keyof Pick<LeaderboardRow, 'wins' | 'catchesMade' | 'extractions' | 'matchesPlayed'> =
+    sort === 'catches' ? 'catchesMade' : sort === 'extractions' ? 'extractions' : sort === 'matches' ? 'matchesPlayed' : 'wins';
+  // Ties break on matches played (more games at the same total is the "weaker" showing),
+  // then alphabetically — arbitrary but stable, so a re-fetch doesn't reorder ties randomly.
+  rows.sort((a, b) => b[key] - a[key] || b.matchesPlayed - a.matchesPlayed || a.user.username.localeCompare(b.user.username));
+
+  return rows;
+}
+
+usersRouter.get('/leaderboard', async (req: AuthedRequest, res) => {
+  const sortParam = typeof req.query.sort === 'string' ? req.query.sort : 'wins';
+  const sort = (LEADERBOARD_SORTS as string[]).includes(sortParam) ? (sortParam as LeaderboardSort) : 'wins';
+
+  const rows = await computeLeaderboard(sort);
+  const entries = rows.slice(0, 100).map((row, index) => ({ rank: index + 1, ...row }));
+
+  // The caller's own standing even when it falls outside the top 100 — otherwise finishing
+  // 145th just means never appearing anywhere on the screen at all.
+  const myIndex = rows.findIndex((row) => row.user.id === req.user!.userId);
+  const me = myIndex >= 0 ? { rank: myIndex + 1, ...rows[myIndex] } : null;
+
+  return res.json({ sort, entries, me });
+});
+
 usersRouter.get('/me/profile', async (req: AuthedRequest, res) => {
   const profile = await computeProfile(req.user!.userId);
   if (!profile) return res.status(404).json({ error: 'User not found.' });

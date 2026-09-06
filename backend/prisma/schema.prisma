@@ -56,14 +56,29 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sentRequests Friendship[] @relation("SentRequests")
-  recvRequests Friendship[] @relation("RecvRequests")
+  sentRequests Friendship[]  @relation("SentRequests")
+  recvRequests Friendship[]  @relation("RecvRequests")
   players      GamePlayer[]
-  sentInvites  GameInvite[] @relation("SentInvites")
-  recvInvites  GameInvite[] @relation("RecvInvites")
+  sentInvites  GameInvite[]  @relation("SentInvites")
+  recvInvites  GameInvite[]  @relation("RecvInvites")
+  deviceTokens DeviceToken[]
 
   @@unique([username, userTag])
   @@index([username])
+}
+
+// One row per device this account has granted push permission on — a user can have
+// several (phone + a reinstall's new token, etc.), so pushes fan out to every row.
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model Friendship {

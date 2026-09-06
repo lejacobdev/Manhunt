@@ -6,6 +6,7 @@ import { zodErrorMessage } from '../utils/validation';
 // Circular import (server.ts imports this router) — safe because `io`/`isUserOnline`
 // are only read inside route handlers, which run long after both modules finish loading.
 import { io, isUserOnline } from '../server';
+import { pushService } from '../services/PushService';
 
 export const invitesRouter = Router();
 invitesRouter.use(requireAuth);
@@ -59,8 +60,9 @@ invitesRouter.post('/', async (req: AuthedRequest, res) => {
     include: { fromUser: true },
   });
 
-  // Best-effort live push — if the friend isn't connected right now, the durable
-  // row is still there for GET /invites/incoming the next time they open the app.
+  // Best-effort live socket push — if the friend isn't connected right now, the durable
+  // row is still there for GET /invites/incoming the next time they open the app, and the
+  // APNs push below reaches them even while the app itself isn't running at all.
   if (isUserOnline(toUserId)) {
     io.to(`user:${toUserId}`).emit('game_invite', {
       id: invite.id,
@@ -69,6 +71,12 @@ invitesRouter.post('/', async (req: AuthedRequest, res) => {
       fromUserId,
       fromUsername: invite.fromUser.username,
       createdAt: invite.createdAt,
+    });
+  } else {
+    void pushService.notify(toUserId, {
+      title: 'Game Invite',
+      body: `${invite.fromUser.username} invited you to a ${session.mode.toLowerCase()} match.`,
+      data: { type: 'game_invite', inviteId: invite.id, sessionCode: session.code },
     });
   }
 

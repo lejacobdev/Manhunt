@@ -76,3 +76,49 @@ struct UserProfile: Codable, Equatable {
 
     var unlockedAchievements: [Achievement] { achievements.filter(\.unlocked) }
 }
+
+// MARK: - Leaderboard
+
+enum LeaderboardSort: String, Codable, CaseIterable, Identifiable {
+    case wins, catches, extractions, matches
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .wins: return "WINS"
+        case .catches: return "CATCHES"
+        case .extractions: return "ESCAPES"
+        case .matches: return "MATCHES"
+        }
+    }
+}
+
+struct LeaderboardEntry: Codable, Identifiable, Equatable {
+    let rank: Int
+    let user: AppUser
+    let matchesPlayed: Int
+    let wins: Int
+    let winRatePercent: Int
+    let catchesMade: Int
+    let extractions: Int
+
+    var id: String { user.id }
+
+    func value(for sort: LeaderboardSort) -> Int {
+        switch sort {
+        case .wins: return wins
+        case .catches: return catchesMade
+        case .extractions: return extractions
+        case .matches: return matchesPlayed
+        }
+    }
+}
+
+struct Leaderboard: Codable, Equatable {
+    let sort: LeaderboardSort
+    let entries: [LeaderboardEntry]
+    /// The signed-in player's own standing, present even when they fall outside the top
+    /// 100 shown in `entries` — nil only if they haven't finished a single match yet.
+    let me: LeaderboardEntry?
+}

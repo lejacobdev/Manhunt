@@ -90,6 +90,12 @@ targets:
           com.apple.developer.location.push: false
           com.apple.security.application-groups:
             - group.com.huntinggame.app.widget
+          # Declared as "development" here for the unsigned xtool/SideStore path (which
+          # re-signs on-device against whatever personal/paid team is configured in
+          # AltStore/SideStore) — Xcode overwrites this to "production" automatically when
+          # archiving against an App Store distribution profile (see the TestFlight
+          # workflow), so one declaration covers both build paths.
+          aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app

@@ -6,6 +6,7 @@ import { zodErrorMessage } from '../utils/validation';
 // Circular import (server.ts imports this router) — safe because `isUserOnline` is
 // only read inside route handlers, which run long after both modules finish loading.
 import { isUserOnline } from '../server';
+import { pushService } from '../services/PushService';
 
 export const friendsRouter = Router();
 friendsRouter.use(requireAuth);
@@ -58,20 +59,36 @@ friendsRouter.post('/requests', async (req: AuthedRequest, res) => {
     return res.status(409).json({ error: 'Friendship already exists.', friendship: existing });
   }
 
-  const friendship = await prisma.friendship.create({
-    data: { senderId, receiverId, status: 'PENDING' },
-  });
+  const [friendship, sender] = await Promise.all([
+    prisma.friendship.create({ data: { senderId, receiverId, status: 'PENDING' } }),
+    prisma.user.findUnique({ where: { id: senderId }, select: { username: true, userTag: true } }),
+  ]);
+  if (sender) {
+    void pushService.notify(receiverId, {
+      title: 'New Friend Request',
+      body: `${sender.username}#${sender.userTag} wants to be friends.`,
+      data: { type: 'friend_request', friendshipId: friendship.id },
+    });
+  }
   return res.status(201).json({ friendship });
 });
 
 friendsRouter.post('/requests/:id/accept', async (req: AuthedRequest, res) => {
-  const friendship = await prisma.friendship.findUnique({ where: { id: req.params.id } });
+  const friendship = await prisma.friendship.findUnique({
+    where: { id: req.params.id },
+    include: { receiver: { select: { username: true, userTag: true } } },
+  });
   if (!friendship || friendship.receiverId !== req.user!.userId) {
     return res.status(404).json({ error: 'Friend request not found.' });
   }
   const updated = await prisma.friendship.update({
     where: { id: friendship.id },
     data: { status: 'ACCEPTED' },
+  });
+  void pushService.notify(friendship.senderId, {
+    title: 'Friend Request Accepted',
+    body: `${friendship.receiver.username}#${friendship.receiver.userTag} accepted your friend request.`,
+    data: { type: 'friend_accepted', friendshipId: friendship.id },
   });
   return res.json({ friendship: updated });
 });

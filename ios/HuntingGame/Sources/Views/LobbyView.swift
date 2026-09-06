@@ -7,6 +7,7 @@ struct LobbyView: View {
     @EnvironmentObject var authSession: AuthSession
     @EnvironmentObject var presence: PresenceService
     @ObservedObject private var deepLinkRouter = DeepLinkRouter.shared
+    @ObservedObject private var updateChecker = UpdateChecker.shared
     @State private var showHistory = false
     @State private var joiningInvite: GameInvite?
     @State private var launchedGame: (player: GamePlayer, session: GameSession)?
@@ -20,6 +21,9 @@ struct LobbyView: View {
 
             FriendsView()
                 .tabItem { Label("Friends", systemImage: "person.2.fill") }
+
+            LeaderboardView()
+                .tabItem { Label("Leaderboard", systemImage: "trophy.fill") }
 
             ProfileView()
                 .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
@@ -53,6 +57,11 @@ struct LobbyView: View {
                     VStack(spacing: 18) {
                         header
 
+                        if let update = updateChecker.available {
+                            UpdateBannerView(update: update, onDismiss: { updateChecker.dismiss() })
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+
                         if !presence.incomingInvites.isEmpty {
                             InviteBannerView(
                                 invites: presence.incomingInvites,
@@ -85,25 +94,14 @@ struct LobbyView: View {
                                 .padding(.horizontal)
                                 .transition(.opacity)
                         }
-
-                        if let session = viewModel.activeSession, let player = viewModel.activePlayer {
-                            sessionStatusCard(session: session, player: player)
-                                .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-
-                        Button("SIGN OUT") { authSession.signOut() }
-                            .font(ADATheme.telemetryFont(size: 11))
-                            .foregroundColor(.white.opacity(0.3))
-                            .tracking(1.5)
-                            .padding(.top, 6)
                     }
                     .adaptiveContentWidth()
                     .padding(.vertical, 28)
                     .frame(minHeight: proxy.size.height, alignment: .center)
                     .frame(maxWidth: .infinity)
                     .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
-                    .animation(ADATheme.ambientSpring, value: viewModel.activeSession?.status)
                     .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
+                    .animation(ADATheme.controlSpring, value: updateChecker.available)
                 }
                 }
             }
@@ -120,14 +118,7 @@ struct LobbyView: View {
             }
             .fullScreenCover(item: Binding(
                 get: { launchedGame.map { GameLaunch(player: $0.player, session: $0.session) } },
-                set: { _ in
-                    launchedGame = nil
-                    // The session's status (lobby/active/ended) only ever gets fetched once
-                    // up front otherwise — without this, returning here from a match that
-                    // just started or ended would keep showing whatever status was true
-                    // when the screen first loaded, not the game's actual current one.
-                    Task { await viewModel.refreshActiveSession() }
-                }
+                set: { _ in launchedGame = nil }
             )) { launch in
                 // Always the waiting room first — it swaps itself to GameView the moment
                 // the match is (or becomes) active, so rejoining an already-running match
@@ -135,7 +126,6 @@ struct LobbyView: View {
                 GameLobbyView(gamePlayer: launch.player, session: launch.session)
             }
             .onAppear { locationManager.requestAuthorizationAndStart() }
-            .task { await viewModel.refreshActiveSession() }
         }
     }
 
@@ -249,38 +239,6 @@ struct LobbyView: View {
         .animation(ADATheme.controlSpring, value: viewModel.hostMode)
     }
 
-    private func sessionStatusCard(session: GameSession, player: GamePlayer) -> some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(statusColor(for: session.status))
-                    .frame(width: 8, height: 8)
-                Text("CODE \(session.code) · \(session.mode.displayName.uppercased())")
-                    .font(ADATheme.telemetryFont(size: 13))
-                    .foregroundColor(.white)
-            }
-            Text(session.status.rawValue)
-                .font(ADATheme.telemetryFont(size: 11))
-                .foregroundColor(statusColor(for: session.status))
-
-            // Starting, settings, and inviting friends all now happen inside the lobby
-            // itself (GameLobbyView) rather than from this card — one door in either way.
-            Button("ENTER") { launchedGame = (player, session) }
-                .buttonStyle(GlowButtonStyle(tint: statusColor(for: session.status)))
-        }
-        .padding(18)
-        .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: statusColor(for: session.status))
-        .padding(.horizontal)
-    }
-
-    private func statusColor(for status: GameStatus) -> Color {
-        switch status {
-        case .lobby: return ADATheme.spatialCyan
-        case .active: return ADATheme.runnerGreen
-        case .paused: return ADATheme.tacticalAmber
-        case .ended: return ADATheme.neutralGray
-        }
-    }
 }
 
 private struct GameLaunch: Identifiable {

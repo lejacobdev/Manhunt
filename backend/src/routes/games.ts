@@ -280,6 +280,27 @@ gamesRouter.get('/history/mine', async (req: AuthedRequest, res) => {
 });
 
 /**
+ * Removes a single match from this account's own history (the swipe-to-delete row action)
+ * — same hide, just scoped to one GamePlayer row instead of every ended one. The row still
+ * has to be this caller's own and belong to a finished match, for the same reasons as
+ * POST /history/clear below.
+ */
+gamesRouter.post('/history/:playerId/hide', async (req: AuthedRequest, res) => {
+  const player = await prisma.gamePlayer.findUnique({
+    where: { id: req.params.playerId },
+    include: { session: true },
+  });
+  if (!player || player.userId !== req.user!.userId) {
+    return res.status(404).json({ error: 'History entry not found.' });
+  }
+  if (player.session.status !== 'ENDED') {
+    return res.status(409).json({ error: 'Only finished matches can be removed from history.' });
+  }
+  await prisma.gamePlayer.update({ where: { id: player.id }, data: { hiddenFromHistory: true } });
+  return res.status(204).send();
+});
+
+/**
  * "Clear history" only hides this account's own past-match rows from its own history
  * list — the underlying GameSession/GamePlayer data stays intact for the match's other
  * members (their own history, and anyone's replay lookup). Scoped to ENDED sessions:
