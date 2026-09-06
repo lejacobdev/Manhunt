@@ -29,6 +29,10 @@ final class SocketService: ObservableObject {
     @Published var lastGambleResult: GambleResult?
     /// The shrinking play zone's current circle, refreshed every server sweep.
     @Published var zone: ZoneUpdate?
+    /// The lobby's live settings — updated whenever the host edits them before the match
+    /// starts, so everyone waiting sees the same duration/jail/gambling values without
+    /// having to refresh.
+    @Published var latestSettings: GameSettings?
     /// Live SAFE_ZONE_FLARE bubbles, keyed by the player who dropped each one.
     @Published var safeZones: [String: ActiveSafeZone] = [:]
 
@@ -119,6 +123,7 @@ final class SocketService: ObservableObject {
         lastGambleResult = nil
         zone = nil
         safeZones = [:]
+        latestSettings = nil
     }
 
     func sendLocationUpdate(lat: Double, lng: Double, speed: Double, accuracy: Double, battery: Int, isMovingOnFoot: Bool) {
@@ -342,6 +347,11 @@ final class SocketService: ObservableObject {
         socket.on("zone_update") { [weak self] data, _ in
             guard let self, let raw = data.first else { return }
             self.zone = Self.decode(raw)
+        }
+
+        socket.on("settings_updated") { [weak self] data, _ in
+            guard let self, let raw = data.first else { return }
+            self.latestSettings = Self.decode(raw)
         }
 
         // The flare's whole point is a visible no-catch bubble — without this the safe zone

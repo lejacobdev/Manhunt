@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { AuthedRequest, requireAuth } from '../middleware/auth';
-import { gameService } from '../services/GameService';
+import { gameService, GameSettings } from '../services/GameService';
 import { overpassSpawner } from '../services/OverpassSpawner';
 import { prisma } from '../lib/prisma';
 import { zodErrorMessage } from '../utils/validation';
 // Circular import (server.ts imports this router) — safe because `io` and
-// `sessionStartedAtCache` are only read inside route handlers, which run
-// long after both modules have finished loading, never at module top level.
-import { io, sessionStartedAtCache } from '../server';
+// the caches are only read inside route handlers, which run long after both
+// modules have finished loading, never at module top level.
+import { io, sessionSettingsCache, sessionStartedAtCache } from '../server';
 
 export const gamesRouter = Router();
 gamesRouter.use(requireAuth);
@@ -87,6 +87,63 @@ gamesRouter.post('/:code/join', async (req: AuthedRequest, res) => {
     parsed.data.squad
   );
   return res.status(201).json({ player, session });
+});
+
+const updateSettingsSchema = z.object({
+  durationMinutes: z.number().min(5).max(240).optional(),
+  radarIntervalSec: z.number().min(15).max(600).optional(),
+  jailEnabled: z.boolean().optional(),
+  jailPolygon: z.array(pointSchema).optional(),
+  gamblingEnabled: z.boolean().optional(),
+});
+
+/**
+ * Host-only settings changes from the pre-match lobby, so a host doesn't have to tear the
+ * game down and re-host just to change the duration or turn jail on once everyone's in.
+ *
+ * Deliberately cannot change `boundsPolygon`: power-up spawns and the extraction point were
+ * generated from it at creation and would be stranded outside a redrawn play area.
+ */
+gamesRouter.patch('/:code/settings', async (req: AuthedRequest, res) => {
+  const session = await gameService.getSessionByCode(req.params.code);
+  if (!session) return res.status(404).json({ error: 'Game not found.' });
+  if (session.hostId !== req.user!.userId) {
+    return res.status(403).json({ error: 'Only the host can change the settings.' });
+  }
+  if (session.status !== 'LOBBY') {
+    return res.status(409).json({ error: 'Settings can only be changed before the match starts.' });
+  }
+  const parsed = updateSettingsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
+
+  const current = session.settings as unknown as GameSettings;
+  const merged: GameSettings = { ...current, ...parsed.data };
+  // Turning jail on needs an area to hold people in — either one drawn in this request or
+  // one already stored from when the game was created.
+  if (merged.jailEnabled && (merged.jailPolygon?.length ?? 0) < 3) {
+    return res.status(400).json({ error: 'Draw a jail area with at least 3 points before enabling jail mode.' });
+  }
+  if (!merged.jailEnabled) merged.jailPolygon = undefined;
+
+  const updated = await gameService.updateSessionSettings(session.id, merged);
+  sessionSettingsCache.set(session.code, merged);
+  io.to(session.code).emit('settings_updated', merged);
+  return res.json({ session: updated });
+});
+
+/**
+ * The one unfinished match this user is in, if any — lets the app offer a way back into a
+ * lobby or a running match after it was closed, instead of stranding them outside a game
+ * they're still a member of.
+ */
+gamesRouter.get('/active/mine', async (req: AuthedRequest, res) => {
+  const player = await prisma.gamePlayer.findFirst({
+    where: { userId: req.user!.userId, session: { status: { in: ['LOBBY', 'ACTIVE'] } } },
+    include: { session: true },
+    orderBy: { joinedAt: 'desc' },
+  });
+  if (!player) return res.json({ session: null, player: null });
+  return res.json({ session: player.session, player });
 });
 
 gamesRouter.post('/:code/start', async (req: AuthedRequest, res) => {

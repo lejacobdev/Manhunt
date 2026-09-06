@@ -84,6 +84,15 @@ final class LobbyViewModel: ObservableObject {
         }
     }
 
+    /// Recovers a still-running or still-in-lobby game this account belongs to, so Mission
+    /// Control can offer a way back in after the app was relaunched — not just while this
+    /// one in-memory view model instance happens to still remember it from create/join.
+    func refreshActiveSession() async {
+        guard let result = try? await api.activeSession() else { return }
+        activeSession = result.session
+        activePlayer = result.player
+    }
+
     func startGame() async {
         guard let session = activeSession else { return }
         isLoading = true

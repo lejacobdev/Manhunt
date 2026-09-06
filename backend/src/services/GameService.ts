@@ -119,6 +119,14 @@ export class GameService {
     });
   }
 
+  /** Host-only lobby settings edit — see the route for why boundsPolygon can't move here. */
+  public async updateSessionSettings(sessionId: string, settings: GameSettings) {
+    return prisma.gameSession.update({
+      where: { id: sessionId },
+      data: { settings: settings as unknown as Prisma.InputJsonValue },
+    });
+  }
+
   public async startSession(sessionId: string) {
     return prisma.gameSession.update({
       where: { id: sessionId },

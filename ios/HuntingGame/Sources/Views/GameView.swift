@@ -17,6 +17,7 @@ struct GameView: View {
     /// Bumped by the "recenter on me" button; see `GameMapView.recenterRequest`.
     @State private var recenterRequestToken = 0
     @State private var toastDismissWorkItem: DispatchWorkItem?
+    @State private var showExitConfirm = false
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
@@ -139,6 +140,12 @@ struct GameView: View {
         .onChange(of: activeToastMessage) { newValue in
             guard newValue != nil else { return }
             scheduleToastDismiss()
+        }
+        .confirmationDialog("Exit the match?", isPresented: $showExitConfirm, titleVisibility: .visible) {
+            Button("Exit", role: .destructive) { dismiss() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("You can rejoin from Mission Control while this match is still running.")
         }
     }
 
@@ -299,7 +306,7 @@ struct GameView: View {
                     }
                 }
                 Button {
-                    dismiss()
+                    showExitConfirm = true
                 } label: {
                     Text("EXIT")
                 }

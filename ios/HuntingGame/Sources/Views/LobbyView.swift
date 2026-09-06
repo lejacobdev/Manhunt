@@ -130,9 +130,13 @@ struct LobbyView: View {
                 get: { launchedGame.map { GameLaunch(player: $0.player, session: $0.session) } },
                 set: { _ in launchedGame = nil }
             )) { launch in
-                GameView(gamePlayer: launch.player, session: launch.session)
+                // Always the waiting room first — it swaps itself to GameView the moment
+                // the match is (or becomes) active, so rejoining an already-running match
+                // and entering a fresh lobby both funnel through the same entry point.
+                GameLobbyView(gamePlayer: launch.player, session: launch.session)
             }
             .onAppear { locationManager.requestAuthorizationAndStart() }
+            .task { await viewModel.refreshActiveSession() }
         }
         .preferredColorScheme(.dark)
     }
@@ -220,22 +224,10 @@ struct LobbyView: View {
                 .font(ADATheme.telemetryFont(size: 11))
                 .foregroundColor(statusColor(for: session.status))
 
-            HStack(spacing: 12) {
-                if session.hostId == player.userId && session.status == .lobby {
-                    Button("START") {
-                        Task {
-                            await viewModel.startGame()
-                            if let updated = viewModel.activeSession {
-                                launchedGame = (player, updated)
-                            }
-                        }
-                    }
-                    .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
-                }
-
-                Button("ENTER") { launchedGame = (player, session) }
-                    .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
-            }
+            // Starting, settings, and inviting friends all now happen inside the lobby
+            // itself (GameLobbyView) rather than from this card — one door in either way.
+            Button("ENTER") { launchedGame = (player, session) }
+                .buttonStyle(GlowButtonStyle(tint: statusColor(for: session.status)))
         }
         .padding(18)
         .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: statusColor(for: session.status))

@@ -201,6 +201,34 @@ final class APIClient {
         return resp.session
     }
 
+    /// Host-only lobby edit — everything but the boundary polygon (fixed at creation,
+    /// since power-up spawns and the extraction point were already generated from it).
+    func updateSessionSettings(code: String, durationMinutes: Int?, radarIntervalSec: Int?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, gamblingEnabled: Bool?) async throws -> GameSession {
+        struct Body: Encodable {
+            let durationMinutes: Int?
+            let radarIntervalSec: Int?
+            let jailEnabled: Bool?
+            let jailPolygon: [Coordinate]?
+            let gamblingEnabled: Bool?
+        }
+        struct Response: Decodable { let session: GameSession }
+        let resp: Response = try await patch(
+            "/games/\(code)/settings",
+            body: Body(durationMinutes: durationMinutes, radarIntervalSec: radarIntervalSec, jailEnabled: jailEnabled, jailPolygon: jailPolygon, gamblingEnabled: gamblingEnabled)
+        )
+        return resp.session
+    }
+
+    /// The one unfinished (lobby or active) match this account belongs to, if any — lets
+    /// Mission Control offer a way back in after the app was closed and reopened, not just
+    /// while a single in-memory view model happens to still remember it.
+    func activeSession() async throws -> (session: GameSession, player: GamePlayer)? {
+        struct Response: Decodable { let session: GameSession?; let player: GamePlayer? }
+        let resp: Response = try await get("/games/active/mine")
+        guard let session = resp.session, let player = resp.player else { return nil }
+        return (session, player)
+    }
+
     func fetchReplay(code: String) async throws -> MatchReplay {
         try await get("/games/\(code)/replay")
     }
@@ -245,6 +273,14 @@ final class APIClient {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
         return try await send(request, authorized: authorized)
+    }
+
+    private func patch<T: Decodable, B: Encodable>(_ path: String, body: B) async throws -> T {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+        return try await send(request)
     }
 
     /// For 204-No-Content endpoints (decline routes) where there's no response body to
