@@ -167,8 +167,8 @@ async function computeProfile(userId: string) {
   };
 }
 
-type LeaderboardSort = 'wins' | 'catches' | 'extractions' | 'matches';
-const LEADERBOARD_SORTS: LeaderboardSort[] = ['wins', 'catches', 'extractions', 'matches'];
+type LeaderboardSort = 'wins' | 'catches' | 'extractions' | 'matches' | 'playtime';
+const LEADERBOARD_SORTS: LeaderboardSort[] = ['wins', 'catches', 'extractions', 'matches', 'playtime'];
 
 interface LeaderboardRow {
   user: { id: string; username: string; userTag: string; avatarUrl: string | null };
@@ -177,6 +177,7 @@ interface LeaderboardRow {
   winRatePercent: number;
   catchesMade: number;
   extractions: number;
+  minutesPlayed: number;
 }
 
 /**
@@ -202,13 +203,14 @@ async function computeLeaderboard(sort: LeaderboardSort) {
     wins: number;
     catchesMade: number;
     extractions: number;
+    minutesPlayed: number;
   }
   const byUser = new Map<string, Accum>();
   const playerIdToUserId = new Map<string, string>();
 
   for (const p of endedPlayers) {
     playerIdToUserId.set(p.id, p.userId);
-    const acc = byUser.get(p.userId) ?? { user: p.user, matchesPlayed: 0, wins: 0, catchesMade: 0, extractions: 0 };
+    const acc = byUser.get(p.userId) ?? { user: p.user, matchesPlayed: 0, wins: 0, catchesMade: 0, extractions: 0, minutesPlayed: 0 };
     acc.matchesPlayed += 1;
     if (p.isExtracted) acc.extractions += 1;
     if (p.role === 'RUNNER') {
@@ -216,6 +218,13 @@ async function computeLeaderboard(sort: LeaderboardSort) {
     } else if (p.role === 'HUNTER') {
       const runners = p.session.players.filter((x) => x.role === 'RUNNER');
       if (runners.length > 0 && runners.every((r) => (r.isCaught || r.isOut) && !r.isExtracted)) acc.wins += 1;
+    }
+    if (p.session.startedAt && p.session.endedAt) {
+      const elapsed = Math.max(0, Math.round((p.session.endedAt.getTime() - p.session.startedAt.getTime()) / 60_000));
+      // Same clamp as computeProfile — a session force-ended hours after being abandoned
+      // still only *ran* for its configured length.
+      const configured = (p.session.settings as { durationMinutes?: number } | null)?.durationMinutes;
+      acc.minutesPlayed += configured && configured > 0 ? Math.min(elapsed, configured) : elapsed;
     }
     byUser.set(p.userId, acc);
   }
@@ -242,10 +251,15 @@ async function computeLeaderboard(sort: LeaderboardSort) {
     winRatePercent: acc.matchesPlayed > 0 ? Math.round((acc.wins / acc.matchesPlayed) * 100) : 0,
     catchesMade: acc.catchesMade,
     extractions: acc.extractions,
+    minutesPlayed: acc.minutesPlayed,
   }));
 
-  const key: keyof Pick<LeaderboardRow, 'wins' | 'catchesMade' | 'extractions' | 'matchesPlayed'> =
-    sort === 'catches' ? 'catchesMade' : sort === 'extractions' ? 'extractions' : sort === 'matches' ? 'matchesPlayed' : 'wins';
+  const key: keyof Pick<LeaderboardRow, 'wins' | 'catchesMade' | 'extractions' | 'matchesPlayed' | 'minutesPlayed'> =
+    sort === 'catches' ? 'catchesMade'
+      : sort === 'extractions' ? 'extractions'
+      : sort === 'matches' ? 'matchesPlayed'
+      : sort === 'playtime' ? 'minutesPlayed'
+      : 'wins';
   // Ties break on matches played (more games at the same total is the "weaker" showing),
   // then alphabetically — arbitrary but stable, so a re-fetch doesn't reorder ties randomly.
   rows.sort((a, b) => b[key] - a[key] || b.matchesPlayed - a.matchesPlayed || a.user.username.localeCompare(b.user.username));

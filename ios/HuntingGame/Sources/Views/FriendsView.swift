@@ -14,69 +14,74 @@ struct FriendsView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 16) {
-                    ADATextField(placeholder: "Search username or username#tag", text: $viewModel.searchQuery)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .padding(.horizontal)
-                        .onChange(of: viewModel.searchQuery) { _ in
-                            Task { await viewModel.search() }
-                        }
+            ZStack {
+                RadarSweepBackdrop(accent: ADATheme.hunterRed)
+                    .edgesIgnoringSafeArea(.all)
 
-                    if !viewModel.searchResults.isEmpty {
-                        VStack(spacing: 8) {
-                            ForEach(viewModel.searchResults) { user in
-                                HStack {
-                                    HStack(spacing: 8) {
-                                        Circle()
-                                            .fill(ADATheme.spatialCyan.opacity(0.25))
-                                            .frame(width: 28, height: 28)
-                                            .overlay(
-                                                Text(user.username.prefix(1).uppercased())
-                                                    .font(ADATheme.telemetryFont(size: 11))
-                                                    .foregroundColor(ADATheme.spatialCyan)
-                                            )
-                                        Text(user.tagLabel)
-                                            .font(ADATheme.uiFont(size: 13))
-                                            .foregroundColor(.white)
-                                    }
-                                    Spacer()
-                                    Button("ADD") { Task { await viewModel.sendRequest(to: user) } }
-                                        .buttonStyle(GlassButtonStyle(tint: ADATheme.runnerGreen))
-                                }
-                                .padding(12)
-                                .glassCard(cornerRadius: ADATheme.controlCornerRadius)
-                                .transition(.scale.combined(with: .opacity))
-                            }
-                        }
-                        .padding(.horizontal)
-                        .animation(ADATheme.controlSpring, value: viewModel.searchResults.map(\.id))
-                    }
-
-                    if let message = viewModel.lastActionMessage {
-                        StatusBadge(icon: "checkmark.circle.fill", text: message.uppercased(), tint: ADATheme.runnerGreen)
-                            .transition(.scale.combined(with: .opacity))
-                    }
-                    if let error = viewModel.errorMessage {
-                        Text(error)
-                            .font(ADATheme.telemetryFont(size: 12))
-                            .foregroundColor(ADATheme.hunterRed)
+                ScrollView {
+                    VStack(spacing: 16) {
+                        ADATextField(placeholder: "Search username or username#tag", text: $viewModel.searchQuery)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                             .padding(.horizontal)
+                            .onChange(of: viewModel.searchQuery) { _ in
+                                Task { await viewModel.search() }
+                            }
+
+                        if !viewModel.searchResults.isEmpty {
+                            VStack(spacing: 8) {
+                                ForEach(viewModel.searchResults) { user in
+                                    HStack {
+                                        HStack(spacing: 8) {
+                                            Circle()
+                                                .fill(ADATheme.spatialCyan.opacity(0.25))
+                                                .frame(width: 28, height: 28)
+                                                .overlay(
+                                                    Text(user.username.prefix(1).uppercased())
+                                                        .font(ADATheme.telemetryFont(size: 11))
+                                                        .foregroundColor(ADATheme.spatialCyan)
+                                                )
+                                            Text(user.tagLabel)
+                                                .font(ADATheme.uiFont(size: 13))
+                                                .foregroundColor(.white)
+                                        }
+                                        Spacer()
+                                        Button("ADD") { Task { await viewModel.sendRequest(to: user) } }
+                                            .buttonStyle(GlassButtonStyle(tint: ADATheme.runnerGreen))
+                                    }
+                                    .padding(12)
+                                    .glassCard(cornerRadius: ADATheme.controlCornerRadius)
+                                    .transition(.scale.combined(with: .opacity))
+                                }
+                            }
+                            .padding(.horizontal)
+                            .animation(ADATheme.controlSpring, value: viewModel.searchResults.map(\.id))
+                        }
+
+                        if let message = viewModel.lastActionMessage {
+                            StatusBadge(icon: "checkmark.circle.fill", text: message.uppercased(), tint: ADATheme.runnerGreen)
+                                .transition(.scale.combined(with: .opacity))
+                        }
+                        if let error = viewModel.errorMessage {
+                            Text(error)
+                                .font(ADATheme.telemetryFont(size: 12))
+                                .foregroundColor(ADATheme.hunterRed)
+                                .padding(.horizontal)
+                        }
+
+                        if !viewModel.incomingRequests.isEmpty {
+                            requestsSection
+                        }
+
+                        friendsSection
+
+                        Spacer(minLength: 20)
                     }
-
-                    if !viewModel.incomingRequests.isEmpty {
-                        requestsSection
-                    }
-
-                    friendsSection
-
-                    Spacer(minLength: 20)
+                    .padding(.top)
+                    .adaptiveContentWidth()
+                    .animation(ADATheme.ambientSpring, value: viewModel.lastActionMessage)
+                    .animation(ADATheme.controlSpring, value: viewModel.incomingRequests.map(\.id))
                 }
-                .padding(.top)
-                .adaptiveContentWidth()
-                .animation(ADATheme.ambientSpring, value: viewModel.lastActionMessage)
-                .animation(ADATheme.controlSpring, value: viewModel.incomingRequests.map(\.id))
             }
             .obsidianBackdrop()
             .navigationTitle("Friends")

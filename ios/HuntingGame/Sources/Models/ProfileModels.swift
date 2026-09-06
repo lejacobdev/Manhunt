@@ -80,7 +80,7 @@ struct UserProfile: Codable, Equatable {
 // MARK: - Leaderboard
 
 enum LeaderboardSort: String, Codable, CaseIterable, Identifiable {
-    case wins, catches, extractions, matches
+    case wins, catches, extractions, matches, playtime
 
     var id: String { rawValue }
 
@@ -90,6 +90,7 @@ enum LeaderboardSort: String, Codable, CaseIterable, Identifiable {
         case .catches: return "CATCHES"
         case .extractions: return "ESCAPES"
         case .matches: return "MATCHES"
+        case .playtime: return "PLAYTIME"
         }
     }
 }
@@ -102,16 +103,33 @@ struct LeaderboardEntry: Codable, Identifiable, Equatable {
     let winRatePercent: Int
     let catchesMade: Int
     let extractions: Int
+    let minutesPlayed: Int
 
     var id: String { user.id }
 
+    /// "12h 15m" / "45m" — matches ProfileStats.playtimeLabel's formatting so the same
+    /// number reads identically whether you're seeing it on a profile or the leaderboard.
+    var playtimeLabel: String {
+        let hours = minutesPlayed / 60
+        let minutes = minutesPlayed % 60
+        return hours > 0 ? "\(hours)h \(minutes)m" : "\(minutes)m"
+    }
+
+    /// The raw sortable number for a given category — playtime intentionally isn't here
+    /// (minutes as a bare integer reads badly at scale); see `displayValue(for:)` for what
+    /// the row actually shows.
     func value(for sort: LeaderboardSort) -> Int {
         switch sort {
         case .wins: return wins
         case .catches: return catchesMade
         case .extractions: return extractions
         case .matches: return matchesPlayed
+        case .playtime: return minutesPlayed
         }
+    }
+
+    func displayValue(for sort: LeaderboardSort) -> String {
+        sort == .playtime ? playtimeLabel : "\(value(for: sort))"
     }
 }
 

@@ -15,11 +15,16 @@ struct AddFriendSheet: View {
     /// Called after a request is actually sent, so the friends list can refresh itself.
     var onSent: (() -> Void)? = nil
 
+    @EnvironmentObject var authSession: AuthSession
     @Environment(\.dismiss) private var dismiss
     @State private var resolved: AppUser?
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var sentMessage: String?
+    /// The other direction of adding a friend: you point your camera at *their* code by
+    /// default here, but they might expect to scan yours instead — this surfaces it
+    /// without backing out to Profile.
+    @State private var showMyCode = false
 
     var body: some View {
         NavigationStack {
@@ -42,6 +47,11 @@ struct AddFriendSheet: View {
             }
             .task {
                 if case .handle(let handle) = mode { await resolve(handle) }
+            }
+            .sheet(isPresented: $showMyCode) {
+                if let me = authSession.currentUser {
+                    FriendCodeSheet(username: me.username, userTag: me.userTag)
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -70,7 +80,7 @@ struct AddFriendSheet: View {
                 .frame(width: 240, height: 240)
                 .shadow(color: ADATheme.spatialCyan.opacity(0.5), radius: 12)
 
-            VStack {
+            VStack(spacing: 14) {
                 Spacer()
                 Text("POINT AT A FRIEND CODE")
                     .font(ADATheme.telemetryFont(size: 11))
@@ -79,8 +89,20 @@ struct AddFriendSheet: View {
                     .padding(.horizontal, 18)
                     .padding(.vertical, 10)
                     .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.spatialCyan)
-                    .padding(.bottom, 44)
+
+                // The other half of adding a friend by QR — they might expect to scan
+                // yours instead of you scanning theirs, so it's offered right here rather
+                // than making them back out to Profile to find it.
+                if authSession.currentUser != nil {
+                    Button {
+                        showMyCode = true
+                    } label: {
+                        HStack { Image(systemName: "qrcode"); Text("MY FRIEND CODE") }
+                    }
+                    .buttonStyle(GlassButtonStyle(tint: ADATheme.tacticalAmber))
+                }
             }
+            .padding(.bottom, 44)
         }
     }
 

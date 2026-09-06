@@ -105,9 +105,11 @@ struct LeaderboardView: View {
                 Spacer()
 
                 VStack(alignment: .trailing, spacing: 0) {
-                    Text("\(entry.value(for: viewModel.sort))")
-                        .font(ADATheme.displayFont(size: 18))
+                    Text(entry.displayValue(for: viewModel.sort))
+                        .font(ADATheme.displayFont(size: viewModel.sort == .playtime ? 14 : 18))
                         .foregroundColor(ADATheme.tacticalAmber)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                     Text(viewModel.sort.label)
                         .font(ADATheme.telemetryFont(size: 8))
                         .foregroundColor(.white.opacity(0.3))
