@@ -1,0 +1,131 @@
+name: TestFlight
+
+# Manual only — every run burns paid macOS runner minutes (private repo) and consumes one
+# App Store Connect build-number slot, so this shouldn't fire on every push. Trigger it from
+# the Actions tab, or `gh workflow run testflight.yml`.
+on:
+  workflow_dispatch:
+    inputs:
+      whats_new:
+        description: "What to test (shown to testers in TestFlight)"
+        required: false
+        default: "Bug fixes and improvements."
+
+# A second run queued while one is uploading would race for the same build number — this
+# cancels the older one instead of letting them collide.
+concurrency:
+  group: testflight
+  cancel-in-progress: true
+
+jobs:
+  build-and-upload:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Pins a specific Xcode rather than trusting whatever macos-15 defaults to today —
+      # GitHub reshuffles the preinstalled set periodically, and a silent Xcode bump is a
+      # bad way to discover a build now behaves differently.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.2"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # DEVELOPMENT_TEAM normally lives in a local, gitignored Config.xcconfig (see
+      # Config.xcconfig.example) — CI has no such file checked out, so it's written fresh
+      # from the repo secret every run instead.
+      - name: Write signing team config
+        working-directory: ios/HuntingGame
+        run: echo "DEVELOPMENT_TEAM = ${{ secrets.APPLE_TEAM_ID }}" > Config.xcconfig
+
+      - name: Generate Xcode project
+        working-directory: ios/HuntingGame
+        run: xcodegen generate
+
+      # xcodebuild looks for App Store Connect API keys under ~/private_keys by name
+      # (AuthKey_<KEYID>.p8) when a bare filename isn't enough context, but passing
+      # -authenticationKeyPath explicitly below is what actually matters — this just puts
+      # the decoded key somewhere that path can point to.
+      - name: Write App Store Connect API key
+        env:
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          mkdir -p "$HOME/private_keys"
+          echo "$API_KEY_B64" | base64 --decode > "$HOME/private_keys/AuthKey_${KEY_ID}.p8"
+
+      # -allowProvisioningUpdates lets xcodebuild create/renew whatever Identifiers,
+      # certificates, and profiles the 4 targets (app, widgets, watch app, watch widgets)
+      # need via the API key, instead of registering each one by hand in the portal first —
+      # the key's role needs to be Admin (or App Manager, on recent App Store Connect) for
+      # that to actually be allowed to create new ones rather than only use existing ones.
+      #
+      # CURRENT_PROJECT_VERSION is overridden to the run number (see project.yml, which
+      # references it as $(CURRENT_PROJECT_VERSION) rather than a literal) because App
+      # Store Connect refuses to accept the same version+build pair twice.
+      - name: Archive
+        working-directory: ios/HuntingGame
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          xcodebuild archive \
+            -project HuntingGame.xcodeproj \
+            -scheme HuntingGame \
+            -configuration Release \
+            -archivePath build/HuntingGame.xcarchive \
+            -destination "generic/platform=iOS" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey_${KEY_ID}.p8" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID" \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+
+      # `destination: upload` makes -exportArchive push straight to App Store Connect as
+      # part of the export step — no separate altool/notarytool/Transporter call needed.
+      - name: Write export options
+        working-directory: ios/HuntingGame
+        run: |
+          cat > ExportOptions.plist <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>upload</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>automatic</string>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Export & upload to TestFlight
+        working-directory: ios/HuntingGame
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          xcodebuild -exportArchive \
+            -archivePath build/HuntingGame.xcarchive \
+            -exportPath build/export \
+            -exportOptionsPlist ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey_${KEY_ID}.p8" \
+            -authenticationKeyID "$KEY_ID" \
+            -authenticationKeyIssuerID "$ISSUER_ID"
+
+      # The .xcarchive (dSYMs included) is the one artifact worth keeping past this run —
+      # useful for symbolicating a crash report TestFlight shows later. The exported IPA
+      # itself already made it to App Store Connect by this point, so it isn't uploaded here.
+      - name: Upload archive artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: HuntingGame-xcarchive
+          path: ios/HuntingGame/build/HuntingGame.xcarchive
+          retention-days: 14

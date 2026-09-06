@@ -29,6 +29,13 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_BITCODE: NO
     TARGETED_DEVICE_FAMILY: "1,2"
+    # Every target's Info.plist below references these via $(...) instead of a literal,
+    # so a CI upload can override just the build setting (see .github/workflows/
+    # testflight.yml) rather than editing this file before every release. App Store
+    # Connect rejects re-uploading the same version+build pair, so the workflow passes
+    # a fresh CURRENT_PROJECT_VERSION (the run number) on every build.
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
 
 packages:
   SocketIO:
@@ -56,8 +63,8 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: Hunting Game
-        CFBundleShortVersionString: "1.0.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
@@ -101,8 +108,8 @@ targets:
       path: Widgets/HuntingGameWidgets/Info.plist
       properties:
         CFBundleDisplayName: Hunting Game Widgets
-        CFBundleShortVersionString: "1.0.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
@@ -127,8 +134,8 @@ targets:
       path: Watch/HuntingGameWatch/Info.plist
       properties:
         CFBundleDisplayName: Hunting Game
-        CFBundleShortVersionString: "1.0.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         WKApplication: true
         WKCompanionAppBundleIdentifier: com.huntinggame.app
         UISupportedInterfaceOrientations:
@@ -151,8 +158,8 @@ targets:
       path: WatchWidgets/HuntingGameWatchWidgets/Info.plist
       properties:
         CFBundleDisplayName: Hunting Game Radar
-        CFBundleShortVersionString: "1.0.0"
-        CFBundleVersion: "1"
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
