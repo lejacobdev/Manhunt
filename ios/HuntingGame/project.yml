@@ -64,6 +64,13 @@ targets:
         NSLocationAlwaysAndWhenInUseUsageDescription: "Hunting Game tracks your position continuously during a match so hunters and runners can see live radar, compass bearings, and catch verification even while the app is backgrounded."
         NSLocationWhenInUseUsageDescription: "Hunting Game needs your location to place you on the live match map."
         NSMotionUsageDescription: "Hunting Game uses motion data to distinguish on-foot movement from vehicle travel for anti-cheat checks."
+        NSCameraUsageDescription: "Hunting Game uses the camera to scan a friend's QR code so you can add them."
+        # Mirrors ios/xtool/Info.plist — see the comment there for why friend QR codes go
+        # through an https redirect into this custom scheme instead of a Universal Link.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.huntinggame.app.friendlink
+            CFBundleURLSchemes:
+              - huntinggame
         UIBackgroundModes:
           - location
           - fetch

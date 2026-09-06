@@ -262,6 +262,30 @@ final class APIClient {
         return (entries, resp.history.count - entries.count)
     }
 
+    // MARK: - Profiles
+
+    /// This account's own career stats and achievement roster.
+    func myProfile() async throws -> UserProfile {
+        try await get("/users/me/profile")
+    }
+
+    /// Any other player's profile — the same payload, so the profile screen renders one
+    /// way whether you're looking at yourself or a friend.
+    func profile(userId: String) async throws -> UserProfile {
+        try await get("/users/\(userId)/profile")
+    }
+
+    /// Resolves the "username#tag" a scanned friend QR carries into a real account, so the
+    /// scanner can show who it found before actually sending the request.
+    func lookupUser(username: String, userTag: String) async throws -> AppUser {
+        struct Response: Decodable { let user: AppUser }
+        let resp: Response = try await get(
+            "/users/by-tag",
+            queryItems: [URLQueryItem(name: "username", value: username), URLQueryItem(name: "userTag", value: userTag)]
+        )
+        return resp.user
+    }
+
     /// Hides every ENDED match this account has played from its own history list — the
     /// underlying session/replay data is untouched for the match's other members.
     func clearHistory() async throws {

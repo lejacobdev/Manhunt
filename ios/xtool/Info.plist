@@ -28,6 +28,27 @@
 	<string>Hunting Game needs your location to place you on the live match map.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Hunting Game uses motion data to distinguish on-foot movement from vehicle travel for anti-cheat checks.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Hunting Game uses the camera to scan a friend's QR code so you can add them.</string>
+	<!--
+	Friend QR codes encode an https://api.lejacob.dev/u/<name>/<tag> link — iOS Camera
+	ignores unknown custom schemes, so the code has to be a real web URL to be scannable
+	by any camera app. That page immediately redirects to this scheme, which is what
+	actually reopens the app on the add-friend prompt. A custom scheme (rather than a
+	Universal Link) because the app is sideloaded: associated domains need entitlements
+	a re-signed SideStore install can't be relied on to carry.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.huntinggame.app.friendlink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>huntinggame</string>
+			</array>
+		</dict>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

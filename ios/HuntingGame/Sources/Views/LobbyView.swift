@@ -6,6 +6,7 @@ struct LobbyView: View {
     @StateObject private var locationManager = LocationManager()
     @EnvironmentObject var authSession: AuthSession
     @EnvironmentObject var presence: PresenceService
+    @ObservedObject private var deepLinkRouter = DeepLinkRouter.shared
     @State private var showHistory = false
     @State private var joiningInvite: GameInvite?
     @State private var launchedGame: (player: GamePlayer, session: GameSession)?
@@ -19,9 +20,18 @@ struct LobbyView: View {
 
             FriendsView()
                 .tabItem { Label("Friends", systemImage: "person.2.fill") }
+
+            ProfileView()
+                .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
         }
         .tint(ADATheme.runnerGreen)
         .preferredColorScheme(.dark)
+        // A scanned friend code can arrive at any moment — including while a match is on
+        // screen — so the prompt is mounted at the tab root rather than inside Friends,
+        // which may not be the selected tab when the link opens.
+        .sheet(item: $deepLinkRouter.pendingFriend) { handle in
+            AddFriendSheet(mode: .handle(handle))
+        }
     }
 
     private var playTab: some View {

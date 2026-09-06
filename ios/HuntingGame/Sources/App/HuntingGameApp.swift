@@ -26,6 +26,13 @@ struct RootView: View {
                 AuthView()
             }
         }
+        // Friend codes scanned outside the app land here as huntinggame://add-friend?…
+        // (the https QR target redirects to it). Parked on the router rather than acted on
+        // directly: the link can arrive before sign-in, or before any screen that could
+        // show the confirm prompt exists.
+        .onOpenURL { url in
+            DeepLinkRouter.shared.handle(url)
+        }
         .onAppear {
             if authSession.isAuthenticated { presence.start() }
         }

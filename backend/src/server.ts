@@ -12,6 +12,7 @@ import { friendsRouter } from './routes/friends';
 import { gamesRouter } from './routes/games';
 import { powerUpsRouter } from './routes/powerups';
 import { invitesRouter } from './routes/invites';
+import { usersRouter } from './routes/users';
 import { prisma } from './lib/prisma';
 import { gameService, GameSettings } from './services/GameService';
 import { checkAccuracy, checkMotion, checkSpeed, checkTeleport } from './services/AntiCheatService';
@@ -65,6 +66,50 @@ app.use('/friends', friendsRouter);
 app.use('/games', gamesRouter);
 app.use('/powerups', powerUpsRouter);
 app.use('/invites', invitesRouter);
+app.use('/users', usersRouter);
+
+/**
+ * The landing page a friend QR points at. The QR encodes an https:// URL rather than the
+ * huntinggame:// scheme directly so that any camera app will actually offer to open it —
+ * iOS Camera silently ignores unknown custom schemes. This page then bounces straight to
+ * the app's own scheme, with a tap-through and an install link for anyone who lands here
+ * without the app (it's sideloaded via SideStore, so there's no App Store page to fall
+ * back to). Scanning from *inside* the app skips all of this and parses the tag directly.
+ */
+app.get('/u/:username/:tag', (req, res) => {
+  const escape = (value: string) =>
+    value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+  const username = escape(req.params.username.slice(0, 40));
+  const tag = escape(req.params.tag.slice(0, 10));
+  const deepLink = `huntinggame://add-friend?username=${encodeURIComponent(req.params.username)}&tag=${encodeURIComponent(req.params.tag)}`;
+
+  res.type('html').send(`<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Add ${username}#${tag} on Hunting Game</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:#0b1114; color:#fff; font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .card { max-width:22rem; margin:1.5rem; padding:2rem 1.75rem; text-align:center;
+          background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:1.25rem; }
+  h1 { margin:0 0 .25rem; font-size:1.05rem; letter-spacing:.14em; text-transform:uppercase; color:#4dd0c7; }
+  .tag { margin:.75rem 0 1.5rem; font-size:1.5rem; font-weight:700; }
+  a { display:block; padding:.85rem 1rem; border-radius:.75rem; text-decoration:none; font-weight:600; }
+  .primary { background:#3ddc84; color:#08130c; }
+  .secondary { margin-top:.75rem; color:#9fb0b5; border:1px solid rgba(255,255,255,.15); }
+  p { color:#9fb0b5; font-size:.85rem; margin:1.25rem 0 0; }
+</style></head><body>
+<div class="card">
+  <h1>Hunting Game</h1>
+  <div class="tag">${username}#${tag}</div>
+  <a class="primary" href="${deepLink}">Add as friend</a>
+  <a class="secondary" href="https://api.lejacob.dev/dist/source.json">Don't have the app?</a>
+  <p>Opening Hunting Game&hellip; if nothing happens, tap "Add as friend".</p>
+</div>
+<script>location.replace(${JSON.stringify(deepLink)});</script>
+</body></html>`);
+});
 
 export const httpServer = createServer(app);
 export const io = new Server(httpServer, { cors: { origin: process.env.CORS_ORIGIN ?? '*' } });
