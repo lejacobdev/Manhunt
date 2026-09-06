@@ -55,7 +55,6 @@ struct InviteJoinSheet: View {
     let onConfirm: (PlayerRole, String?) async -> Void
     @Environment(\.dismiss) private var dismiss
 
-    @State private var selectedRole: PlayerRole = .runner
     @State private var squadName = ""
     @State private var isJoining = false
 
@@ -72,13 +71,11 @@ struct InviteJoinSheet: View {
                 }
                 .padding(.top, 24)
 
-                Picker("Role", selection: $selectedRole) {
-                    ForEach([PlayerRole.runner, .hunter, .spectator], id: \.self) { role in
-                        Text(role.displayName).tag(role)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
+                Text("You'll join as a runner — the host assigns hunters from the lobby.")
+                    .font(ADATheme.telemetryFont(size: 10))
+                    .foregroundColor(.white.opacity(0.4))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
 
                 if invite.mode == .squad {
                     ADATextField(placeholder: "Squad name", text: $squadName)
@@ -88,7 +85,7 @@ struct InviteJoinSheet: View {
                 Button {
                     isJoining = true
                     Task {
-                        await onConfirm(selectedRole, invite.mode == .squad ? squadName : nil)
+                        await onConfirm(.runner, invite.mode == .squad ? squadName : nil)
                         isJoining = false
                         dismiss()
                     }

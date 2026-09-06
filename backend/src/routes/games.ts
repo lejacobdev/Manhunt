@@ -32,6 +32,9 @@ const createSessionSchema = z
     jailEnabled: z.boolean().optional(),
     jailPolygon: z.array(pointSchema).optional(),
     gamblingEnabled: z.boolean().optional(),
+    // BETA: the accuracy/motion/speed/teleport checks are new enough that a false
+    // positive can look exactly like a frozen radar, so hosts get an off switch.
+    antiCheatEnabled: z.boolean().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.jailEnabled && (data.jailPolygon?.length ?? 0) < 3) {
@@ -59,6 +62,7 @@ gamesRouter.post('/', async (req: AuthedRequest, res) => {
     jailEnabled: parsed.data.jailEnabled,
     jailPolygon: parsed.data.jailPolygon,
     gamblingEnabled: parsed.data.gamblingEnabled,
+    antiCheatEnabled: parsed.data.antiCheatEnabled,
   });
   const player = await gameService.joinSession(session.id, req.user!.userId, parsed.data.role, parsed.data.squad);
   return res.status(201).json({ session, player });
@@ -92,12 +96,14 @@ gamesRouter.post('/:code/join', async (req: AuthedRequest, res) => {
 
 const updateSettingsSchema = z.object({
   durationMinutes: z.number().min(5).max(240).optional(),
-  // Only meaningful the first time — see the guard below. Once spawns exist they're tied to
-  // this exact shape, so a later redraw would strand them outside the new play area.
+  // Redrawable any number of times before the match starts — each redraw regenerates the
+  // extraction point and re-scatters power-ups inside the new shape (see the handler below
+  // and GameService.layOutSpawns).
   boundsPolygon: z.array(pointSchema).optional(),
   jailEnabled: z.boolean().optional(),
   jailPolygon: z.array(pointSchema).optional(),
   gamblingEnabled: z.boolean().optional(),
+  antiCheatEnabled: z.boolean().optional(),
 });
 
 /**
@@ -119,9 +125,6 @@ gamesRouter.patch('/:code/settings', async (req: AuthedRequest, res) => {
 
   const current = session.settings as unknown as GameSettings;
   const settingBoundaryNow = (parsed.data.boundsPolygon?.length ?? 0) >= 3;
-  if (parsed.data.boundsPolygon && current.boundsPolygon.length >= 3) {
-    return res.status(409).json({ error: 'The play area is already set for this game and can\'t be redrawn.' });
-  }
   if (parsed.data.boundsPolygon && !settingBoundaryNow) {
     return res.status(400).json({ error: 'Draw a play-area boundary with at least 3 points.' });
   }
@@ -134,8 +137,9 @@ gamesRouter.patch('/:code/settings', async (req: AuthedRequest, res) => {
   }
   if (!merged.jailEnabled) merged.jailPolygon = undefined;
 
-  // First time the boundary is set: lay out the extraction point and power-up spawns that
-  // couldn't exist until there was a real play area to place them inside (see createSession).
+  // The boundary can be redrawn any number of times before the match starts (each redraw
+  // regenerates the extraction point and re-scatters power-ups inside the new shape) —
+  // not just set once, the way it originally shipped.
   if (settingBoundaryNow) {
     merged.extractionPoint = await gameService.generateExtractionPoint(merged.boundsPolygon, session.mode as GameMode);
     await gameService.layOutSpawns(session.id, merged.boundsPolygon, merged.durationMinutes);
@@ -202,6 +206,23 @@ gamesRouter.get('/:code', async (req: AuthedRequest, res) => {
 });
 
 /**
+ * This account's own membership row for a specific session — lets Match History offer
+ * the same "jump back in" flow Mission Control's active-session card does, for any
+ * still-open (lobby or active) match this account belongs to, not just the most recent
+ * one. Unlike POST /:code/join, this never creates anything and doesn't need a role or
+ * squad name up front, so it works regardless of mode.
+ */
+gamesRouter.get('/:code/me', async (req: AuthedRequest, res) => {
+  const session = await gameService.getSessionByCode(req.params.code);
+  if (!session) return res.status(404).json({ error: 'Game not found.' });
+  const player = await prisma.gamePlayer.findUnique({
+    where: { sessionId_userId: { sessionId: session.id, userId: req.user!.userId } },
+  });
+  if (!player) return res.status(403).json({ error: 'You are not a member of this game.' });
+  return res.json({ session, player });
+});
+
+/**
  * Post-game (or in-progress) playback: every buffered GPS fix for the match, grouped
  * by player, ordered by time. Restricted to session members so spectators/hosts
  * of *this* match can scrub through it, but no one else can pull another match's tracks.
@@ -250,10 +271,25 @@ gamesRouter.post('/verify-boundary', async (req: AuthedRequest, res) => {
 
 gamesRouter.get('/history/mine', async (req: AuthedRequest, res) => {
   const players = await prisma.gamePlayer.findMany({
-    where: { userId: req.user!.userId },
+    where: { userId: req.user!.userId, hiddenFromHistory: false },
     include: { session: true },
     orderBy: { joinedAt: 'desc' },
     take: 25,
   });
   return res.json({ history: players });
+});
+
+/**
+ * "Clear history" only hides this account's own past-match rows from its own history
+ * list — the underlying GameSession/GamePlayer data stays intact for the match's other
+ * members (their own history, and anyone's replay lookup). Scoped to ENDED sessions:
+ * a still-open lobby/active membership isn't "history" yet, it's tracked separately via
+ * GET /active/mine and shouldn't disappear here.
+ */
+gamesRouter.post('/history/clear', async (req: AuthedRequest, res) => {
+  await prisma.gamePlayer.updateMany({
+    where: { userId: req.user!.userId, session: { status: 'ENDED' } },
+    data: { hiddenFromHistory: true },
+  });
+  return res.json({ ok: true });
 });

@@ -154,6 +154,7 @@ model GamePlayer {
   isJailed     Boolean    @default(false)
   isOut        Boolean    @default(false)
   outAt        DateTime?
+  hiddenFromHistory Boolean @default(false)
   joinedAt     DateTime   @default(now())
 
   session GameSession @relation(fields: [sessionId], references: [id])

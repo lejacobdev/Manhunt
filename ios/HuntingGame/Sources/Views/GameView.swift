@@ -760,8 +760,15 @@ struct GameView: View {
         // The server also broadcasts (0,0) deliberately for anyone else who's
         // currently INVISIBILITY_10MIN-buffed (masking their real position from
         // the host/spectator roster feed) — same sentinel, same fix: don't plot it.
+        //
+        // Only ever plots players who share this device's own role: the whole point of the
+        // hunter's radar and the runner's compass is that finding the other side takes
+        // active tracking, not a glance at the map. A host/spectator (no role of their own
+        // to match against) still sees everyone, same as the dedicated admin/observer
+        // panels already do.
         var blips = viewModel.allPlayers
             .filter { $0.id != viewModel.gamePlayerId && !($0.lat == 0 && $0.lng == 0) }
+            .filter { viewModel.role == .spectator || $0.role == viewModel.role }
             .map { GameMapView.Blip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role, username: $0.username) }
 
         if let selfCoordinate = viewModel.currentLocation?.coordinate {

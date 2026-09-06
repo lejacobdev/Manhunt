@@ -44,26 +44,35 @@ struct GameLobbyView: View {
                 RadarSweepBackdrop(accent: statusColor)
                     .edgesIgnoringSafeArea(.all)
 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        header
-                        rosterSection
-                        settingsSummarySection
-
-                        if let error = viewModel.errorMessage {
-                            Text(error)
-                                .font(ADATheme.telemetryFont(size: 12))
-                                .foregroundColor(ADATheme.hunterRed)
-                                .padding(.horizontal)
+                // Invite/Start are the two actions that actually matter here — pinned below
+                // the scroll area so they're always reachable without scrolling past however
+                // long the roster or settings summary get, instead of drifting off the
+                // bottom of the screen along with everything else.
+                VStack(spacing: 0) {
+                    ScrollView {
+                        VStack(spacing: 16) {
+                            header
+                            rosterSection
+                            settingsSummarySection
                         }
-
-                        actionButtons
+                        .padding(.vertical, 20)
                     }
-                    .adaptiveContentWidth()
-                    .padding(.vertical, 20)
-                    .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
-                    .animation(ADATheme.controlSpring, value: viewModel.jailEnabled)
+
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .font(ADATheme.telemetryFont(size: 12))
+                            .foregroundColor(ADATheme.hunterRed)
+                            .padding(.horizontal)
+                            .padding(.top, 8)
+                    }
+
+                    actionButtons
+                        .padding(.top, 10)
+                        .padding(.bottom, 6)
                 }
+                .adaptiveContentWidth()
+                .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
+                .animation(ADATheme.controlSpring, value: viewModel.jailEnabled)
             }
             .obsidianBackdrop()
             .navigationTitle("Lobby")
@@ -140,9 +149,28 @@ struct GameLobbyView: View {
                         if p.userId == viewModel.session.hostId {
                             StatusBadge(icon: "star.fill", text: "HOST", tint: ADATheme.tacticalAmber)
                         }
-                        Text(p.role.displayName.uppercased())
+                        if viewModel.isHost {
+                            // The host assigns everyone's role from here — including their
+                            // own — instead of it being picked (often inconsistently, see
+                            // the removed pre-lobby picker) before anyone's even joined.
+                            Menu {
+                                ForEach([PlayerRole.runner, .hunter, .spectator], id: \.self) { role in
+                                    Button(role.displayName) { viewModel.setRole(for: p.id, to: role) }
+                                }
+                            } label: {
+                                HStack(spacing: 3) {
+                                    Text(p.role.displayName.uppercased())
+                                    Image(systemName: "chevron.up.chevron.down")
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                .foregroundColor(ADATheme.spatialCyan)
+                            }
                             .font(ADATheme.telemetryFont(size: 10))
-                            .foregroundColor(.white.opacity(0.4))
+                        } else {
+                            Text(p.role.displayName.uppercased())
+                                .font(ADATheme.telemetryFont(size: 10))
+                                .foregroundColor(.white.opacity(0.4))
+                        }
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
@@ -183,6 +211,11 @@ struct GameLobbyView: View {
                 settingsRow(icon: "clock.fill", text: "\(Int(viewModel.durationMinutes)) minute match")
                 settingsRow(icon: "lock.fill", text: viewModel.jailEnabled ? "Jail mode enabled" : "Jail mode off")
                 settingsRow(icon: "circle.grid.2x2.fill", text: viewModel.gamblingEnabled ? "Gambling enabled" : "Gambling off")
+                settingsRow(
+                    icon: "checkerboard.shield",
+                    text: "Anti-cheat (BETA) \(viewModel.antiCheatEnabled ? "on" : "off")",
+                    tint: viewModel.antiCheatEnabled ? ADATheme.spatialCyan : .white.opacity(0.4)
+                )
             }
             .padding(16)
             .glassCard(cornerRadius: ADATheme.cardCornerRadius)
@@ -262,18 +295,24 @@ private struct LobbySetupSheet: View {
                     .glassCard(cornerRadius: ADATheme.cardCornerRadius)
                     .padding(.horizontal)
 
-                    if viewModel.isBoundarySet {
-                        HStack(spacing: 8) {
-                            Image(systemName: "checkmark.seal.fill").foregroundColor(ADATheme.runnerGreen)
-                            Text("Play area is set and can't be redrawn — power-ups and the extraction point are already placed inside it.")
-                                .font(ADATheme.uiFont(size: 12, weight: .medium))
-                                .foregroundColor(.white.opacity(0.6))
+                    if viewModel.isBoundarySet && !viewModel.isRedrawingBoundary {
+                        VStack(spacing: 10) {
+                            HStack(spacing: 8) {
+                                Image(systemName: "checkmark.seal.fill").foregroundColor(ADATheme.runnerGreen)
+                                Text("Play area is set. Redrawing it moves the extraction point and re-scatters power-ups inside the new shape.")
+                                    .font(ADATheme.uiFont(size: 12, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
+                            Button("REDRAW PLAY AREA") { viewModel.beginRedrawBoundary() }
+                                .buttonStyle(GlassButtonStyle(tint: ADATheme.tacticalAmber))
                         }
                         .padding(16)
                         .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: ADATheme.runnerGreen)
                         .padding(.horizontal)
                     } else {
-                        Text("Tap the map to draw the public play-area boundary (min. 3 points). This can only be set once.")
+                        Text(viewModel.isRedrawingBoundary
+                             ? "Tap the map to redraw the play-area boundary (min. 3 points)."
+                             : "Tap the map to draw the public play-area boundary (min. 3 points).")
                             .font(ADATheme.uiFont(size: 12, weight: .medium))
                             .foregroundColor(.white.opacity(0.45))
                             .padding(.horizontal)
@@ -294,6 +333,13 @@ private struct LobbySetupSheet: View {
                         HStack {
                             Button("CLEAR") { viewModel.boundaryPoints.removeAll() }
                                 .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+                            if viewModel.isRedrawingBoundary {
+                                Button("CANCEL") {
+                                    viewModel.isRedrawingBoundary = false
+                                    viewModel.boundaryPoints = viewModel.session.settings.boundsPolygon
+                                }
+                                .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+                            }
                             Spacer()
                             Text("\(viewModel.boundaryPoints.count) POINTS")
                                 .font(ADATheme.telemetryFont(size: 12))
@@ -345,6 +391,14 @@ private struct LobbySetupSheet: View {
                     )
                     .padding(.horizontal)
 
+                    ToggleRow(
+                        title: "ANTI-CHEAT (BETA)",
+                        subtitle: "Rejects GPS fixes that look faked or impossibly fast. Still new — turn it off if it's wrongly flagging real players.",
+                        isOn: $viewModel.antiCheatEnabled,
+                        tint: ADATheme.spatialCyan
+                    )
+                    .padding(.horizontal)
+
                     if let error = viewModel.errorMessage {
                         Text(error)
                             .font(ADATheme.telemetryFont(size: 12))
@@ -365,7 +419,10 @@ private struct LobbySetupSheet: View {
                         }
                     }
                     .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan, isLoading: viewModel.isSavingSettings))
-                    .disabled((!viewModel.isBoundarySet && viewModel.boundaryPoints.count < 3) || (viewModel.jailEnabled && viewModel.jailPoints.count < 3))
+                    .disabled(
+                        ((!viewModel.isBoundarySet || viewModel.isRedrawingBoundary) && viewModel.boundaryPoints.count < 3)
+                            || (viewModel.jailEnabled && viewModel.jailPoints.count < 3)
+                    )
                     .padding(.horizontal)
 
                     Spacer(minLength: 20)

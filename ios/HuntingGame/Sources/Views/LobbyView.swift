@@ -110,7 +110,14 @@ struct LobbyView: View {
             }
             .fullScreenCover(item: Binding(
                 get: { launchedGame.map { GameLaunch(player: $0.player, session: $0.session) } },
-                set: { _ in launchedGame = nil }
+                set: { _ in
+                    launchedGame = nil
+                    // The session's status (lobby/active/ended) only ever gets fetched once
+                    // up front otherwise — without this, returning here from a match that
+                    // just started or ended would keep showing whatever status was true
+                    // when the screen first loaded, not the game's actual current one.
+                    Task { await viewModel.refreshActiveSession() }
+                }
             )) { launch in
                 // Always the waiting room first — it swaps itself to GameView the moment
                 // the match is (or becomes) active, so rejoining an already-running match
@@ -158,13 +165,6 @@ struct LobbyView: View {
                 .multilineTextAlignment(.center)
                 .font(ADATheme.displayFont(size: 20))
 
-            Picker("Role", selection: $viewModel.selectedRole) {
-                ForEach([PlayerRole.runner, .hunter, .spectator], id: \.self) { role in
-                    Text(role.displayName).tag(role)
-                }
-            }
-            .pickerStyle(.segmented)
-
             if viewModel.selectedMode == .squad {
                 ADATextField(placeholder: "Squad name", text: $viewModel.squadName)
                     .transition(.scale.combined(with: .opacity))
@@ -204,12 +204,10 @@ struct LobbyView: View {
             }
             .pickerStyle(.segmented)
 
-            Picker("Role", selection: $viewModel.hostRole) {
-                ForEach([PlayerRole.runner, .hunter, .spectator], id: \.self) { role in
-                    Text(role.displayName).tag(role)
-                }
-            }
-            .pickerStyle(.segmented)
+            Text("Everyone joins as a runner — the host assigns hunters from the lobby once everyone's in.")
+                .font(ADATheme.telemetryFont(size: 10))
+                .foregroundColor(.white.opacity(0.35))
+                .multilineTextAlignment(.center)
 
             if viewModel.hostMode == .squad {
                 ADATextField(placeholder: "Squad name", text: $viewModel.hostSquadName)

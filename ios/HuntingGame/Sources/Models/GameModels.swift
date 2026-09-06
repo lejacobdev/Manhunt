@@ -111,6 +111,11 @@ struct GameSettings: Codable, Equatable {
     let jailEnabled: Bool?
     let jailPolygon: [Coordinate]?
     let gamblingEnabled: Bool?
+    /// Absent decodes as enabled — anti-cheat defaults on for sessions created before this
+    /// toggle shipped. Still labeled BETA in the UI: the accuracy/motion/speed/teleport
+    /// checks are new enough that a false-positive rejection can look like a frozen radar,
+    /// so hosts get an escape hatch rather than being stuck fighting it mid-match.
+    let antiCheatEnabled: Bool?
 }
 
 struct GameSession: Codable, Identifiable {

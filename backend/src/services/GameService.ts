@@ -15,6 +15,7 @@ export interface CreateSessionInput {
   jailEnabled?: boolean;
   jailPolygon?: Point2D[];
   gamblingEnabled?: boolean;
+  antiCheatEnabled?: boolean;
 }
 
 const POWER_UP_TYPES: PowerUpType[] = [
@@ -33,6 +34,8 @@ export interface GameSettings {
   jailEnabled?: boolean;
   jailPolygon?: Point2D[];
   gamblingEnabled?: boolean;
+  /** Absent means enabled — see the route schema for why this defaults on. */
+  antiCheatEnabled?: boolean;
 }
 
 export class GameService {
@@ -54,6 +57,7 @@ export class GameService {
       jailEnabled: input.jailEnabled ?? false,
       jailPolygon: input.jailEnabled ? input.jailPolygon : undefined,
       gamblingEnabled: input.gamblingEnabled ?? false,
+      antiCheatEnabled: input.antiCheatEnabled ?? true,
     };
 
     const session = await prisma.gameSession.create({
@@ -85,12 +89,13 @@ export class GameService {
   }
 
   /**
-   * Scatters power-up spawns across a play-area boundary. Called exactly once per session,
-   * either at creation (a boundary supplied up front) or later from the lobby settings route
-   * — whichever happens first. Deliberately not re-callable after spawns already exist:
-   * they'd be stranded outside a redrawn play area (see the settings route's guard).
+   * Scatters power-up spawns across a play-area boundary — at creation (a boundary supplied
+   * up front), later from the lobby settings route once one is drawn, or again on every
+   * subsequent redraw. Clears whatever was laid out for the previous shape first, or spawns
+   * from an earlier boundary would linger outside the new play area forever.
    */
   public async layOutSpawns(sessionId: string, boundsPolygon: Point2D[], durationMinutes: number, powerUpCount?: number) {
+    await prisma.powerUpSpawn.deleteMany({ where: { sessionId } });
     const spawnPoints = await overpassSpawner.generatePublicPowerUpSpawns(boundsPolygon, powerUpCount ?? 8);
     const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000);
     await prisma.powerUpSpawn.createMany({
@@ -128,6 +133,16 @@ export class GameService {
         activeBuffs: {},
         hearts,
       },
+    });
+  }
+
+  /** Host-only lobby role assignment — reseeds hearts for the new role, same as a fresh
+   *  join. Only meaningful before the match starts; the socket handler enforces that. */
+  public async setPlayerRole(gamePlayerId: string, role: 'HUNTER' | 'RUNNER' | 'SPECTATOR') {
+    const hearts = role === 'HUNTER' ? HUNTER_STARTING_HEARTS : role === 'RUNNER' ? RUNNER_STARTING_HEARTS : 0;
+    return prisma.gamePlayer.update({
+      where: { id: gamePlayerId },
+      data: { role, hearts },
     });
   }
 

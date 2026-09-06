@@ -301,30 +301,37 @@ io.on('connection', (socket: Socket) => {
 
       pruneExpiredBuffs(p);
 
-      const accuracyCheck = checkAccuracy(accuracy);
-      if (!accuracyCheck.allowed) {
-        socket.emit('anti_cheat_warning', { reason: accuracyCheck.reason });
-        return;
-      }
-      const motionCheck = checkMotion(isMovingOnFoot);
-      if (!motionCheck.allowed) {
-        socket.emit('anti_cheat_warning', { reason: motionCheck.reason });
-        return;
-      }
-
-      const speedCheck = checkSpeed(p, speed);
-      if (!speedCheck.allowed) {
-        socket.emit('anti_cheat_warning', { reason: speedCheck.reason });
-        return;
-      }
-
-      const prev = lastFix.get(gamePlayerId);
       const now = Date.now();
-      if (!checkTeleport(prev, { lat, lng, timestamp: now }, speedCheck.ceilingMps)) {
-        socket.emit('anti_cheat_warning', { reason: 'Position jump exceeds plausible foot travel for the elapsed time.' });
-        return;
+      // BETA: absent (older sessions, or never toggled) defaults to enabled. A host can
+      // turn it off from the lobby if the accuracy/motion/speed/teleport checks are
+      // producing false positives — those looked exactly like a frozen radar/compass
+      // before anti_cheat_warning was surfaced to the rejected player at all.
+      const antiCheatEnabled = sessionSettingsCache.get(roomCode)?.antiCheatEnabled ?? true;
+      if (antiCheatEnabled) {
+        const accuracyCheck = checkAccuracy(accuracy);
+        if (!accuracyCheck.allowed) {
+          socket.emit('anti_cheat_warning', { reason: accuracyCheck.reason });
+          return;
+        }
+        const motionCheck = checkMotion(isMovingOnFoot);
+        if (!motionCheck.allowed) {
+          socket.emit('anti_cheat_warning', { reason: motionCheck.reason });
+          return;
+        }
+
+        const speedCheck = checkSpeed(p, speed);
+        if (!speedCheck.allowed) {
+          socket.emit('anti_cheat_warning', { reason: speedCheck.reason });
+          return;
+        }
+
+        const prev = lastFix.get(gamePlayerId);
+        if (!checkTeleport(prev, { lat, lng, timestamp: now }, speedCheck.ceilingMps)) {
+          socket.emit('anti_cheat_warning', { reason: 'Position jump exceeds plausible foot travel for the elapsed time.' });
+          return;
+        }
+        lastFix.set(gamePlayerId, { lat, lng, timestamp: now });
       }
-      lastFix.set(gamePlayerId, { lat, lng, timestamp: now });
 
       p.lat = lat;
       p.lng = lng;
@@ -772,6 +779,41 @@ io.on('connection', (socket: Socket) => {
       return;
     }
     await endMatch(roomCode, 'HOST_ENDED');
+  });
+
+  /**
+   * Host-only lobby action: assign or change any player's role, including the host's own.
+   * Role used to only ever be picked once, before joining — now it's fixed at RUNNER on
+   * join and entirely up to the host to assign from the roster once everyone's in. Only
+   * valid pre-match: sessionStartedAtCache is set exactly once, by the /start route, right
+   * when the match actually begins.
+   */
+  socket.on('set_player_role', async ({ targetId, role }: { targetId: string; role: 'HUNTER' | 'RUNNER' | 'SPECTATOR' }) => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const callerId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !callerId) return;
+    const session = activeSessions.get(roomCode);
+    if (!session) return;
+    const caller = session.get(callerId);
+    if (!caller || !(await isSessionHost(roomCode, caller.userId))) {
+      socket.emit('error_event', { reason: 'Only the host can change player roles.' });
+      return;
+    }
+    if (sessionStartedAtCache.has(roomCode)) {
+      socket.emit('error_event', { reason: 'Roles can only be changed before the match starts.' });
+      return;
+    }
+    const target = session.get(targetId);
+    if (!target) {
+      socket.emit('error_event', { reason: 'Player not found.' });
+      return;
+    }
+
+    const updated = await gameService.setPlayerRole(targetId, role);
+    target.role = role;
+    target.hearts = updated.hearts;
+
+    io.to(roomCode).emit('player_joined', publicRoster(session));
   });
 
   socket.on('collect_powerup', async ({ spawnId }: { spawnId: string }) => {

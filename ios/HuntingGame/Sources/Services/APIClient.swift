@@ -152,7 +152,7 @@ final class APIClient {
     /// The host plays too — no separate supervisor/observer role forced on them. They pick
     /// role/squad just like anyone joining, and get host-only admin actions (end game,
     /// override a catch) via GameSession.hostId instead.
-    func createGame(durationMinutes: Int, boundsPolygon: [Coordinate], mode: GameMode, role: PlayerRole, squad: String?, jailEnabled: Bool = false, jailPolygon: [Coordinate] = [], gamblingEnabled: Bool = false) async throws -> (player: GamePlayer, session: GameSession) {
+    func createGame(durationMinutes: Int, boundsPolygon: [Coordinate], mode: GameMode, role: PlayerRole, squad: String?, jailEnabled: Bool = false, jailPolygon: [Coordinate] = [], gamblingEnabled: Bool = false, antiCheatEnabled: Bool = true) async throws -> (player: GamePlayer, session: GameSession) {
         struct Body: Encodable {
             let durationMinutes: Int
             let boundsPolygon: [Coordinate]
@@ -162,6 +162,7 @@ final class APIClient {
             let jailEnabled: Bool
             let jailPolygon: [Coordinate]
             let gamblingEnabled: Bool
+            let antiCheatEnabled: Bool
         }
         struct Response: Decodable { let session: GameSession; let player: GamePlayer }
         let resp: Response = try await post(
@@ -174,7 +175,8 @@ final class APIClient {
                 squad: squad,
                 jailEnabled: jailEnabled,
                 jailPolygon: jailPolygon,
-                gamblingEnabled: gamblingEnabled
+                gamblingEnabled: gamblingEnabled,
+                antiCheatEnabled: antiCheatEnabled
             )
         )
         return (resp.player, resp.session)
@@ -199,21 +201,21 @@ final class APIClient {
         return resp.session
     }
 
-    /// Host-only lobby edit. `boundsPolygon` only actually does anything the first time —
-    /// once the play area is set, spawns are already tied to that exact shape and the
-    /// server rejects a redraw.
-    func updateSessionSettings(code: String, durationMinutes: Int?, boundsPolygon: [Coordinate]?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, gamblingEnabled: Bool?) async throws -> GameSession {
+    /// Host-only lobby edit. `boundsPolygon`, when sent, always redraws the play area —
+    /// regenerating the extraction point and re-scattering power-ups inside the new shape.
+    func updateSessionSettings(code: String, durationMinutes: Int?, boundsPolygon: [Coordinate]?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, gamblingEnabled: Bool?, antiCheatEnabled: Bool?) async throws -> GameSession {
         struct Body: Encodable {
             let durationMinutes: Int?
             let boundsPolygon: [Coordinate]?
             let jailEnabled: Bool?
             let jailPolygon: [Coordinate]?
             let gamblingEnabled: Bool?
+            let antiCheatEnabled: Bool?
         }
         struct Response: Decodable { let session: GameSession }
         let resp: Response = try await patch(
             "/games/\(code)/settings",
-            body: Body(durationMinutes: durationMinutes, boundsPolygon: boundsPolygon, jailEnabled: jailEnabled, jailPolygon: jailPolygon, gamblingEnabled: gamblingEnabled)
+            body: Body(durationMinutes: durationMinutes, boundsPolygon: boundsPolygon, jailEnabled: jailEnabled, jailPolygon: jailPolygon, gamblingEnabled: gamblingEnabled, antiCheatEnabled: antiCheatEnabled)
         )
         return resp.session
     }
@@ -232,6 +234,16 @@ final class APIClient {
         try await get("/games/\(code)/replay")
     }
 
+    /// This account's own membership for a specific session — lets Match History offer the
+    /// same "jump back in" flow Mission Control's active-session card does, for any
+    /// still-open match, not just the most recently joined one. Unlike `joinGame`, this
+    /// never creates anything and works regardless of mode (no role/squad needed).
+    func rejoinGame(code: String) async throws -> (player: GamePlayer, session: GameSession) {
+        struct Response: Decodable { let player: GamePlayer; let session: GameSession }
+        let resp: Response = try await get("/games/\(code)/me")
+        return (resp.player, resp.session)
+    }
+
     // MARK: - Power-ups
 
     func fetchPowerUpSpawns(sessionId: String) async throws -> [PowerUpSpawn] {
@@ -248,6 +260,13 @@ final class APIClient {
         let resp: Response = try await get("/games/history/mine")
         let entries = resp.history.compactMap(\.value)
         return (entries, resp.history.count - entries.count)
+    }
+
+    /// Hides every ENDED match this account has played from its own history list — the
+    /// underlying session/replay data is untouched for the match's other members.
+    func clearHistory() async throws {
+        struct Response: Decodable { let ok: Bool }
+        let _: Response = try await post("/games/history/clear", body: EmptyBody())
     }
 
     // MARK: - Core request helpers

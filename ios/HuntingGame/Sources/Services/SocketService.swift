@@ -78,6 +78,20 @@ final class SocketService: ObservableObject {
     private init() {}
 
     func connect(roomCode: String, gamePlayerId: String) {
+        // GameLobbyView and GameView both call this from `.onAppear` — starting a match
+        // hands off from the lobby's still-live socket to a brand-new GameView/GameViewModel
+        // for the *same* room+player. Tearing down and rebuilding the connection here raced
+        // the old socket's disconnect (server-side cleanup deletes this player's PlayerState
+        // entirely) against the new socket's join_room re-adding it — losing that race
+        // silently dropped this player server-side for the rest of the match: absent from
+        // the host's own admin panel, rejected as "not the host" by host_end_game/
+        // host_override, and any location update after that point ignored outright. Reusing
+        // the existing connection for the same room+player sidesteps the race entirely.
+        if let socket, socket.status == .connected, self.roomCode == roomCode, self.gamePlayerId == gamePlayerId {
+            socket.emit("join_room", ["roomCode": roomCode, "gamePlayerId": gamePlayerId])
+            return
+        }
+
         self.roomCode = roomCode
         self.gamePlayerId = gamePlayerId
 
@@ -191,6 +205,11 @@ final class SocketService: ObservableObject {
     /// Host-only: force-end the match immediately.
     func hostEndGame() {
         socket?.emit("host_end_game")
+    }
+
+    /// Host-only lobby action: assign or change any player's role, including the host's own.
+    func setPlayerRole(targetId: String, role: PlayerRole) {
+        socket?.emit("set_player_role", ["targetId": targetId, "role": role.rawValue])
     }
 
     private func registerHandlers(on socket: SocketIOClient) {
