@@ -250,7 +250,6 @@ struct MatchHistoryView: View {
     }
 
     private func resultLabel(for entry: HistoryEntry) -> String {
-        if entry.isExtracted { return "EXTRACTED SAFELY" }
         if entry.isCaught { return "CAUGHT" }
         return entry.role.displayName.uppercased()
     }

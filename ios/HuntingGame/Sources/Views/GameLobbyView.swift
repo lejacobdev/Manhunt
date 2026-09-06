@@ -299,7 +299,7 @@ private struct LobbySetupSheet: View {
                         VStack(spacing: 10) {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.seal.fill").foregroundColor(ADATheme.runnerGreen)
-                                Text("Play area is set. Redrawing it moves the extraction point and re-scatters power-ups inside the new shape.")
+                                Text("Play area is set. Redrawing it re-scatters power-ups inside the new shape.")
                                     .font(ADATheme.uiFont(size: 12, weight: .medium))
                                     .foregroundColor(.white.opacity(0.6))
                             }

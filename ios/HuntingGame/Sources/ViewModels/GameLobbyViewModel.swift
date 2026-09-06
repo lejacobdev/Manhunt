@@ -43,7 +43,7 @@ final class GameLobbyViewModel: ObservableObject {
     var isBoundarySet: Bool { session.settings.boundsPolygon.count >= 3 }
     /// The one thing setup actually requires — everything else (jail, gambling, the exact
     /// duration) has a working default and can be changed later, but there's no match
-    /// without a play area to generate power-ups and an extraction point inside.
+    /// without a play area to generate power-ups inside.
     var isReadyToStart: Bool { isBoundarySet }
 
     init(session: GameSession, player: GamePlayer) {
@@ -65,7 +65,7 @@ final class GameLobbyViewModel: ObservableObject {
     }
 
     /// Host-only: re-enter draw mode for an already-set play area. Saving afterward
-    /// regenerates the extraction point and re-scatters power-ups inside the new shape.
+    /// re-scatters power-ups inside the new shape.
     func beginRedrawBoundary() {
         guard isHost else { return }
         boundaryPoints = []
@@ -160,7 +160,7 @@ final class GameLobbyViewModel: ObservableObject {
                 durationMinutes: Int(durationMinutes),
                 // Sent whenever the boundary hasn't been set yet, or the host is actively
                 // redrawing it — resending the already-saved points otherwise would trigger
-                // a needless regeneration of the extraction point and power-ups server-side.
+                // a needless re-scatter of power-ups server-side.
                 boundsPolygon: needsBoundary ? boundaryPoints : nil,
                 jailEnabled: jailEnabled,
                 jailPolygon: jailEnabled ? jailPoints : nil,

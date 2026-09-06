@@ -171,7 +171,6 @@ private struct ProfileBody: View {
             statTile("WINS", "\(stats.wins)", ADATheme.runnerGreen)
             statTile("WIN RATE", "\(stats.winRatePercent)%", ADATheme.tacticalAmber)
             statTile("CATCHES", "\(stats.catchesMade)", ADATheme.hunterRed)
-            statTile("ESCAPES", "\(stats.extractions)", ADATheme.runnerGreen)
             statTile("PLAYTIME", stats.playtimeLabel, ADATheme.spatialCyan)
         }
         .padding(.horizontal)

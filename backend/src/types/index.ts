@@ -34,7 +34,6 @@ export interface PlayerState {
   isMovingOnFoot: boolean;
   arrestCode: string;
   isCaught: boolean;
-  isExtracted: boolean;
   isJailed: boolean;
   isOut: boolean;
   hearts: number;
@@ -73,9 +72,6 @@ export const GHOST_DECOY_SPEED_MPS = 1.4; // brisk walking pace for the simulate
 
 /** Location updates worse than this horizontal accuracy are rejected server-side (GPS spoofing/signal guard). */
 export const MAX_ACCURACY_METERS = 30;
-
-/** Extraction win condition: a runner within this radius of an extraction point is safe. */
-export const EXTRACTION_RADIUS_METERS = 20;
 
 /** Starting hearts per role — hunters get more, making it comparatively riskier for a
  *  runner to gamble away one of their own scarcer hearts. Set explicitly in joinSession;

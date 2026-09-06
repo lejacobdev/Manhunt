@@ -17,7 +17,6 @@ interface ProfileStats {
   matchesAsRunner: number;
   catchesMade: number;
   timesCaught: number;
-  extractions: number;
   timesEliminated: number;
   matchesHosted: number;
   powerUpsCollected: number;
@@ -48,8 +47,6 @@ function buildAchievements(stats: ProfileStats): Achievement[] {
     { id: 'first_catch', title: 'First Blood', description: 'Catch your first runner.', icon: 'hand.raised.fill', goal: 1, value: stats.catchesMade },
     { id: 'catches_10', title: 'Bounty Hunter', description: 'Catch 10 runners.', icon: 'figure.run.circle.fill', goal: 10, value: stats.catchesMade },
     { id: 'catches_50', title: 'Manhunter', description: 'Catch 50 runners.', icon: 'target', goal: 50, value: stats.catchesMade },
-    { id: 'first_escape', title: 'Slipped Away', description: 'Reach the extraction point once.', icon: 'flag.checkered', goal: 1, value: stats.extractions },
-    { id: 'escapes_10', title: 'Ghost', description: 'Extract safely 10 times.', icon: 'eye.slash.fill', goal: 10, value: stats.extractions },
     { id: 'wins_1', title: 'On the Board', description: 'Win your first match.', icon: 'rosette', goal: 1, value: stats.wins },
     { id: 'wins_10', title: 'Champion', description: 'Win 10 matches.', icon: 'trophy.fill', goal: 10, value: stats.wins },
     { id: 'matches_10', title: 'Regular', description: 'Play 10 matches.', icon: 'gamecontroller.fill', goal: 10, value: stats.matchesPlayed },
@@ -96,12 +93,12 @@ async function computeProfile(userId: string) {
       minutesPlayed += configured && configured > 0 ? Math.min(elapsed, configured) : elapsed;
     }
     if (me.role === 'RUNNER') {
-      // Mirrors the match's own win conditions: surviving to the final whistle or
-      // extracting both count, being caught or eliminated doesn't.
-      if (me.isExtracted || (!me.isCaught && !me.isOut)) wins += 1;
+      // Mirrors the match's own win condition: surviving to the final whistle without
+      // being caught or eliminated.
+      if (!me.isCaught && !me.isOut) wins += 1;
     } else if (me.role === 'HUNTER') {
       const runners = session.players.filter((p) => p.role === 'RUNNER');
-      if (runners.length > 0 && runners.every((r) => (r.isCaught || r.isOut) && !r.isExtracted)) wins += 1;
+      if (runners.length > 0 && runners.every((r) => r.isCaught || r.isOut)) wins += 1;
     }
   }
 
@@ -144,7 +141,6 @@ async function computeProfile(userId: string) {
     matchesAsRunner: myPlayers.filter((p) => p.role === 'RUNNER').length,
     catchesMade,
     timesCaught: myPlayers.filter((p) => p.isCaught).length,
-    extractions: myPlayers.filter((p) => p.isExtracted).length,
     timesEliminated: myPlayers.filter((p) => p.isOut).length,
     matchesHosted,
     powerUpsCollected,
@@ -167,8 +163,8 @@ async function computeProfile(userId: string) {
   };
 }
 
-type LeaderboardSort = 'wins' | 'catches' | 'extractions' | 'matches' | 'playtime';
-const LEADERBOARD_SORTS: LeaderboardSort[] = ['wins', 'catches', 'extractions', 'matches', 'playtime'];
+type LeaderboardSort = 'wins' | 'catches' | 'matches' | 'playtime';
+const LEADERBOARD_SORTS: LeaderboardSort[] = ['wins', 'catches', 'matches', 'playtime'];
 
 interface LeaderboardRow {
   user: { id: string; username: string; userTag: string; avatarUrl: string | null };
@@ -176,7 +172,6 @@ interface LeaderboardRow {
   wins: number;
   winRatePercent: number;
   catchesMade: number;
-  extractions: number;
   minutesPlayed: number;
 }
 
@@ -184,9 +179,9 @@ interface LeaderboardRow {
  * Ranks every player with at least one finished match. Unlike `computeProfile` (one query
  * per profile view, fine at that scale), this computes every user's totals in a single pass
  * over the same underlying rows — fetching once and aggregating in memory beats issuing one
- * query per user, and the win-condition logic (mirrors the match's own: a runner surviving
- * or extracting, a hunter resolving every runner) doesn't translate cleanly into a single
- * SQL aggregate anyway.
+ * query per user, and the win-condition logic (mirrors the match's own: a runner surviving,
+ * a hunter resolving every runner) doesn't translate cleanly into a single SQL aggregate
+ * anyway.
  */
 async function computeLeaderboard(sort: LeaderboardSort) {
   const endedPlayers = await prisma.gamePlayer.findMany({
@@ -202,7 +197,6 @@ async function computeLeaderboard(sort: LeaderboardSort) {
     matchesPlayed: number;
     wins: number;
     catchesMade: number;
-    extractions: number;
     minutesPlayed: number;
   }
   const byUser = new Map<string, Accum>();
@@ -210,14 +204,13 @@ async function computeLeaderboard(sort: LeaderboardSort) {
 
   for (const p of endedPlayers) {
     playerIdToUserId.set(p.id, p.userId);
-    const acc = byUser.get(p.userId) ?? { user: p.user, matchesPlayed: 0, wins: 0, catchesMade: 0, extractions: 0, minutesPlayed: 0 };
+    const acc = byUser.get(p.userId) ?? { user: p.user, matchesPlayed: 0, wins: 0, catchesMade: 0, minutesPlayed: 0 };
     acc.matchesPlayed += 1;
-    if (p.isExtracted) acc.extractions += 1;
     if (p.role === 'RUNNER') {
-      if (p.isExtracted || (!p.isCaught && !p.isOut)) acc.wins += 1;
+      if (!p.isCaught && !p.isOut) acc.wins += 1;
     } else if (p.role === 'HUNTER') {
       const runners = p.session.players.filter((x) => x.role === 'RUNNER');
-      if (runners.length > 0 && runners.every((r) => (r.isCaught || r.isOut) && !r.isExtracted)) acc.wins += 1;
+      if (runners.length > 0 && runners.every((r) => r.isCaught || r.isOut)) acc.wins += 1;
     }
     if (p.session.startedAt && p.session.endedAt) {
       const elapsed = Math.max(0, Math.round((p.session.endedAt.getTime() - p.session.startedAt.getTime()) / 60_000));
@@ -250,13 +243,11 @@ async function computeLeaderboard(sort: LeaderboardSort) {
     wins: acc.wins,
     winRatePercent: acc.matchesPlayed > 0 ? Math.round((acc.wins / acc.matchesPlayed) * 100) : 0,
     catchesMade: acc.catchesMade,
-    extractions: acc.extractions,
     minutesPlayed: acc.minutesPlayed,
   }));
 
-  const key: keyof Pick<LeaderboardRow, 'wins' | 'catchesMade' | 'extractions' | 'matchesPlayed' | 'minutesPlayed'> =
+  const key: keyof Pick<LeaderboardRow, 'wins' | 'catchesMade' | 'matchesPlayed' | 'minutesPlayed'> =
     sort === 'catches' ? 'catchesMade'
-      : sort === 'extractions' ? 'extractions'
       : sort === 'matches' ? 'matchesPlayed'
       : sort === 'playtime' ? 'minutesPlayed'
       : 'wins';

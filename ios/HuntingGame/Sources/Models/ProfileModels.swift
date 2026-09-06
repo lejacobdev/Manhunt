@@ -10,7 +10,6 @@ struct ProfileStats: Codable, Equatable {
     let matchesAsRunner: Int
     let catchesMade: Int
     let timesCaught: Int
-    let extractions: Int
     let timesEliminated: Int
     let matchesHosted: Int
     let powerUpsCollected: Int
@@ -80,7 +79,7 @@ struct UserProfile: Codable, Equatable {
 // MARK: - Leaderboard
 
 enum LeaderboardSort: String, Codable, CaseIterable, Identifiable {
-    case wins, catches, extractions, matches, playtime
+    case wins, catches, matches, playtime
 
     var id: String { rawValue }
 
@@ -88,7 +87,6 @@ enum LeaderboardSort: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .wins: return "WINS"
         case .catches: return "CATCHES"
-        case .extractions: return "ESCAPES"
         case .matches: return "MATCHES"
         case .playtime: return "PLAYTIME"
         }
@@ -102,7 +100,6 @@ struct LeaderboardEntry: Codable, Identifiable, Equatable {
     let wins: Int
     let winRatePercent: Int
     let catchesMade: Int
-    let extractions: Int
     let minutesPlayed: Int
 
     var id: String { user.id }
@@ -122,7 +119,6 @@ struct LeaderboardEntry: Codable, Identifiable, Equatable {
         switch sort {
         case .wins: return wins
         case .catches: return catchesMade
-        case .extractions: return extractions
         case .matches: return matchesPlayed
         case .playtime: return minutesPlayed
         }

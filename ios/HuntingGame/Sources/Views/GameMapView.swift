@@ -1,10 +1,9 @@
 import SwiftUI
 import MapKit
 
-/// The live match map: player/decoy blips, the fixed outer play-area boundary and (if
-/// enabled) the jail polygon, and the extraction point marker. Built on `MKMapView`
-/// (like `BoundaryMapView`) rather than SwiftUI's older `Map` API, which on our iOS
-/// 16.2 target has no polygon-overlay support.
+/// The live match map: player/decoy blips, and the fixed outer play-area boundary and (if
+/// enabled) the jail polygon. Built on `MKMapView` (like `BoundaryMapView`) rather than
+/// SwiftUI's older `Map` API, which on our iOS 16.2 target has no polygon-overlay support.
 struct GameMapView: UIViewRepresentable {
     struct Blip: Identifiable {
         let id: String
@@ -27,7 +26,6 @@ struct GameMapView: UIViewRepresentable {
     var zone: ZoneUpdate? = nil
     /// Live safe-zone flares — a runner standing inside one can't be caught.
     var safeZones: [ActiveSafeZone] = []
-    let extractionPoint: Coordinate?
     let decoys: [DecoyBlip]
     var powerUpSpawns: [PowerUpSpawn] = []
     /// Fires with the tapped spawn's id when its map pin is selected.
@@ -79,9 +77,6 @@ struct GameMapView: UIViewRepresentable {
         }
         for decoy in decoys where decoy.isDecoy {
             desired["decoy:\(decoy.id)"] = (CLLocationCoordinate2D(latitude: decoy.lat, longitude: decoy.lng), .decoy)
-        }
-        if let extractionPoint {
-            desired["extraction"] = (CLLocationCoordinate2D(latitude: extractionPoint.lat, longitude: extractionPoint.lng), .extraction)
         }
         for spawn in powerUpSpawns {
             desired["spawn:\(spawn.id)"] = (CLLocationCoordinate2D(latitude: spawn.latitude, longitude: spawn.longitude), .powerUpSpawn(spawn.id, spawn.type))
@@ -280,11 +275,6 @@ struct GameMapView: UIViewRepresentable {
                 view.glyphImage = UIImage(systemName: "person.fill.questionmark")
                 view.canShowCallout = false
                 Self.applyNameLabel(nil, to: view)
-            case .extraction:
-                view.markerTintColor = UIColor(ADATheme.runnerGreen)
-                view.glyphImage = UIImage(systemName: "flag.checkered")
-                view.canShowCallout = false
-                Self.applyNameLabel(nil, to: view)
             case .powerUpSpawn(_, let type):
                 view.markerTintColor = UIColor(ADATheme.accent(for: type))
                 view.glyphImage = UIImage(systemName: type.iconName)
@@ -353,7 +343,6 @@ private final class BlipAnnotation: NSObject, MKAnnotation {
     enum Kind: Equatable {
         case player(PlayerRole)
         case decoy
-        case extraction
         case powerUpSpawn(String, PowerUpType)
     }
 

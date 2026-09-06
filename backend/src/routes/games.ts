@@ -9,7 +9,6 @@ import { zodErrorMessage } from '../utils/validation';
 // the caches are only read inside route handlers, which run long after both
 // modules have finished loading, never at module top level.
 import { io, sessionSettingsCache, sessionStartedAtCache } from '../server';
-import { GameMode } from '../types';
 
 export const gamesRouter = Router();
 gamesRouter.use(requireAuth);
@@ -96,9 +95,8 @@ gamesRouter.post('/:code/join', async (req: AuthedRequest, res) => {
 
 const updateSettingsSchema = z.object({
   durationMinutes: z.number().min(5).max(240).optional(),
-  // Redrawable any number of times before the match starts — each redraw regenerates the
-  // extraction point and re-scatters power-ups inside the new shape (see the handler below
-  // and GameService.layOutSpawns).
+  // Redrawable any number of times before the match starts — each redraw re-scatters
+  // power-ups inside the new shape (see the handler below and GameService.layOutSpawns).
   boundsPolygon: z.array(pointSchema).optional(),
   jailEnabled: z.boolean().optional(),
   jailPolygon: z.array(pointSchema).optional(),
@@ -138,10 +136,9 @@ gamesRouter.patch('/:code/settings', async (req: AuthedRequest, res) => {
   if (!merged.jailEnabled) merged.jailPolygon = undefined;
 
   // The boundary can be redrawn any number of times before the match starts (each redraw
-  // regenerates the extraction point and re-scatters power-ups inside the new shape) —
-  // not just set once, the way it originally shipped.
+  // re-scatters power-ups inside the new shape) — not just set once, the way it originally
+  // shipped.
   if (settingBoundaryNow) {
-    merged.extractionPoint = await gameService.generateExtractionPoint(merged.boundsPolygon, session.mode as GameMode);
     await gameService.layOutSpawns(session.id, merged.boundsPolygon, merged.durationMinutes);
   }
 

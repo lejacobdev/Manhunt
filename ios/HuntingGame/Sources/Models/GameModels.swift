@@ -106,7 +106,6 @@ struct Coordinate: Codable, Equatable {
 struct GameSettings: Codable, Equatable {
     let durationMinutes: Int
     let boundsPolygon: [Coordinate]
-    let extractionPoint: Coordinate?
     /// Optional/absent on sessions created before this feature shipped.
     let jailEnabled: Bool?
     let jailPolygon: [Coordinate]?
@@ -154,7 +153,6 @@ struct PlayerState: Codable, Identifiable, Equatable {
     var isMovingOnFoot: Bool
     var arrestCode: String
     var isCaught: Bool
-    var isExtracted: Bool
     var isJailed: Bool
     var isOut: Bool
     var hearts: Int
@@ -162,7 +160,6 @@ struct PlayerState: Codable, Identifiable, Equatable {
 
     static func == (lhs: PlayerState, rhs: PlayerState) -> Bool {
         lhs.id == rhs.id && lhs.lat == rhs.lat && lhs.lng == rhs.lng && lhs.isCaught == rhs.isCaught
-            && lhs.isExtracted == rhs.isExtracted && lhs.battery == rhs.battery
             && lhs.isJailed == rhs.isJailed && lhs.isOut == rhs.isOut && lhs.hearts == rhs.hearts
     }
 }
@@ -357,7 +354,6 @@ struct HistoryEntry: Codable, Identifiable {
     let id: String
     let role: PlayerRole
     let isCaught: Bool
-    let isExtracted: Bool
     let joinedAt: String
     let session: GameSession
 }

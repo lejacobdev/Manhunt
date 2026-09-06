@@ -30,7 +30,6 @@ const POWER_UP_TYPES: PowerUpType[] = [
 export interface GameSettings {
   durationMinutes: number;
   boundsPolygon: Point2D[];
-  extractionPoint?: Point2D;
   jailEnabled?: boolean;
   jailPolygon?: Point2D[];
   gamblingEnabled?: boolean;
@@ -49,12 +48,10 @@ export class GameService {
 
     const mode = input.mode ?? 'STANDARD';
     const hasBoundary = input.boundsPolygon.length >= 3;
-    const extractionPoint = hasBoundary ? await this.generateExtractionPoint(input.boundsPolygon, mode) : undefined;
 
     const settings: GameSettings = {
       durationMinutes: input.durationMinutes,
       boundsPolygon: input.boundsPolygon,
-      extractionPoint,
       jailEnabled: input.jailEnabled ?? false,
       jailPolygon: input.jailEnabled ? input.jailPolygon : undefined,
       gamblingEnabled: input.gamblingEnabled ?? false,
@@ -79,14 +76,6 @@ export class GameService {
     }
 
     return session;
-  }
-
-  /** The extraction point for STANDARD mode, generated from a boundary — used both at
-   *  creation and by the settings route when the boundary is set later from the lobby. */
-  public async generateExtractionPoint(boundsPolygon: Point2D[], mode: GameMode): Promise<Point2D | undefined> {
-    if (mode !== 'STANDARD') return undefined;
-    const candidates = await overpassSpawner.generatePublicPowerUpSpawns(boundsPolygon, 1);
-    return candidates[0];
   }
 
   /**
@@ -180,17 +169,6 @@ export class GameService {
         type: 'CATCH',
         payload: { hunterPlayerId, runnerPlayerId, timestamp: new Date().toISOString() },
       },
-    });
-  }
-
-  /** Alternate win condition: a runner who reaches the designated extraction point is safe for the rest of the match. */
-  public async recordExtraction(sessionId: string, playerId: string) {
-    await prisma.gamePlayer.update({
-      where: { id: playerId },
-      data: { isExtracted: true, extractedAt: new Date() },
-    });
-    return prisma.gameEvent.create({
-      data: { sessionId, type: 'EXTRACTED', payload: { playerId, timestamp: new Date().toISOString() } },
     });
   }
 

@@ -36,7 +36,6 @@ struct MatchReplayView: View {
                 } else if timeRange != nil {
                     GameMapView(
                         players: currentBlips,
-                        extractionPoint: nil,
                         decoys: [],
                         initialCenter: currentBlips.first?.coordinate
                     )

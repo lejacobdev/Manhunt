@@ -31,7 +31,6 @@ struct GameView: View {
                 jailPolygon: viewModel.sessionSettings.jailPolygon,
                 zone: viewModel.zone,
                 safeZones: viewModel.activeSafeZones,
-                extractionPoint: socket.extractionPoint,
                 decoys: socket.radar?.decoys ?? [],
                 powerUpSpawns: viewModel.powerUpSpawns,
                 onSelectSpawn: viewModel.collectPowerUp,
@@ -73,10 +72,6 @@ struct GameView: View {
                 dimScrim
                 eliminatedOverlay
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
-            } else if viewModel.isExtracted {
-                dimScrim
-                extractedOverlay
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
             } else if viewModel.isCaught && !viewModel.isJailed {
                 dimScrim
                 caughtOverlay
@@ -116,7 +111,6 @@ struct GameView: View {
             }
         }
         .animation(ADATheme.ambientSpring, value: viewModel.isCaught)
-        .animation(ADATheme.ambientSpring, value: viewModel.isExtracted)
         .animation(ADATheme.ambientSpring, value: viewModel.isOut)
         .animation(ADATheme.ambientSpring, value: socket.gameOverReason)
         .animation(ADATheme.ambientSpring, value: viewModel.catchTargetId)
@@ -536,31 +530,11 @@ struct GameView: View {
     private var gameOverReasonLabel: String {
         switch socket.gameOverReason {
         case "TIME_EXPIRED": return "Time expired — the runners survived."
-        case "ALL_RUNNERS_RESOLVED": return "All runners caught or extracted."
+        case "ALL_RUNNERS_RESOLVED": return "All runners caught or eliminated."
         case "ALL_HUNTERS_ELIMINATED": return "All hunters were eliminated — the runners win!"
         case "HOST_ENDED": return "The host ended the match early."
         default: return "The match has ended."
         }
-    }
-
-    private var extractedOverlay: some View {
-        VStack(spacing: 14) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 36, weight: .bold))
-                .foregroundColor(ADATheme.runnerGreen)
-                .shadow(color: ADATheme.runnerGreen, radius: 12)
-
-            Text("YOU EXTRACTED SAFELY")
-                .font(ADATheme.displayFont(size: 20))
-                .foregroundColor(.white)
-
-            Text("Spectate the rest of the match from here.")
-                .font(ADATheme.uiFont(size: 13, weight: .medium))
-                .foregroundColor(.white.opacity(0.5))
-        }
-        .padding(32)
-        .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.runnerGreen)
-        .padding(.horizontal, 40)
     }
 
     private var caughtOverlay: some View {

@@ -87,8 +87,6 @@ struct SpectatorDashboardView: View {
                 Text("OUT").foregroundColor(ADATheme.hunterRed)
             } else if player.isJailed {
                 Text("JAILED").foregroundColor(ADATheme.tacticalAmber)
-            } else if player.isExtracted {
-                Text("SAFE").foregroundColor(ADATheme.runnerGreen)
             } else if player.isCaught {
                 Text("CAUGHT").foregroundColor(ADATheme.hunterRed)
             } else {

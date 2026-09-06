@@ -202,7 +202,7 @@ final class APIClient {
     }
 
     /// Host-only lobby edit. `boundsPolygon`, when sent, always redraws the play area —
-    /// regenerating the extraction point and re-scattering power-ups inside the new shape.
+    /// re-scattering power-ups inside the new shape.
     func updateSessionSettings(code: String, durationMinutes: Int?, boundsPolygon: [Coordinate]?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, gamblingEnabled: Bool?, antiCheatEnabled: Bool?) async throws -> GameSession {
         struct Body: Encodable {
             let durationMinutes: Int?

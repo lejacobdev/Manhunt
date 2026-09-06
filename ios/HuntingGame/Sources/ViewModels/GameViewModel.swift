@@ -13,7 +13,6 @@ final class GameViewModel: ObservableObject {
     @Published var mode: GameMode
     @Published var arrestCode: String
     @Published var isCaught: Bool = false
-    @Published var isExtracted: Bool = false
     @Published var isInvisible: Bool = false
     @Published var invisibilityRemainingSec: Int = 0
     /// Power-ups this player has active right now, with the second they run out — drives
@@ -144,7 +143,7 @@ final class GameViewModel: ObservableObject {
 
     private func pushWatchSnapshot() {
         let snapshot = WatchGameSnapshot(
-            isActive: !isCaught && !isExtracted,
+            isActive: !isCaught,
             gameCode: roomCode,
             roleRaw: role.rawValue,
             arrestCode: arrestCode,
@@ -222,17 +221,6 @@ final class GameViewModel: ObservableObject {
                 } else if let hunterId = event.hunterId, hunterId == self.gamePlayerId {
                     HapticsEngine.shared.catchSucceeded()
                 }
-            }
-            .store(in: &cancellables)
-
-        socket.playerExtractedSubject
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] playerId in
-                guard let self, playerId == self.gamePlayerId else { return }
-                self.isExtracted = true
-                HapticsEngine.shared.catchSucceeded()
-                LiveActivityManager.shared.end()
-                self.pushWatchSnapshot()
             }
             .store(in: &cancellables)
 

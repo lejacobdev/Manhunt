@@ -37,7 +37,6 @@ import {
   CATCH_REQUEST_TIMEOUT_MS,
   CATCH_VERIFICATION_RADIUS_METERS,
   POWER_UP_COLLECTION_RADIUS_METERS,
-  EXTRACTION_RADIUS_METERS,
   GameMode,
   JAIL_BUFFER_METERS,
   JAIL_VIOLATION_COUNTDOWN_MS,
@@ -120,7 +119,7 @@ export const io = new Server(httpServer, { cors: { origin: process.env.CORS_ORIG
 const activeSessions: Map<string, Map<string, PlayerState>> = new Map();
 // roomCode -> game mode, cached at join to avoid a DB hit per tick
 const sessionModes: Map<string, GameMode> = new Map();
-// roomCode -> immutable session settings (duration, radar interval, boundary, extraction point)
+// roomCode -> immutable session settings (duration, radar interval, boundary)
 export const sessionSettingsCache: Map<string, GameSettings> = new Map();
 // roomCode -> match start time (epoch ms) — set at join if already started, or live-patched by the
 // REST /games/:code/start route (see routes/games.ts) the moment the host starts the match.
@@ -271,7 +270,6 @@ io.on('connection', (socket: Socket) => {
         isMovingOnFoot: true,
         arrestCode: gamePlayer.arrestCode,
         isCaught: gamePlayer.isCaught,
-        isExtracted: gamePlayer.isExtracted,
         isJailed: gamePlayer.isJailed,
         isOut: gamePlayer.isOut,
         hearts: gamePlayer.hearts,
@@ -291,11 +289,6 @@ io.on('connection', (socket: Socket) => {
       }
 
       io.to(roomCode).emit('player_joined', publicRoster(session));
-
-      const settings = sessionSettingsCache.get(roomCode);
-      if (settings?.extractionPoint) {
-        socket.emit('extraction_point', settings.extractionPoint);
-      }
 
       // A match that's already running has to hand the clock to whoever just walked in.
       // game_started is otherwise only emitted once, by the REST start route, to sockets
@@ -343,7 +336,7 @@ io.on('connection', (socket: Socket) => {
       const p = session.get(gamePlayerId)!;
       // A jailed runner must keep reporting location so jail containment can still be
       // checked — everything else that's caught (non-jailed) or fully out stops here.
-      if ((p.isCaught && !p.isJailed) || p.isExtracted || p.isOut) return;
+      if ((p.isCaught && !p.isJailed) || p.isOut) return;
 
       pruneExpiredBuffs(p);
 
@@ -397,11 +390,8 @@ io.on('connection', (socket: Socket) => {
       if (p.role === 'RUNNER' && gameSessionId) {
         if (p.isJailed) {
           await checkJailContainment(roomCode, gameSessionId, p, session);
-        } else if (!p.isCaught && !p.isExtracted && !p.isOut) {
-          await checkExtraction(roomCode, gameSessionId, p, session, mode);
-          if (!p.isExtracted && mode !== 'INFECTION') {
-            await checkContainment(roomCode, gameSessionId, p, session, mode);
-          }
+        } else if (!p.isCaught && !p.isOut && mode !== 'INFECTION') {
+          await checkContainment(roomCode, gameSessionId, p, session, mode);
         }
       } else if (p.role === 'HUNTER' && gameSessionId && mode !== 'INFECTION' && !p.isOut) {
         await checkContainment(roomCode, gameSessionId, p, session, mode);
@@ -423,7 +413,7 @@ io.on('connection', (socket: Socket) => {
         (x) => x.role === 'HUNTER' && hasFix(x) && !x.isOut && !isBuffActive(x, 'INVISIBILITY_10MIN')
       );
       const runners = allPlayers.filter(
-        (x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted && !x.isOut && hasFix(x)
+        (x) => x.role === 'RUNNER' && !x.isCaught && !x.isOut && hasFix(x)
       );
 
       // Radar/compass used to only ever refresh for the player whose own tick this was —
@@ -469,7 +459,7 @@ io.on('connection', (socket: Socket) => {
         return;
       }
 
-      if (!runner || runner.isCaught || runner.isExtracted) {
+      if (!runner || runner.isCaught) {
         socket.emit('catch_failed', { reason: 'Target is not an active runner.' });
         return;
       }
@@ -547,7 +537,7 @@ io.on('connection', (socket: Socket) => {
       return;
     }
 
-    if (!runner || runner.isCaught || runner.isExtracted || runner.isOut) {
+    if (!runner || runner.isCaught || runner.isOut) {
       socket.emit('catch_failed', { reason: 'Target is not an active runner.' });
       return;
     }
@@ -1083,34 +1073,6 @@ async function isSessionHost(roomCode: string, userId: string): Promise<boolean>
   return gameSession.hostId === userId;
 }
 
-/** Checks whether a runner has reached the designated extraction point and, if so, marks them safe. */
-async function checkExtraction(
-  roomCode: string,
-  gameSessionId: string,
-  runner: PlayerState,
-  session: Map<string, PlayerState>,
-  mode: GameMode
-) {
-  const settings = sessionSettingsCache.get(roomCode);
-  const extractionPoint = settings?.extractionPoint;
-  if (!extractionPoint) return;
-
-  const distance = turf.distance(
-    turf.point([runner.lng, runner.lat]),
-    turf.point([extractionPoint.lng, extractionPoint.lat]),
-    { units: 'meters' }
-  );
-  if (distance > EXTRACTION_RADIUS_METERS) return;
-
-  runner.isExtracted = true;
-  await gameService.recordExtraction(gameSessionId, runner.id);
-  io.to(roomCode).emit('player_extracted', { playerId: runner.id, timestamp: new Date().toISOString() });
-
-  if (mode === 'STANDARD') {
-    await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
-  }
-}
-
 /** The shrinking zone as of right now, or undefined before the match clock starts. */
 function currentZone(roomCode: string): ZoneState | undefined {
   const settings = sessionSettingsCache.get(roomCode);
@@ -1325,7 +1287,7 @@ async function checkStandardWinCondition(
   // unable to ever end via elimination.
   if (mode !== 'STANDARD' && mode !== 'SQUAD') return;
   const activeRunners = Array.from(session.values()).filter(
-    (x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted && !x.isOut
+    (x) => x.role === 'RUNNER' && !x.isCaught && !x.isOut
   );
   if (activeRunners.length === 0) {
     await gameService.endSession(gameSessionId);
