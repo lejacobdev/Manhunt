@@ -61,6 +61,16 @@ final class GameViewModel: ObservableObject {
     private let watchConnectivity = PhoneConnectivityManager.shared
     private var lastSentAt: Date = .distantPast
     private let minSendInterval: TimeInterval = 2.0
+    private var lastWidgetReloadAt: Date = .distantPast
+    /// WidgetKit metes out a small daily budget of *actual* re-renders per widget kind —
+    /// on the order of a few dozen, shared across the whole day, regardless of how many
+    /// times reloadTimelines is called. Calling it on every 1.5s watchSyncTimer tick (as
+    /// this used to) burns through that budget within the first minute of any single
+    /// match, silently dropping every reload request for the rest of the day — which is
+    /// exactly what "the widget shows No active game the whole match" looks like from the
+    /// outside. The App Group write itself is cheap and happens on every tick regardless;
+    /// only this explicit reload trigger needs throttling.
+    private let minWidgetReloadInterval: TimeInterval = 60
 
     let gamePlayerId: String
     let sessionId: String
@@ -150,8 +160,14 @@ final class GameViewModel: ObservableObject {
 
         // Same snapshot, relayed to the iPhone home-screen widget via their shared App
         // Group instead of WatchConnectivity — that's phone-to-watch only, but the widget
-        // extension runs on this same device, so no relay is needed at all.
+        // extension runs on this same device, so no relay is needed at all. The write
+        // itself is just local storage and happens every time, cheap even on the 1.5s
+        // watchSyncTimer tick; only the explicit reload request below is throttled.
         PhoneWidgetAppGroup.writeSnapshot(snapshot)
+
+        let now = Date()
+        guard now.timeIntervalSince(lastWidgetReloadAt) >= minWidgetReloadInterval else { return }
+        lastWidgetReloadAt = now
         WidgetCenter.shared.reloadTimelines(ofKind: "HuntingGameHomeWidget")
     }
 
