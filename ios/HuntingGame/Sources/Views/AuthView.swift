@@ -16,9 +16,7 @@ struct AuthView: View {
 
                 VStack(spacing: 20) {
                     VStack(spacing: 6) {
-                        Text("HUNTING GAME")
-                            .font(ADATheme.displayFont(size: 32))
-                            .foregroundColor(.white)
+                        HuntingGameWordmark(size: 32)
                             .shadow(color: ADATheme.runnerGreen.opacity(0.5), radius: 16)
 
                         Text("REAL-WORLD GPS MANHUNT")
@@ -140,23 +138,17 @@ struct ADASecureField: View {
     }
 }
 
-/// A lighter touch of the app's liquid-glass language for form fields — a top
-/// sheen highlight and a thin rim, same visual cue as `glassCard()`'s sheen, but
-/// without its blur material or drop shadow. Fields nested inside an already-glass
-/// card (every ADATextField/ADASecureField usage in this app) would otherwise
-/// stack glass-on-glass and look over-styled.
+/// Form-field surface: a flat fill and a hairline rim, matching how `GlassButtonStyle`
+/// treats its own controls. Deliberately has no sheen gradient — fields always sit inside
+/// an already-glass card, and a second highlight on top of that one read as a stray
+/// gradient smeared across the top of every input rather than as depth.
 private struct GlassFieldBackground: View {
     var body: some View {
         RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous)
-            .fill(Color.white.opacity(0.06))
-            .overlay(
-                LinearGradient(colors: [.white.opacity(0.14), .white.opacity(0)], startPoint: .top, endPoint: .center)
-                    .clipShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
-                    .allowsHitTesting(false)
-            )
+            .fill(Color.white.opacity(0.07))
             .overlay(
                 RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
             )
     }
 }

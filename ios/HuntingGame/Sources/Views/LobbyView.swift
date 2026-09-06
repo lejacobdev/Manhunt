@@ -21,23 +21,14 @@ struct LobbyView: View {
                 RadarSweepBackdrop(accent: ADATheme.runnerGreen, center: .top)
                     .edgesIgnoringSafeArea(.all)
 
+                // Vertically centered rather than stacked from the top edge: this screen
+                // holds only a handful of controls, so top-anchoring left the whole lower
+                // half empty. minHeight keeps it centered when it fits and lets it scroll
+                // normally once invites/session cards push it past a screenful.
+                GeometryReader { proxy in
                 ScrollView {
-                    VStack(spacing: 16) {
+                    VStack(spacing: 18) {
                         header
-
-                        if let user = authSession.currentUser {
-                            // Same dot+telemetry-label pattern as GameView's top bar
-                            // role indicator, not just plain text.
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(ADATheme.runnerGreen)
-                                    .frame(width: 8, height: 8)
-                                    .shadow(color: ADATheme.runnerGreen, radius: 4)
-                                Text("SIGNED IN AS \(user.tagLabel.uppercased())")
-                                    .font(ADATheme.telemetryFont(size: 11))
-                                    .foregroundColor(.white.opacity(0.6))
-                            }
-                        }
 
                         if !presence.incomingInvites.isEmpty {
                             InviteBannerView(
@@ -101,16 +92,20 @@ struct LobbyView: View {
                                 .transition(.move(edge: .bottom).combined(with: .opacity))
                         }
 
-                        Button("Sign Out") { authSession.signOut() }
-                            .font(ADATheme.telemetryFont(size: 12))
-                            .foregroundColor(.white.opacity(0.35))
-                            .padding(.top, 12)
-                            .padding(.bottom, 30)
+                        Button("SIGN OUT") { authSession.signOut() }
+                            .font(ADATheme.telemetryFont(size: 11))
+                            .foregroundColor(.white.opacity(0.3))
+                            .tracking(1.5)
+                            .padding(.top, 6)
                     }
                     .adaptiveContentWidth()
+                    .padding(.vertical, 28)
+                    .frame(minHeight: proxy.size.height, alignment: .center)
+                    .frame(maxWidth: .infinity)
                     .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
                     .animation(ADATheme.ambientSpring, value: viewModel.activeSession?.status)
                     .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
+                }
                 }
             }
             .obsidianBackdrop()
@@ -141,17 +136,32 @@ struct LobbyView: View {
         .preferredColorScheme(.dark)
     }
 
+    /// Wordmark, section label and who you're signed in as, as one block — these were three
+    /// separate items spaced like unrelated cards, which read as clutter above the controls.
     private var header: some View {
-        VStack(spacing: 4) {
-            Text("HUNTING GAME")
-                .font(ADATheme.displayFont(size: 26))
-                .foregroundColor(.white)
+        VStack(spacing: 6) {
+            HuntingGameWordmark(size: 28)
+
             Text("MISSION CONTROL")
                 .font(ADATheme.telemetryFont(size: 10))
                 .foregroundColor(ADATheme.runnerGreen)
                 .tracking(3)
+
+            if let user = authSession.currentUser {
+                // Same dot+telemetry-label pattern as GameView's top bar role indicator.
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(ADATheme.runnerGreen)
+                        .frame(width: 6, height: 6)
+                        .shadow(color: ADATheme.runnerGreen, radius: 4)
+                    Text(user.tagLabel.uppercased())
+                        .font(ADATheme.telemetryFont(size: 11))
+                        .foregroundColor(.white.opacity(0.5))
+                }
+                .padding(.top, 2)
+            }
         }
-        .padding(.top, 40)
+        .padding(.bottom, 4)
     }
 
     private var joinSection: some View {
