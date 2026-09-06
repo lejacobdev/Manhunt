@@ -27,6 +27,10 @@ final class SocketService: ObservableObject {
     /// Hunter-side "was it an accident?" prompt, after a runner taps No.
     @Published var pendingDenyConfirm: DenyConfirmRequest?
     @Published var lastGambleResult: GambleResult?
+    /// The shrinking play zone's current circle, refreshed every server sweep.
+    @Published var zone: ZoneUpdate?
+    /// Live SAFE_ZONE_FLARE bubbles, keyed by the player who dropped each one.
+    @Published var safeZones: [String: ActiveSafeZone] = [:]
 
     /// Fires with the caught player's id whenever a catch/infection event lands.
     /// hunterId is nil when no hunter was involved (kept for backward shape compatibility).
@@ -46,6 +50,8 @@ final class SocketService: ObservableObject {
     /// accidental, or it simply expired.
     let catchRequestCancelledSubject = PassthroughSubject<String, Never>()
     let gambleResultSubject = PassthroughSubject<GambleResult, Never>()
+    /// Fires on the runner's own client when a duel ended without a winner (the hunter left).
+    let gambleCancelledSubject = PassthroughSubject<String, Never>()
     let heartsUpdateSubject = PassthroughSubject<(playerId: String, hearts: Int, cause: String), Never>()
     let playerJailedSubject = PassthroughSubject<(runnerId: String, hunterId: String), Never>()
     let playerEliminatedSubject = PassthroughSubject<(playerId: String, role: String, reason: String), Never>()
@@ -111,6 +117,8 @@ final class SocketService: ObservableObject {
         incomingCatchRequest = nil
         pendingDenyConfirm = nil
         lastGambleResult = nil
+        zone = nil
+        safeZones = [:]
     }
 
     func sendLocationUpdate(lat: Double, lng: Double, speed: Double, accuracy: Double, battery: Int, isMovingOnFoot: Bool) {
@@ -144,6 +152,12 @@ final class SocketService: ObservableObject {
         var payload: [String: Any] = ["hunterId": hunterId, "decision": decision]
         if let gambleChoice { payload["gambleChoice"] = gambleChoice }
         socket?.emit("respond_catch", payload)
+    }
+
+    /// A later round of a running gamble duel — the first call rides `respondToCatch`,
+    /// every round after it comes through here until one side runs out of hearts.
+    func callGamble(choice: String) {
+        socket?.emit("gamble_call", ["choice": choice])
     }
 
     /// Hunter confirms a runner's "no, that wasn't a catch" really was accidental.
@@ -318,6 +332,33 @@ final class SocketService: ObservableObject {
             if let index = self.players.firstIndex(where: { $0.id == result.runnerId }) {
                 self.players[index].hearts = result.runnerHeartsRemaining
             }
+        }
+
+        socket.on("gamble_cancelled") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any], let hunterId = dict["hunterId"] as? String else { return }
+            self?.gambleCancelledSubject.send(hunterId)
+        }
+
+        socket.on("zone_update") { [weak self] data, _ in
+            guard let self, let raw = data.first else { return }
+            self.zone = Self.decode(raw)
+        }
+
+        // The flare's whole point is a visible no-catch bubble — without this the safe zone
+        // existed only as a server-side rejection reason nobody could see or aim for.
+        socket.on("SAFE_ZONE_CREATED") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any],
+                  let playerId = dict["playerId"] as? String,
+                  let lat = dict["lat"] as? Double,
+                  let lng = dict["lng"] as? Double,
+                  let radiusMeters = dict["radiusMeters"] as? Double,
+                  let expiresAtMs = dict["expiresAt"] as? Double else { return }
+            self.safeZones[playerId] = ActiveSafeZone(
+                lat: lat,
+                lng: lng,
+                radiusMeters: radiusMeters,
+                expiresAt: Date(timeIntervalSince1970: expiresAtMs / 1000)
+            )
         }
 
         socket.on("hearts_update") { [weak self] data, _ in

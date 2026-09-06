@@ -1,5 +1,6 @@
 import * as turf from '@turf/turf';
 import {
+  ADRENALINE_BONUS_HEARTS,
   EMP_JAMMER_RADIUS_METERS,
   POWER_UP_DURATIONS_MS,
   PlayerState,
@@ -13,6 +14,9 @@ export interface PowerUpUseResult {
   ok: boolean;
   error?: string;
   broadcastEvent?: { type: string; payload: Record<string, unknown> };
+  /** Set when the power-up changed the caster's own heart count (ADRENALINE), so the
+   *  caller can persist it and broadcast a hearts_update the same way damage does. */
+  heartsChanged?: boolean;
 }
 
 export interface DecoyRecord {
@@ -37,8 +41,9 @@ export type DecoyMap = Map<string, DecoyRecord[]>;
  *    the moment of casting for 60 seconds (their radar + compass go dark).
  *  - THERMAL_VISION: a hunter buff that pierces INVISIBILITY_10MIN for
  *    runners within 300m and forces 1-second radar refresh, for 45 seconds.
- *  - ADRENALINE: temporarily raises the runner's permitted sprint-speed
- *    ceiling for anti-cheat purposes.
+ *  - ADRENALINE: grants +2 permanent hearts (which count as gamble stakes like
+ *    any other heart) and temporarily raises the runner's permitted sprint-speed
+ *    ceiling for anti-cheat purposes. Runner-only: see the collect_powerup guard.
  *  - SAFE_ZONE_FLARE: creates a temporary 30m no-catch radius for 90s.
  */
 export function usePowerUp(
@@ -75,10 +80,18 @@ export function usePowerUp(
     }
 
     case 'ADRENALINE': {
+      // Two effects, both deliberate: the temporary sprint-ceiling raise for anti-cheat,
+      // and a permanent +2 hearts. The hearts stack past the role's starting maximum and
+      // are indistinguishable from any other heart afterwards — including as gamble stakes.
       player.activeBuffs.ADRENALINE = { expiresAt };
+      player.hearts += ADRENALINE_BONUS_HEARTS;
       return {
         ok: true,
-        broadcastEvent: { type: 'POWERUP_USED', payload: { playerId, powerUp: type, expiresAt } },
+        heartsChanged: true,
+        broadcastEvent: {
+          type: 'POWERUP_USED',
+          payload: { playerId, powerUp: type, expiresAt, heartsGained: ADRENALINE_BONUS_HEARTS },
+        },
       };
     }
 

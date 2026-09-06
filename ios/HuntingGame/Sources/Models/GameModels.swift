@@ -184,22 +184,40 @@ enum GambleChoice: String {
     case tails
 }
 
-/// The server-authoritative outcome of a gamble — both the hunter's and runner's clients
-/// animate their coin flip to the same `result`.
+/// One round of a gamble duel, as resolved by the server — both the hunter's and runner's
+/// clients animate their coin to the same `result`. Hearts lost here are real and
+/// persistent on both sides; the duel runs round after round until one of them hits zero.
 struct GambleResult: Codable, Equatable {
     let hunterId: String
     let runnerId: String
     let gambleChoice: String
     let result: String
     let heartsLostBy: String
-    /// The hunter's baseline going into this gamble (already reflects any prior storm damage).
-    let hunterHeartsBefore: Int
-    /// Transient dip for animation only — equals `hunterHeartsBefore` when the runner lost instead.
-    let hunterHeartsAfterLoss: Int
-    /// Always equals `hunterHeartsBefore` — a hunter's gamble loss heals back immediately.
     let hunterHeartsRemaining: Int
-    /// Fully persistent — a runner's gamble loss never heals back.
     let runnerHeartsRemaining: Int
+    /// 1-based round number within this duel.
+    let round: Int
+    /// False on the round that emptied someone's hearts — that player is eliminated.
+    let continues: Bool
+}
+
+/// The shrinking play zone's current circle, pushed periodically by the server. Outside it
+/// is the same slow heart drain as outside the outer boundary.
+struct ZoneUpdate: Codable, Equatable {
+    let center: Coordinate
+    let radiusMeters: Double
+    let fullRadiusMeters: Double
+    let finalRadiusMeters: Double
+    /// 0 at match start, 1 when fully contracted at match end.
+    let progress: Double
+}
+
+/// A live SAFE_ZONE_FLARE bubble — no catch can be made against a runner standing in one.
+struct ActiveSafeZone: Equatable {
+    let lat: Double
+    let lng: Double
+    let radiusMeters: Double
+    let expiresAt: Date
 }
 
 struct DecoyBlip: Codable, Identifiable {

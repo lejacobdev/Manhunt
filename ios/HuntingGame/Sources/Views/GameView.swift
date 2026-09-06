@@ -28,6 +28,8 @@ struct GameView: View {
                 players: mapAnnotations,
                 boundsPolygon: viewModel.sessionSettings.boundsPolygon,
                 jailPolygon: viewModel.sessionSettings.jailPolygon,
+                zone: viewModel.zone,
+                safeZones: viewModel.activeSafeZones,
                 extractionPoint: socket.extractionPoint,
                 decoys: socket.radar?.decoys ?? [],
                 powerUpSpawns: viewModel.powerUpSpawns,
@@ -103,12 +105,14 @@ struct GameView: View {
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
             }
 
-            if viewModel.isCoinFlipping || viewModel.lastGambleOutcome != nil {
+            if viewModel.isCoinFlipping || viewModel.lastGambleOutcome != nil || viewModel.awaitingGambleCall {
                 dimScrim
                 CoinFlipView(
                     myChoice: viewModel.gambleChoicePending,
                     outcome: viewModel.lastGambleOutcome,
                     isSelf: viewModel.gamePlayerId,
+                    awaitingCall: viewModel.awaitingGambleCall,
+                    onCall: viewModel.callGamble,
                     onContinue: viewModel.dismissGambleResult
                 )
                 .transition(.scale(scale: 0.85).combined(with: .opacity))
@@ -251,7 +255,10 @@ struct GameView: View {
                         .font(ADATheme.telemetryFont(size: 14))
                         .foregroundColor(.white)
                 }
-                if viewModel.role == .runner {
+                // The arrest code only means anything in INFECTION, the one mode still using
+                // the code-entry catch. Everywhere else it was pure noise sitting where the
+                // match clock should be.
+                if viewModel.role == .runner && viewModel.mode == .infection {
                     Text("CODE: \(viewModel.arrestCode)")
                         .font(ADATheme.telemetryFont(size: 12))
                         .foregroundColor(.white.opacity(0.5))
@@ -260,6 +267,11 @@ struct GameView: View {
                     Text("TIME LEFT: \(remaining)")
                         .font(ADATheme.telemetryFont(size: 12))
                         .foregroundColor(.white.opacity(0.5))
+                }
+                if let zoneText = zoneRadiusText {
+                    Text(zoneText)
+                        .font(ADATheme.telemetryFont(size: 12))
+                        .foregroundColor(ADATheme.spatialCyan.opacity(0.8))
                 }
             }
 
@@ -272,6 +284,15 @@ struct GameView: View {
                     }
                     if viewModel.isInvisible {
                         StatusBadge(icon: "eye.slash.fill", text: "STEALTH \(viewModel.invisibilityRemainingSec)s", tint: ADATheme.stealthPurple)
+                    }
+                    // Every other buff this player is running, so activating one visibly
+                    // does something rather than just emptying an inventory slot.
+                    ForEach(otherActiveBuffs, id: \.type) { buff in
+                        StatusBadge(
+                            icon: buff.type.iconName,
+                            text: "\(buff.type.displayName.uppercased()) \(buff.remaining)s",
+                            tint: ADATheme.accent(for: buff.type)
+                        )
                     }
                     if viewModel.isRadarJammed {
                         StatusBadge(icon: "bolt.slash.fill", text: "JAMMED", tint: ADATheme.tacticalAmber)
@@ -659,7 +680,7 @@ struct GameView: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .allowsHitTesting(false)
             } else if viewModel.boundaryOutside {
-                Text("OUTSIDE THE PLAY AREA — RETURN OR LOSE HEARTS")
+                Text("OUTSIDE THE ZONE — RETURN OR LOSE HEARTS")
                     .font(ADATheme.telemetryFont(size: 12))
                     .foregroundColor(.white)
                     .padding(.horizontal, 16)
@@ -735,6 +756,19 @@ struct GameView: View {
         }
 
         return blips
+    }
+
+    /// Buff badges other than stealth, which has its own dedicated badge above.
+    private var otherActiveBuffs: [(type: PowerUpType, remaining: Int)] {
+        viewModel.activeBuffRemainingSec
+            .filter { $0.key != .invisibility }
+            .map { (type: $0.key, remaining: $0.value) }
+            .sorted { $0.type.rawValue < $1.type.rawValue }
+    }
+
+    private var zoneRadiusText: String? {
+        guard let zone = viewModel.zone else { return nil }
+        return "ZONE: \(Int(zone.radiusMeters))m"
     }
 
     private var matchRemainingText: String? {

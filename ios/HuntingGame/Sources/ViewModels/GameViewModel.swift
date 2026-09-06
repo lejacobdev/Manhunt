@@ -15,7 +15,10 @@ final class GameViewModel: ObservableObject {
     @Published var isExtracted: Bool = false
     @Published var isInvisible: Bool = false
     @Published var invisibilityRemainingSec: Int = 0
-    @Published var activeSafeZone: (lat: Double, lng: Double, radius: Double)?
+    /// Power-ups this player has active right now, with the second they run out — drives
+    /// the HUD badges for buffs whose effect is otherwise invisible to their own caster
+    /// (thermal vision, adrenaline, a dropped flare).
+    @Published var activeBuffRemainingSec: [PowerUpType: Int] = [:]
     @Published var catchTargetId: String?
     @Published var catchCodeEntry: String = ""
     @Published var showCatchFailure: String?
@@ -42,6 +45,9 @@ final class GameViewModel: ObservableObject {
     @Published var isCoinFlipping: Bool = false
     @Published var gambleChoicePending: GambleChoice?
     @Published var lastGambleOutcome: GambleResult?
+    /// True between rounds of a duel that hasn't produced a loser yet — the runner has to
+    /// call the next toss, and neither side can walk away until someone's hearts run out.
+    @Published var awaitingGambleCall: Bool = false
     @Published var boundaryOutside: Bool = false
     @Published var boundaryWarning: Bool = false
     @Published var jailOutside: Bool = false
@@ -291,20 +297,23 @@ final class GameViewModel: ObservableObject {
                 self.lastGambleOutcome = result
                 self.isCoinFlipping = false
                 self.gambleChoicePending = nil
-                if result.hunterId == self.gamePlayerId {
-                    if result.heartsLostBy == "HUNTER" {
-                        // Real dip, then heal back — matches what the server actually
-                        // persisted (nothing), purely a visual "took a hit" flourish.
-                        self.hearts = result.hunterHeartsAfterLoss
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { self.hearts = result.hunterHeartsRemaining }
-                    } else {
-                        self.hearts = result.hunterHeartsRemaining
-                    }
-                }
-                if result.runnerId == self.gamePlayerId {
-                    self.hearts = result.runnerHeartsRemaining
-                }
+                if result.hunterId == self.gamePlayerId { self.hearts = result.hunterHeartsRemaining }
+                if result.runnerId == self.gamePlayerId { self.hearts = result.runnerHeartsRemaining }
+                // A duel only stops when someone is out of hearts, so between rounds the
+                // runner is put straight back on the hook for the next call.
+                self.awaitingGambleCall = result.continues && result.runnerId == self.gamePlayerId
                 HapticsEngine.shared.lightTap()
+            }
+            .store(in: &cancellables)
+
+        socket.gambleCancelledSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.awaitingGambleCall = false
+                self.isCoinFlipping = false
+                self.lastGambleOutcome = nil
+                self.gambleChoicePending = nil
             }
             .store(in: &cancellables)
 
@@ -381,18 +390,39 @@ final class GameViewModel: ObservableObject {
 
     func usePowerUp(_ type: PowerUpType) {
         socket.usePowerUp(type)
+        HapticsEngine.shared.powerUpActivated()
+
+        // Every buff gets a live countdown badge, not just invisibility — thermal vision,
+        // adrenaline and a dropped flare all used to activate with no on-screen sign that
+        // anything had happened beyond the inventory slot emptying.
+        activeBuffRemainingSec[type] = type.durationSeconds
         if type == .invisibility {
             isInvisible = true
             invisibilityRemainingSec = type.durationSeconds
-            invisibilityTimer?.invalidate()
-            invisibilityTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
-                Task { @MainActor in
-                    guard let self else { timer.invalidate(); return }
-                    self.invisibilityRemainingSec -= 1
-                    if self.invisibilityRemainingSec <= 0 {
-                        self.isInvisible = false
-                        timer.invalidate()
+        }
+        startBuffTickerIfNeeded()
+    }
+
+    /// One shared 1s ticker driving every active buff countdown, started lazily and stopped
+    /// as soon as the last buff expires.
+    private func startBuffTickerIfNeeded() {
+        guard invisibilityTimer == nil else { return }
+        invisibilityTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                guard let self else { timer.invalidate(); return }
+                for (type, remaining) in self.activeBuffRemainingSec {
+                    let next = remaining - 1
+                    if next <= 0 {
+                        self.activeBuffRemainingSec.removeValue(forKey: type)
+                        if type == .invisibility { self.isInvisible = false }
+                    } else {
+                        self.activeBuffRemainingSec[type] = next
                     }
+                }
+                self.invisibilityRemainingSec = self.activeBuffRemainingSec[.invisibility] ?? 0
+                if self.activeBuffRemainingSec.isEmpty {
+                    timer.invalidate()
+                    self.invisibilityTimer = nil
                 }
             }
         }
@@ -442,13 +472,27 @@ final class GameViewModel: ObservableObject {
         incomingCatchRequest = nil
     }
 
+    /// Opens a gamble duel: from here the coin keeps being tossed round after round until
+    /// either the runner or the hunter is out of hearts.
     func gambleCatch(choice: GambleChoice) {
         guard let request = incomingCatchRequest else { return }
         HapticsEngine.shared.lightTap()
         gambleChoicePending = choice
         isCoinFlipping = true
+        awaitingGambleCall = false
         socket.respondToCatch(hunterId: request.hunterId, decision: "gamble", gambleChoice: choice.rawValue)
         incomingCatchRequest = nil
+    }
+
+    /// The runner's call for the next round of a duel already in progress.
+    func callGamble(choice: GambleChoice) {
+        guard awaitingGambleCall else { return }
+        HapticsEngine.shared.lightTap()
+        gambleChoicePending = choice
+        isCoinFlipping = true
+        awaitingGambleCall = false
+        lastGambleOutcome = nil
+        socket.callGamble(choice: choice.rawValue)
     }
 
     func denyCatch() {
@@ -465,7 +509,10 @@ final class GameViewModel: ObservableObject {
         pendingCatchRequestRunnerId = nil
     }
 
+    /// Only closes the coin view once the duel has actually produced a loser — mid-duel the
+    /// runner has to keep calling, so there's deliberately no way out of it here.
     func dismissGambleResult() {
+        guard !awaitingGambleCall else { return }
         lastGambleOutcome = nil
         isCoinFlipping = false
     }
@@ -503,6 +550,13 @@ final class GameViewModel: ObservableObject {
 
     var nearestHunterDistance: Int? { socket.compass?.distanceMeters }
     var nearestHunterBearing: Double? { socket.compass?.bearingDegrees }
+    var zone: ZoneUpdate? { socket.zone }
+    /// Flares that haven't burned out yet — an expired one stops protecting anyone
+    /// server-side, so it shouldn't keep drawing a bubble on the map either.
+    var activeSafeZones: [ActiveSafeZone] {
+        let now = Date()
+        return socket.safeZones.values.filter { $0.expiresAt > now }
+    }
     var visibleRunners: [PlayerState] { socket.radar?.runners ?? [] }
     var isRadarJammed: Bool { socket.radar?.jammed ?? false }
     var allPlayers: [PlayerState] { socket.players }

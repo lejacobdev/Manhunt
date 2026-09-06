@@ -84,12 +84,24 @@ export const EXTRACTION_RADIUS_METERS = 20;
 export const HUNTER_STARTING_HEARTS = 5;
 export const RUNNER_STARTING_HEARTS = 3;
 
-/** Boundary ("storm") containment — leaving the outer play-area polygon (either role)
- *  warns first, then drains a heart every tick while still outside. Replaces the old
- *  shrinking-zone instant-catch entirely. */
+/** Containment ("storm") damage — leaving the outer play-area polygon *or* the shrinking
+ *  zone inside it (either role) warns first, then drains a heart every tick while still
+ *  outside. Both failure modes share one warning/tick budget so a player standing outside
+ *  both only loses one heart per tick, not two. */
 export const BOUNDARY_BUFFER_METERS = 10;
 export const BOUNDARY_WARNING_GRACE_MS = 8_000;
 export const BOUNDARY_DAMAGE_TICK_MS = 8_000;
+
+/** Shrinking zone: contracts from the boundary's circumscribed radius to this over the
+ *  full match duration. Outside it is the same slow drain as outside the boundary — the
+ *  original version of this zone auto-caught a runner outright, which this replaces. */
+export const ZONE_FINAL_RADIUS_METERS = 40;
+/** How often the server pushes a fresh zone circle to clients so they can redraw it. */
+export const ZONE_BROADCAST_INTERVAL_MS = 10_000;
+
+/** ADRENALINE grants bonus hearts on top of the role's starting count — they persist,
+ *  stack past the role maximum, and count toward gambles like any other heart. */
+export const ADRENALINE_BONUS_HEARTS = 2;
 
 /** Jail containment — a jailed runner who strays past jail+buffer gets an urgent
  *  countdown; failing to return within it is full elimination, not just re-jailing. */

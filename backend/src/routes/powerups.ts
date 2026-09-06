@@ -12,7 +12,17 @@ powerUpsRouter.get('/session/:sessionId', async (req: AuthedRequest, res) => {
   const spawns = await prisma.powerUpSpawn.findMany({
     where: { sessionId: req.params.sessionId, isCollected: false, expiresAt: { gt: new Date() } },
   });
-  return res.json({ spawns });
+
+  // ADRENALINE is a runner-only pickup (it grants hearts, which only matter for someone
+  // being hunted), so it's filtered out of the map feed for anyone else rather than shown
+  // and then rejected on collection — see the matching guard in collect_powerup.
+  const me = await prisma.gamePlayer.findUnique({
+    where: { sessionId_userId: { sessionId: req.params.sessionId, userId: req.user!.userId } },
+    select: { role: true },
+  });
+  const visible = me?.role === 'RUNNER' ? spawns : spawns.filter((s) => s.type !== 'ADRENALINE');
+
+  return res.json({ spawns: visible });
 });
 
 const verifySchema = z.object({ lat: z.number(), lng: z.number() });

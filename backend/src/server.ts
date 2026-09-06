@@ -16,6 +16,7 @@ import { prisma } from './lib/prisma';
 import { gameService, GameSettings } from './services/GameService';
 import { checkAccuracy, checkMotion, checkSpeed, checkTeleport } from './services/AntiCheatService';
 import { distanceOutsidePolygonMeters } from './services/BoundaryService';
+import { ZoneState, computeZoneState, distanceOutsideZone } from './services/ZoneService';
 import {
   DecoyMap,
   currentDecoyPosition,
@@ -42,6 +43,7 @@ import {
   PowerUpType,
   THERMAL_VISION_INTERVAL_MS,
   THERMAL_VISION_RADIUS_METERS,
+  ZONE_BROADCAST_INTERVAL_MS,
 } from './types';
 
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-do-not-use-in-production';
@@ -92,6 +94,10 @@ const jailViolationSince: Map<string, Map<string, number>> = new Map();
 // be asked about one catch at a time; a hunter, however, may have requests out to several
 // runners at once, hence requestId to disambiguate which one a later deny-confirm is about).
 const pendingCatchRequests: Map<string, Map<string, { requestId: string; hunterId: string; hunterUsername: string; requestedAt: number }>> = new Map();
+// roomCode -> runnerId -> an in-progress gamble duel. A gamble is no longer a single
+// coin flip: once started it runs round after round until one side is out of hearts, so
+// the pair has to be remembered between rounds while the runner calls each toss.
+const activeGambles: Map<string, Map<string, { hunterId: string; round: number; lastCallAt: number }>> = new Map();
 // roomCode -> the session's host userId, so host-only admin actions (end game, override a
 // catch) can be authorized without a separate SUPERVISOR role — the host plays a normal
 // role (hunter/runner/spectator) and keeps these powers regardless of which one.
@@ -245,6 +251,17 @@ io.on('connection', (socket: Socket) => {
       if (settings?.extractionPoint) {
         socket.emit('extraction_point', settings.extractionPoint);
       }
+
+      // A match that's already running has to hand the clock to whoever just walked in.
+      // game_started is otherwise only emitted once, by the REST start route, to sockets
+      // already in the room — so anyone entering afterwards (the normal flow: join the
+      // lobby, host starts, then you open the match) never learned when it began and
+      // their "time left" readout stayed blank for the whole match.
+      if (gamePlayer.session.startedAt) {
+        socket.emit('game_started', { startedAt: gamePlayer.session.startedAt });
+      }
+      const zone = currentZone(roomCode);
+      if (zone) socket.emit('zone_update', zone);
     } catch (err) {
       console.error('[join_room] failed', err);
       socket.emit('error_event', { reason: 'Failed to join room.' });
@@ -331,11 +348,11 @@ io.on('connection', (socket: Socket) => {
         } else if (!p.isCaught && !p.isExtracted && !p.isOut) {
           await checkExtraction(roomCode, gameSessionId, p, session, mode);
           if (!p.isExtracted && mode !== 'INFECTION') {
-            await checkBoundaryContainment(roomCode, gameSessionId, p, session, mode);
+            await checkContainment(roomCode, gameSessionId, p, session, mode);
           }
         }
       } else if (p.role === 'HUNTER' && gameSessionId && mode !== 'INFECTION' && !p.isOut) {
-        await checkBoundaryContainment(roomCode, gameSessionId, p, session, mode);
+        await checkContainment(roomCode, gameSessionId, p, session, mode);
       }
 
       const allPlayers = Array.from(session.values());
@@ -615,67 +632,42 @@ io.on('connection', (socket: Socket) => {
         return;
       }
 
-      // decision === 'gamble'
+      // decision === 'gamble' — opens a duel rather than resolving a single flip. Rounds
+      // keep going (see gamble_call) until one side has no hearts left.
       if (!settings?.gamblingEnabled || !gambleChoice) {
         socket.emit('error_event', { reason: 'Gambling is not enabled for this match.' });
         return;
       }
-      const result: 'heads' | 'tails' = Math.random() < 0.5 ? 'heads' : 'tails';
-      const runnerWins = gambleChoice === result;
-      const heartsLostBy: 'HUNTER' | 'RUNNER' = runnerWins ? 'HUNTER' : 'RUNNER';
+      const duels = activeGambles.get(roomCode) ?? new Map();
+      activeGambles.set(roomCode, duels);
+      duels.set(runner.id, { hunterId: hunter.id, round: 0, lastCallAt: Date.now() });
 
-      // The hunter's own baseline going into this gamble — already reflects any prior
-      // boundary damage. A hunter's loss always heals back to this exact value; only a
-      // runner's loss is ever allowed to persist.
-      const hunterHeartsBefore = hunter.hearts;
-      let hunterHeartsAfterLoss = hunter.hearts;
-
-      if (runnerWins) {
-        hunterHeartsAfterLoss = Math.max(0, hunterHeartsBefore - 1);
-        hunter.hearts = hunterHeartsBefore; // heal-back — the persisted value never actually changes
-      } else {
-        runner.hearts = Math.max(0, runner.hearts - 1);
-      }
-
-      await gameService.recordGambleResult(
-        gameSessionId,
-        hunter.id,
-        runner.id,
-        gambleChoice,
-        result,
-        heartsLostBy,
-        hunter.hearts,
-        runner.hearts
-      );
-
-      io.to(roomCode).emit('gamble_result', {
-        hunterId: hunter.id,
-        runnerId: runner.id,
-        gambleChoice,
-        result,
-        heartsLostBy,
-        hunterHeartsBefore,
-        hunterHeartsAfterLoss,
-        hunterHeartsRemaining: hunter.hearts,
-        runnerHeartsRemaining: runner.hearts,
-        timestamp: new Date().toISOString(),
-      });
-
-      // A hunter can never reach 0 via gambling alone (the loss always heals) — only a
-      // runner can be eliminated on this path.
-      if (runner.hearts <= 0) {
-        runner.isOut = true;
-        await gameService.recordPlayerOut(gameSessionId, runner.id, 'GAMBLE');
-        io.to(roomCode).emit('player_eliminated', {
-          playerId: runner.id,
-          role: 'RUNNER',
-          reason: 'GAMBLE',
-          timestamp: new Date().toISOString(),
-        });
-        await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
-      }
+      await resolveGambleRound(roomCode, gameSessionId, session, runner, hunter, gambleChoice, mode);
     }
   );
+
+  /** A later round of an already-running gamble duel — the runner calls the next toss. */
+  socket.on('gamble_call', async ({ choice }: { choice: 'heads' | 'tails' }) => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const runnerId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !runnerId) return;
+    const session = activeSessions.get(roomCode);
+    const duel = activeGambles.get(roomCode)?.get(runnerId);
+    if (!session || !duel) {
+      socket.emit('error_event', { reason: 'No gamble is currently running.' });
+      return;
+    }
+    const runner = session.get(runnerId);
+    const hunter = session.get(duel.hunterId);
+    if (!runner || !hunter) return;
+    if (choice !== 'heads' && choice !== 'tails') return;
+
+    duel.lastCallAt = Date.now();
+    const gameSessionId = await resolveSessionId(roomCode);
+    if (!gameSessionId) return;
+    const mode = sessionModes.get(roomCode) ?? 'STANDARD';
+    await resolveGambleRound(roomCode, gameSessionId, session, runner, hunter, choice, mode);
+  });
 
   /** Hunter confirms a runner's "no, that wasn't a catch" really was accidental — drops the
    *  pending request with no consequence to either side. */
@@ -809,6 +801,14 @@ io.on('connection', (socket: Socket) => {
     const gameSessionId = await resolveSessionId(roomCode);
     if (!gameSessionId) return;
 
+    // ADRENALINE's whole effect is bonus hearts, which only mean anything to someone who
+    // can be caught — so it's a runner-only pickup, and the map feed hides it from anyone
+    // else too (see routes/powerups.ts) rather than letting them walk to it and be refused.
+    if (spawn.type === 'ADRENALINE' && player.role !== 'RUNNER') {
+      socket.emit('error_event', { reason: 'Only runners can pick up Adrenaline.' });
+      return;
+    }
+
     grantPowerUp(player, spawn.type as PowerUpType);
     await gameService.recordPowerUpCollected(gameSessionId, spawn.id, gamePlayerId);
     await prisma.gamePlayer.update({ where: { id: gamePlayerId }, data: { inventory: player.inventory } });
@@ -843,7 +843,18 @@ io.on('connection', (socket: Socket) => {
     const gameSessionId = await resolveSessionId(roomCode);
     if (gameSessionId) {
       await gameService.recordPowerUpUsed(gameSessionId, gamePlayerId, powerUpType);
-      await prisma.gamePlayer.update({ where: { id: gamePlayerId }, data: { inventory: player.inventory } });
+      await prisma.gamePlayer.update({
+        where: { id: gamePlayerId },
+        data: result.heartsChanged
+          ? { inventory: player.inventory, hearts: player.hearts }
+          : { inventory: player.inventory },
+      });
+    }
+
+    // ADRENALINE's bonus hearts ride the same hearts_update every other heart change uses,
+    // so the HUD, host panel and spectator roster all pick them up without a special case.
+    if (result.heartsChanged) {
+      io.to(roomCode).emit('hearts_update', { playerId: player.id, hearts: player.hearts, cause: 'ADRENALINE' });
     }
 
     socket.emit('inventory_update', { inventory: player.inventory });
@@ -879,6 +890,20 @@ function cleanupSocket(socket: Socket) {
       boundaryLastDamageAt.delete(roomCode);
       jailViolationSince.delete(roomCode);
       pendingCatchRequests.delete(roomCode);
+      activeGambles.delete(roomCode);
+    }
+  }
+
+  // A duel dies with either participant leaving — the runner is out of the session map
+  // entirely at this point, so there's nothing left to resolve rounds against.
+  const duels = activeGambles.get(roomCode);
+  if (duels) {
+    duels.delete(gamePlayerId);
+    for (const [runnerId, duel] of Array.from(duels.entries())) {
+      if (duel.hunterId === gamePlayerId) {
+        duels.delete(runnerId);
+        io.to(runnerId).emit('gamble_cancelled', { hunterId: gamePlayerId });
+      }
     }
   }
 
@@ -970,13 +995,25 @@ async function checkExtraction(
   }
 }
 
+/** The shrinking zone as of right now, or undefined before the match clock starts. */
+function currentZone(roomCode: string): ZoneState | undefined {
+  const settings = sessionSettingsCache.get(roomCode);
+  const startedAtMs = sessionStartedAtCache.get(roomCode);
+  if (!settings || !startedAtMs || settings.boundsPolygon.length < 3) return undefined;
+  return computeZoneState(settings.boundsPolygon, new Date(startedAtMs), settings.durationMinutes);
+}
+
 /**
- * Boundary ("storm") containment — replaces the old shrinking-zone auto-catch. Applies to
- * both roles: outside the fixed outer boundsPolygon (+ GPS buffer) for a warning grace
- * period, then loses a heart every damage tick while still outside. Returning inside stops
- * it. Reaching 0 hearts this way is a full elimination (isOut), not an instant catch.
+ * Containment ("storm") damage, for both roles: a player outside the fixed outer
+ * boundsPolygon *or* outside the shrinking zone inside it (+ GPS buffer) is warned first,
+ * then loses a heart every damage tick while still outside. Returning inside stops it, and
+ * reaching 0 hearts this way is a full elimination (isOut) — the shrinking zone's original
+ * behaviour of instantly catching whoever fell outside it is gone.
+ *
+ * Both failure modes deliberately share one violation/tick budget: standing outside both
+ * the polygon and the circle is still one heart per tick, not two.
  */
-async function checkBoundaryContainment(
+async function checkContainment(
   roomCode: string,
   gameSessionId: string,
   player: PlayerState,
@@ -986,7 +1023,12 @@ async function checkBoundaryContainment(
   const settings = sessionSettingsCache.get(roomCode);
   if (!settings) return;
 
-  const outsideBy = distanceOutsidePolygonMeters({ lat: player.lat, lng: player.lng }, settings.boundsPolygon);
+  const point = { lat: player.lat, lng: player.lng };
+  const zone = currentZone(roomCode);
+  const outsideBy = Math.max(
+    distanceOutsidePolygonMeters(point, settings.boundsPolygon),
+    zone ? distanceOutsideZone(point, zone) : 0
+  );
   const effectiveBuffer = Math.max(BOUNDARY_BUFFER_METERS, player.accuracy);
   const violations = boundaryViolationSince.get(roomCode) ?? new Map<string, number>();
   boundaryViolationSince.set(roomCode, violations);
@@ -1080,6 +1122,82 @@ async function checkJailContainment(
   await checkStandardWinCondition(roomCode, gameSessionId, session, sessionModes.get(roomCode) ?? 'STANDARD');
 }
 
+/**
+ * One round of a gamble duel. A gamble is no longer a single flip for a single heart:
+ * rounds repeat until one side is out of hearts, and unlike the earlier version there is
+ * no heal-back for the hunter — both sides put real, persistent hearts on the line, so a
+ * hunter who keeps calling it wrong can be eliminated by a runner who refused to come
+ * quietly. The loser of the duel is out; the winner walks away (a runner who wins is never
+ * marked caught).
+ */
+async function resolveGambleRound(
+  roomCode: string,
+  gameSessionId: string,
+  session: Map<string, PlayerState>,
+  runner: PlayerState,
+  hunter: PlayerState,
+  gambleChoice: 'heads' | 'tails',
+  mode: GameMode
+) {
+  const duels = activeGambles.get(roomCode);
+  const duel = duels?.get(runner.id);
+  if (!duel) return;
+  duel.round += 1;
+  duel.lastCallAt = Date.now();
+
+  const result: 'heads' | 'tails' = Math.random() < 0.5 ? 'heads' : 'tails';
+  const runnerWins = gambleChoice === result;
+  const loser = runnerWins ? hunter : runner;
+  const heartsLostBy: 'HUNTER' | 'RUNNER' = runnerWins ? 'HUNTER' : 'RUNNER';
+
+  loser.hearts = Math.max(0, loser.hearts - 1);
+  const finished = loser.hearts <= 0;
+
+  // Persists both sides' hearts as well as writing the GAMBLE event row.
+  await gameService.recordGambleResult(
+    gameSessionId,
+    hunter.id,
+    runner.id,
+    gambleChoice,
+    result,
+    heartsLostBy,
+    hunter.hearts,
+    runner.hearts
+  );
+
+  io.to(roomCode).emit('gamble_result', {
+    hunterId: hunter.id,
+    runnerId: runner.id,
+    gambleChoice,
+    result,
+    heartsLostBy,
+    hunterHeartsRemaining: hunter.hearts,
+    runnerHeartsRemaining: runner.hearts,
+    round: duel.round,
+    continues: !finished,
+    timestamp: new Date().toISOString(),
+  });
+
+  // Still alive on both sides — the runner's client re-prompts for the next call.
+  if (!finished) return;
+
+  duels!.delete(runner.id);
+  loser.isOut = true;
+  await gameService.recordPlayerOut(gameSessionId, loser.id, 'GAMBLE');
+  io.to(roomCode).emit('player_eliminated', {
+    playerId: loser.id,
+    role: loser.role,
+    reason: 'GAMBLE',
+    timestamp: new Date().toISOString(),
+  });
+
+  if (loser.role === 'HUNTER') {
+    await checkHunterEliminationWinCondition(roomCode, gameSessionId, session, mode);
+  } else {
+    await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+  }
+}
+
 async function checkStandardWinCondition(
   roomCode: string,
   gameSessionId: string,
@@ -1100,9 +1218,9 @@ async function checkStandardWinCondition(
   }
 }
 
-/** New win condition: if every hunter has been eliminated (boundary damage only — gambling
- *  never eliminates a hunter, see the heal-back logic in respond_catch), the runners win
- *  early. Only ever called right after a hunter's isOut actually flips true. */
+/** New win condition: if every hunter has been eliminated — by containment damage, or by
+ *  losing a gamble duel outright — the runners win early. Only ever called right after a
+ *  hunter's isOut actually flips true. */
 async function checkHunterEliminationWinCondition(
   roomCode: string,
   gameSessionId: string,
@@ -1141,9 +1259,40 @@ async function endMatchIfExpired(roomCode: string): Promise<boolean> {
 setInterval(async () => {
   for (const roomCode of activeSessions.keys()) {
     if (await endMatchIfExpired(roomCode)) continue;
+    // Push the shrinking zone's current circle so clients can redraw it — it contracts
+    // continuously, so unlike the fixed boundary polygon it can't just be sent once.
+    const zone = currentZone(roomCode);
+    if (zone) io.to(roomCode).emit('zone_update', zone);
   }
 
   const now = Date.now();
+
+  // A duel the runner stopped answering (backgrounded app, or simply walking away from a
+  // losing streak) resolves as the catch they were originally asked to accept — otherwise
+  // silence would be a free escape from a gamble they chose to start.
+  for (const [roomCode, duels] of activeGambles.entries()) {
+    for (const [runnerId, duel] of Array.from(duels.entries())) {
+      if (now - duel.lastCallAt < CATCH_REQUEST_TIMEOUT_MS) continue;
+      duels.delete(runnerId);
+      const session = activeSessions.get(roomCode);
+      const runner = session?.get(runnerId);
+      const hunter = session?.get(duel.hunterId);
+      if (!session || !runner || !hunter || runner.isOut) continue;
+      const gameSessionId = await resolveSessionId(roomCode);
+      if (!gameSessionId) continue;
+      const jail = !!sessionSettingsCache.get(roomCode)?.jailEnabled;
+      runner.isCaught = true;
+      runner.isJailed = jail;
+      await gameService.recordCatchAccepted(gameSessionId, hunter.id, runner.id, jail);
+      io.to(roomCode).emit(jail ? 'player_jailed' : 'player_caught', {
+        runnerId: runner.id,
+        hunterId: hunter.id,
+        timestamp: new Date().toISOString(),
+      });
+      await checkStandardWinCondition(roomCode, gameSessionId, session, sessionModes.get(roomCode) ?? 'STANDARD');
+    }
+  }
+
   for (const [roomCode, requests] of pendingCatchRequests.entries()) {
     for (const [runnerId, req] of Array.from(requests.entries())) {
       if (now - req.requestedAt >= CATCH_REQUEST_TIMEOUT_MS) {

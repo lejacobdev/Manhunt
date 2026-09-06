@@ -13,12 +13,17 @@ struct GameMapView: UIViewRepresentable {
     }
 
     let players: [Blip]
-    /// The fixed outer play-area boundary — leaving it triggers the boundary warning/heart
-    /// drain (see checkBoundaryContainment server-side). Unlike the old shrinking zone this
-    /// replaced, this polygon never changes during a match, so it's only ever added once.
+    /// The fixed outer play-area boundary — leaving it triggers the containment warning and
+    /// heart drain (see checkContainment server-side). Unlike the shrinking zone below, this
+    /// polygon never changes during a match, so it's only ever added once.
     var boundsPolygon: [Coordinate] = []
     /// Jail area, only present when the host enabled jail mode at setup.
     var jailPolygon: [Coordinate]? = nil
+    /// The shrinking zone's current circle. Unlike the polygons this contracts continuously,
+    /// so its overlay is replaced whenever the radius meaningfully changes.
+    var zone: ZoneUpdate? = nil
+    /// Live safe-zone flares — a runner standing inside one can't be caught.
+    var safeZones: [ActiveSafeZone] = []
     let extractionPoint: Coordinate?
     let decoys: [DecoyBlip]
     var powerUpSpawns: [PowerUpSpawn] = []
@@ -116,8 +121,8 @@ struct GameMapView: UIViewRepresentable {
         }
 
         // Both polygons come from immutable GameSettings — set once at game creation and
-        // never touched again during a match — so unlike the old shrinking zone this
-        // replaced, there's no per-tick reshaping to diff; just add them once.
+        // never touched again during a match — so unlike the shrinking zone circle below,
+        // there's no per-tick reshaping to diff; just add them once.
         if !context.coordinator.polygonsAdded {
             context.coordinator.polygonsAdded = true
             if boundsPolygon.count >= 3 {
@@ -136,6 +141,47 @@ struct GameMapView: UIViewRepresentable {
                 jail.kind = .jail
                 mapView.addOverlay(jail)
             }
+        }
+
+        // The zone circle is the one overlay that genuinely changes shape during a match, so
+        // it's diffed on radius/center rather than added once — but only redrawn past a 1m
+        // threshold, since it contracts continuously and MapKit would otherwise be handed a
+        // brand-new overlay on every single push.
+        if let zone {
+            let previous = context.coordinator.zoneOverlay
+            let moved = previous.map { existing in
+                abs(existing.radius - zone.radiusMeters) > 1
+                    || abs(existing.coordinate.latitude - zone.center.lat) > 0.000_01
+                    || abs(existing.coordinate.longitude - zone.center.lng) > 0.000_01
+            } ?? true
+            if moved {
+                if let previous { mapView.removeOverlay(previous) }
+                let circle = TaggedCircle(
+                    center: CLLocationCoordinate2D(latitude: zone.center.lat, longitude: zone.center.lng),
+                    radius: zone.radiusMeters
+                )
+                circle.kind = .zone
+                context.coordinator.zoneOverlay = circle
+                mapView.addOverlay(circle)
+            }
+        }
+
+        // Flares come and go, so the whole set is replaced whenever it changes rather than
+        // tracked individually — there are only ever a handful live at once.
+        let safeZoneKeys = safeZones.map { "\($0.lat),\($0.lng),\($0.radiusMeters)" }.sorted()
+        if safeZoneKeys != context.coordinator.safeZoneKeys {
+            context.coordinator.safeZoneKeys = safeZoneKeys
+            mapView.removeOverlays(context.coordinator.safeZoneOverlays)
+            let circles = safeZones.map { zone -> TaggedCircle in
+                let circle = TaggedCircle(
+                    center: CLLocationCoordinate2D(latitude: zone.lat, longitude: zone.lng),
+                    radius: zone.radiusMeters
+                )
+                circle.kind = .safeZone
+                return circle
+            }
+            context.coordinator.safeZoneOverlays = circles
+            mapView.addOverlays(circles)
         }
 
         if let focusPlayerId, focusPlayerId != context.coordinator.lastFocusedId,
@@ -166,9 +212,27 @@ struct GameMapView: UIViewRepresentable {
         var lastFocusedId: String?
         var lastRecenterRequest = 0
         var polygonsAdded = false
+        var zoneOverlay: TaggedCircle?
+        var safeZoneOverlays: [TaggedCircle] = []
+        var safeZoneKeys: [String] = []
         var onSelectSpawn: ((String) -> Void)?
 
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let circle = overlay as? TaggedCircle {
+                let renderer = MKCircleRenderer(circle: circle)
+                switch circle.kind {
+                case .zone:
+                    renderer.strokeColor = UIColor(ADATheme.spatialCyan)
+                    renderer.fillColor = UIColor(ADATheme.spatialCyan).withAlphaComponent(0.06)
+                    renderer.lineWidth = 2
+                case .safeZone:
+                    renderer.strokeColor = UIColor(ADATheme.runnerGreen)
+                    renderer.fillColor = UIColor(ADATheme.runnerGreen).withAlphaComponent(0.18)
+                    renderer.lineWidth = 2
+                }
+                return renderer
+            }
+
             guard let polygon = overlay as? TaggedPolygon else { return MKOverlayRenderer(overlay: overlay) }
             let renderer = MKPolygonRenderer(polygon: polygon)
             switch polygon.kind {
@@ -233,6 +297,13 @@ struct GameMapView: UIViewRepresentable {
 private final class TaggedPolygon: MKPolygon {
     enum Kind { case boundary, jail }
     var kind: Kind = .boundary
+}
+
+/// The two circular overlays — the contracting play zone and any live safe-zone flares —
+/// tagged the same way the polygons are so one renderer can color both.
+final class TaggedCircle: MKCircle {
+    enum Kind { case zone, safeZone }
+    var kind: Kind = .zone
 }
 
 private final class BlipAnnotation: NSObject, MKAnnotation {

@@ -194,9 +194,9 @@ export class GameService {
     });
   }
 
-  /** Full elimination — either role, via boundary/storm damage, a lost-all-hearts gamble
-   *  (runner only), or breaking jail. Distinct from `isCaught`: a jailed runner is caught
-   *  but not out; this is the terminal "now a spectator" state. */
+  /** Full elimination — either role, via containment/storm damage, losing a gamble duel, or
+   *  breaking jail. Distinct from `isCaught`: a jailed runner is caught but not out; this is
+   *  the terminal "now a spectator" state. */
   public async recordPlayerOut(sessionId: string, playerId: string, reason: 'GAMBLE' | 'BOUNDARY' | 'JAIL_BREACH') {
     await prisma.gamePlayer.update({
       where: { id: playerId },
