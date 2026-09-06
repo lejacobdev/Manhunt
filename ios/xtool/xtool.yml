@@ -9,3 +9,4 @@ extensions:
   - product: HuntingGameWidget
     bundleID: com.huntinggame.app.widgets
     infoPath: HuntingGameWidget-Info.plist
+    entitlementsPath: HuntingGameWidget.entitlements

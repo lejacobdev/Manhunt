@@ -195,3 +195,29 @@ public enum WatchAppGroup {
         return snapshot
     }
 }
+
+/// Same-device handoff between the iPhone app and its home-screen widget extension
+/// (`HuntingGameHomeWidget` in Widgets/HuntingGameWidgets/) — no WatchConnectivity relay
+/// needed since both run on the same phone, just a shared App Group container, same
+/// pattern as `WatchAppGroup` above but scoped to a different pair of targets.
+public enum PhoneWidgetAppGroup {
+    public static let identifier = "group.com.huntinggame.app.widget"
+    public static let snapshotKey = "latestGameSnapshot"
+
+    public static var sharedDefaults: UserDefaults? {
+        UserDefaults(suiteName: identifier)
+    }
+
+    public static func writeSnapshot(_ snapshot: WatchGameSnapshot) {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        sharedDefaults?.set(data, forKey: snapshotKey)
+    }
+
+    public static func readSnapshot() -> WatchGameSnapshot {
+        guard
+            let data = sharedDefaults?.data(forKey: snapshotKey),
+            let snapshot = try? JSONDecoder().decode(WatchGameSnapshot.self, from: data)
+        else { return .idle }
+        return snapshot
+    }
+}

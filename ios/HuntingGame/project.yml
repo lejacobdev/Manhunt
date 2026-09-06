@@ -74,6 +74,8 @@ targets:
         path: HuntingGame.entitlements
         properties:
           com.apple.developer.location.push: false
+          com.apple.security.application-groups:
+            - group.com.huntinggame.app.widget
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app
@@ -96,6 +98,8 @@ targets:
         CFBundleVersion: "1"
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Widgets/HuntingGameWidgets/HuntingGameWidgets.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.widgets

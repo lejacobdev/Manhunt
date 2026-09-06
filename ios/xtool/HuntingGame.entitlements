@@ -4,5 +4,9 @@
 <dict>
 	<key>com.apple.developer.location.push</key>
 	<false/>
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.com.huntinggame.app.widget</string>
+	</array>
 </dict>
 </plist>

@@ -2,6 +2,7 @@ import Foundation
 import CoreLocation
 import Combine
 import UIKit
+import WidgetKit
 
 @MainActor
 final class GameViewModel: ObservableObject {
@@ -124,6 +125,8 @@ final class GameViewModel: ObservableObject {
         jailCountdownTimer?.invalidate()
         watchConnectivity.onAction = nil
         watchConnectivity.sendIdle()
+        PhoneWidgetAppGroup.writeSnapshot(.idle)
+        WidgetCenter.shared.reloadTimelines(ofKind: "HuntingGameHomeWidget")
         LiveActivityManager.shared.end()
     }
 
@@ -144,6 +147,12 @@ final class GameViewModel: ObservableObject {
             updatedAt: Date()
         )
         watchConnectivity.send(snapshot)
+
+        // Same snapshot, relayed to the iPhone home-screen widget via their shared App
+        // Group instead of WatchConnectivity — that's phone-to-watch only, but the widget
+        // extension runs on this same device, so no relay is needed at all.
+        PhoneWidgetAppGroup.writeSnapshot(snapshot)
+        WidgetCenter.shared.reloadTimelines(ofKind: "HuntingGameHomeWidget")
     }
 
     private func handleWatchAction(_ action: WatchActionMessage) {
