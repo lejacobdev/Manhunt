@@ -15,25 +15,28 @@ struct LobbyView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Same ambient arrival glow as AuthView — "home" shouldn't feel
-                // flatter than "login" just because it's a ScrollView instead of a
-                // centered form.
-                RadialGradient(
-                    colors: [ADATheme.runnerGreen.opacity(0.10), .clear],
-                    center: .top,
-                    startRadius: 20,
-                    endRadius: 500
-                )
-                .edgesIgnoringSafeArea(.all)
+                // Same radar backdrop as AuthView (see RadarSweepBackdrop) — Mission
+                // Control shouldn't feel like a plain settings screen once sign-in
+                // already reads as part of the tactical HUD.
+                RadarSweepBackdrop(accent: ADATheme.runnerGreen, center: .top)
+                    .edgesIgnoringSafeArea(.all)
 
                 ScrollView {
                     VStack(spacing: 16) {
                         header
 
                         if let user = authSession.currentUser {
-                            Text("SIGNED IN AS \(user.tagLabel.uppercased())")
-                                .font(ADATheme.telemetryFont(size: 11))
-                                .foregroundColor(.white.opacity(0.4))
+                            // Same dot+telemetry-label pattern as GameView's top bar
+                            // role indicator, not just plain text.
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(ADATheme.runnerGreen)
+                                    .frame(width: 8, height: 8)
+                                    .shadow(color: ADATheme.runnerGreen, radius: 4)
+                                Text("SIGNED IN AS \(user.tagLabel.uppercased())")
+                                    .font(ADATheme.telemetryFont(size: 11))
+                                    .foregroundColor(.white.opacity(0.6))
+                            }
                         }
 
                         if !presence.incomingInvites.isEmpty {

@@ -8,13 +8,11 @@ struct AuthView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                RadialGradient(
-                    colors: [ADATheme.runnerGreen.opacity(0.12), .clear],
-                    center: .top,
-                    startRadius: 20,
-                    endRadius: 420
-                )
-                .edgesIgnoringSafeArea(.all)
+                // Same tactical radar drawing the live HUD uses (SpatialRadarView),
+                // scaled up and stripped of its needle/readout — ties sign-in into
+                // the same HUD system instead of a plain app-glow background.
+                RadarSweepBackdrop(accent: ADATheme.runnerGreen, center: .top)
+                    .edgesIgnoringSafeArea(.all)
 
                 VStack(spacing: 20) {
                     VStack(spacing: 6) {
@@ -27,6 +25,20 @@ struct AuthView: View {
                             .font(ADATheme.telemetryFont(size: 12))
                             .foregroundColor(.white.opacity(0.4))
                             .tracking(2)
+
+                        // Same dot+telemetry-label status row as GameView's top bar
+                        // (role indicator) — reads as a live status line, not copy.
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(ADATheme.runnerGreen)
+                                .frame(width: 6, height: 6)
+                                .shadow(color: ADATheme.runnerGreen, radius: 4)
+                            Text(isRegisterMode ? "NEW OPERATIVE" : "AWAITING CREDENTIALS")
+                                .font(ADATheme.telemetryFont(size: 10))
+                                .foregroundColor(.white.opacity(0.35))
+                                .tracking(1.5)
+                        }
+                        .padding(.top, 4)
                     }
                     .padding(.top, 60)
                     .opacity(hasAppeared ? 1 : 0)
