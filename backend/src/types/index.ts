@@ -69,7 +69,6 @@ export const CATCH_VERIFICATION_RADIUS_METERS = 15;
  *  — the actual check also widens this by the collector's own reported GPS accuracy. */
 export const POWER_UP_COLLECTION_RADIUS_METERS = 25;
 export const EMP_JAMMER_RADIUS_METERS = 200;
-export const THERMAL_VISION_RADIUS_METERS = 300;
 export const GHOST_DECOY_SPEED_MPS = 1.4; // brisk walking pace for the simulated foot path
 
 /** Location updates worse than this horizontal accuracy are rejected server-side (GPS spoofing/signal guard). */

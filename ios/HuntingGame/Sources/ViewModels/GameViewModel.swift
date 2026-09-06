@@ -568,6 +568,7 @@ final class GameViewModel: ObservableObject {
         return socket.safeZones.values.filter { $0.expiresAt > now }
     }
     var visibleRunners: [PlayerState] { socket.radar?.runners ?? [] }
+    var visibleRunnerBearings: [RunnerBearing] { socket.radar?.runnerBearings ?? [] }
     var isRadarJammed: Bool { socket.radar?.jammed ?? false }
     var allPlayers: [PlayerState] { socket.players }
     var inventory: [PowerUpType] { socket.inventory }

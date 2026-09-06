@@ -34,7 +34,8 @@ export interface GameSettings {
   jailEnabled?: boolean;
   jailPolygon?: Point2D[];
   gamblingEnabled?: boolean;
-  /** Absent means enabled — see the route schema for why this defaults on. */
+  /** Absent means disabled — off by default. Still BETA: the accuracy/motion/speed/
+   *  teleport checks are new enough to produce false positives, so it's opt-in. */
   antiCheatEnabled?: boolean;
 }
 
@@ -57,7 +58,7 @@ export class GameService {
       jailEnabled: input.jailEnabled ?? false,
       jailPolygon: input.jailEnabled ? input.jailPolygon : undefined,
       gamblingEnabled: input.gamblingEnabled ?? false,
-      antiCheatEnabled: input.antiCheatEnabled ?? true,
+      antiCheatEnabled: input.antiCheatEnabled ?? false,
     };
 
     const session = await prisma.gameSession.create({

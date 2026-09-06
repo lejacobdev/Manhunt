@@ -152,7 +152,7 @@ final class APIClient {
     /// The host plays too — no separate supervisor/observer role forced on them. They pick
     /// role/squad just like anyone joining, and get host-only admin actions (end game,
     /// override a catch) via GameSession.hostId instead.
-    func createGame(durationMinutes: Int, boundsPolygon: [Coordinate], mode: GameMode, role: PlayerRole, squad: String?, jailEnabled: Bool = false, jailPolygon: [Coordinate] = [], gamblingEnabled: Bool = false, antiCheatEnabled: Bool = true) async throws -> (player: GamePlayer, session: GameSession) {
+    func createGame(durationMinutes: Int, boundsPolygon: [Coordinate], mode: GameMode, role: PlayerRole, squad: String?, jailEnabled: Bool = false, jailPolygon: [Coordinate] = [], gamblingEnabled: Bool = false, antiCheatEnabled: Bool = false) async throws -> (player: GamePlayer, session: GameSession) {
         struct Body: Encodable {
             let durationMinutes: Int
             let boundsPolygon: [Coordinate]

@@ -1,15 +1,25 @@
 import SwiftUI
 
-/// The runner's tactical compass: a Canvas-drawn radar reticle with a rotating scan sweep,
-/// one spring-loaded bearing needle per visible hunter, and a live distance readout for
-/// whichever is closest. Feeds the escalating CoreHaptics proximity pulse once the nearest
-/// distance drops under 25m.
+/// A role-neutral bearing/distance reading for the gauge below — a runner's compass feeds
+/// it `HunterBearing`, a hunter's radar feeds it `RunnerBearing`; both get mapped into this
+/// common shape at the call site so the gauge itself doesn't care which direction it points.
+struct RadarBearing: Identifiable {
+    let id: String
+    let username: String
+    let distanceMeters: Int
+    let bearingDegrees: Double
+}
+
+/// The tactical compass shared by both roles: a Canvas-drawn radar reticle with a rotating
+/// scan sweep, one spring-loaded bearing needle per visible target (hunters for a runner,
+/// runners for a hunter), and a live distance readout for whichever is closest. Feeds the
+/// escalating CoreHaptics proximity pulse once the nearest distance drops under 25m.
 struct SpatialRadarView: View {
-    /// Legacy single-target fallback, used only when `hunters` is empty (e.g. a stale
-    /// server or the Xcode preview below) — otherwise `hunters` is the source of truth.
+    /// Legacy single-target fallback, used only when `targets` is empty (e.g. a stale
+    /// server or the Xcode preview below) — otherwise `targets` is the source of truth.
     let distanceMeters: Int?
     let bearingDegrees: Double?
-    var hunters: [HunterBearing] = []
+    var targets: [RadarBearing] = []
     let currentHeading: Double
     let role: PlayerRole
     /// Outer diameter of the gauge. Every internal measurement is derived from this as a
@@ -72,9 +82,9 @@ struct SpatialRadarView: View {
                 .frame(width: 240 * scale, height: 240 * scale)
                 .rotationEffect(.degrees(scanRotation))
 
-            // One needle per visible hunter — the nearest is bigger, glowing, and pulses;
+            // One needle per visible target — the nearest is bigger, glowing, and pulses;
             // the rest are dim so they read as "also out there" without competing with it.
-            ForEach(Array(effectiveHunters.enumerated()), id: \.element.hunterId) { index, hunter in
+            ForEach(Array(effectiveTargets.enumerated()), id: \.element.id) { index, target in
                 let isNearest = index == 0
                 VStack(spacing: 2 * scale) {
                     Image(systemName: "triangle.fill")
@@ -83,17 +93,17 @@ struct SpatialRadarView: View {
                         .shadow(color: isNearest ? accentColor : .clear, radius: isNearest ? 8 * scale : 0)
                         .scaleEffect(isNearest ? pulseScale : 1.0)
                     if !isNearest {
-                        // Every non-nearest hunter still gets its own distance label — the
+                        // Every non-nearest target still gets its own distance label — the
                         // big center readout only ever shows the closest one.
-                        Text("\(hunter.distanceMeters)m")
+                        Text("\(target.distanceMeters)m")
                             .font(ADATheme.telemetryFont(size: 8 * scale))
                             .foregroundColor(.white.opacity(0.4))
                     }
                     Spacer()
                 }
                 .frame(height: 220 * scale)
-                .rotationEffect(.degrees(hunter.bearingDegrees - currentHeading))
-                .animation(ADATheme.spatialSpring, value: hunter.bearingDegrees - currentHeading)
+                .rotationEffect(.degrees(target.bearingDegrees - currentHeading))
+                .animation(ADATheme.spatialSpring, value: target.bearingDegrees - currentHeading)
             }
 
             VStack(spacing: 2 * scale) {
@@ -126,31 +136,34 @@ struct SpatialRadarView: View {
         }
     }
 
-    /// `hunters` when the server sent any; otherwise the legacy single distance/bearing
+    /// `targets` when the server sent any; otherwise the legacy single distance/bearing
     /// pair wrapped as a one-item list, so the rendering loop above never needs two paths.
-    private var effectiveHunters: [HunterBearing] {
-        if !hunters.isEmpty { return hunters }
+    private var effectiveTargets: [RadarBearing] {
+        if !targets.isEmpty { return targets }
         guard let distanceMeters, let bearingDegrees else { return [] }
-        return [HunterBearing(hunterId: "nearest", username: "", distanceMeters: distanceMeters, bearingDegrees: bearingDegrees)]
+        return [RadarBearing(id: "nearest", username: "", distanceMeters: distanceMeters, bearingDegrees: bearingDegrees)]
     }
 
-    private var nearestDistance: Int? { effectiveHunters.first?.distanceMeters }
+    private var nearestDistance: Int? { effectiveTargets.first?.distanceMeters }
     private var hasSignal: Bool { nearestDistance != nil }
 
+    // The "closer = more intense" color/haptic language reads fine either direction — a
+    // runner being hunted, or a hunter closing in on a catch — so both roles get it now;
+    // only the color's own semantics (a runner's "danger" gradient) stay role-specific.
     private var accentColor: Color {
-        if let nearestDistance, role == .runner {
+        if let nearestDistance {
             return ADATheme.dangerColor(distanceMeters: nearestDistance)
         }
         return ADATheme.accent(for: role)
     }
 
     private var haloOpacity: Double {
-        guard let nearestDistance, role == .runner else { return 0.15 }
+        guard let nearestDistance else { return 0.15 }
         return nearestDistance < 15 ? 0.35 : (nearestDistance < 50 ? 0.22 : 0.15)
     }
 
     private func handleProximityChange(_ distance: Int?) {
-        guard role == .runner, let distance, distance < 25 else { return }
+        guard let distance, distance < 25 else { return }
         HapticsEngine.shared.playProximityPulse(distanceMeters: distance)
         withAnimation(.easeOut(duration: 0.25)) { ringPulse = 1.08 }
         withAnimation(.easeIn(duration: 0.35).delay(0.15)) { ringPulse = 1.0 }

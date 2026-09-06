@@ -29,7 +29,7 @@ final class GameLobbyViewModel: ObservableObject {
     @Published var jailEnabled: Bool
     @Published var jailPoints: [Coordinate]
     @Published var gamblingEnabled: Bool
-    /// BETA — see GameSettings.antiCheatEnabled. Absent (older sessions) defaults on.
+    /// BETA — see GameSettings.antiCheatEnabled. Off by default; a host opts in.
     @Published var antiCheatEnabled: Bool
     /// True while the host is actively redrawing an already-set play area — see
     /// `beginRedrawBoundary()`. The boundary is otherwise treated as fixed once set, the
@@ -54,7 +54,7 @@ final class GameLobbyViewModel: ObservableObject {
         self.jailEnabled = session.settings.jailEnabled ?? false
         self.jailPoints = session.settings.jailPolygon ?? []
         self.gamblingEnabled = session.settings.gamblingEnabled ?? false
-        self.antiCheatEnabled = session.settings.antiCheatEnabled ?? true
+        self.antiCheatEnabled = session.settings.antiCheatEnabled ?? false
         bindSocket()
     }
 
@@ -99,7 +99,7 @@ final class GameLobbyViewModel: ObservableObject {
                 self.jailEnabled = settings.jailEnabled ?? false
                 self.jailPoints = settings.jailPolygon ?? []
                 self.gamblingEnabled = settings.gamblingEnabled ?? false
-                self.antiCheatEnabled = settings.antiCheatEnabled ?? true
+                self.antiCheatEnabled = settings.antiCheatEnabled ?? false
             }
             .store(in: &cancellables)
 

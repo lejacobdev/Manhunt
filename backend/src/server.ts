@@ -41,7 +41,6 @@ import {
   JAIL_VIOLATION_COUNTDOWN_MS,
   PlayerState,
   PowerUpType,
-  THERMAL_VISION_RADIUS_METERS,
   ZONE_BROADCAST_INTERVAL_MS,
 } from './types';
 
@@ -302,11 +301,11 @@ io.on('connection', (socket: Socket) => {
       pruneExpiredBuffs(p);
 
       const now = Date.now();
-      // BETA: absent (older sessions, or never toggled) defaults to enabled. A host can
-      // turn it off from the lobby if the accuracy/motion/speed/teleport checks are
-      // producing false positives — those looked exactly like a frozen radar/compass
-      // before anti_cheat_warning was surfaced to the rejected player at all.
-      const antiCheatEnabled = sessionSettingsCache.get(roomCode)?.antiCheatEnabled ?? true;
+      // BETA: off by default (absent means disabled) — a host opts in from the lobby.
+      // The accuracy/motion/speed/teleport checks are new enough to produce false
+      // positives, which looked exactly like a frozen radar/compass before
+      // anti_cheat_warning was even surfaced to the rejected player.
+      const antiCheatEnabled = sessionSettingsCache.get(roomCode)?.antiCheatEnabled ?? false;
       if (antiCheatEnabled) {
         const accuracyCheck = checkAccuracy(accuracy);
         if (!accuracyCheck.allowed) {
@@ -411,26 +410,38 @@ io.on('connection', (socket: Socket) => {
         // Radar used to only refresh on a timer (radarIntervalSec, with a faster forced
         // rate under Thermal Vision) — now it's pushed on every accepted location update
         // for every hunter alike, the same live cadence the runner's own compass already
-        // gets. Thermal Vision's real effect (piercing INVISIBILITY_10MIN within range)
-        // is unchanged below; only the "everyone else waits, thermal refreshes faster"
-        // timing gate is gone.
+        // gets. Thermal Vision's real effect (piercing INVISIBILITY_10MIN, see below) is
+        // unchanged; only the "everyone else waits, thermal refreshes faster" timing gate
+        // is gone.
         const thermalActive = isBuffActive(p, 'THERMAL_VISION');
         if (isBuffActive(p, 'EMP_JAMMER')) {
-          socket.emit('radar_broadcast', { runners: [], decoys: [], jammed: true });
+          socket.emit('radar_broadcast', { runners: [], runnerBearings: [], decoys: [], jammed: true });
         } else {
           const hunterPt = turf.point([p.lng, p.lat]);
-          const visibleRunners = runners.filter((r) => {
-            if (!isBuffActive(r, 'INVISIBILITY_10MIN')) return true;
-            if (!thermalActive) return false;
-            const dist = turf.distance(hunterPt, turf.point([r.lng, r.lat]), { units: 'meters' });
-            return dist <= THERMAL_VISION_RADIUS_METERS;
-          });
+          // Thermal Vision pierces every invisible runner's cloak everywhere on the map,
+          // not just nearby ones — but only for the hunter who actually activated it; every
+          // other hunter's own radar still filters them out normally.
+          const visibleRunners = runners.filter((r) => !isBuffActive(r, 'INVISIBILITY_10MIN') || thermalActive);
+          // Mirrors the runner's own compass_update bearing computation, just from the
+          // hunter's side — gives the hunter's radar the same directional gauge a runner's
+          // compass already gets, instead of only the plain nearby-runners list.
+          const runnerBearings = visibleRunners
+            .map((r) => {
+              const rPt = turf.point([r.lng, r.lat]);
+              return {
+                runnerId: r.id,
+                username: r.username,
+                distanceMeters: Math.round(turf.distance(hunterPt, rPt, { units: 'meters' })),
+                bearingDegrees: (turf.bearing(hunterPt, rPt) + 360) % 360,
+              };
+            })
+            .sort((a, b) => a.distanceMeters - b.distanceMeters);
           pruneExpiredDecoys(decoys, roomCode);
           const liveDecoys = (decoys.get(roomCode) ?? []).map((d) => {
             const pos = currentDecoyPosition(d);
             return { lat: pos.lat, lng: pos.lng, isDecoy: true };
           });
-          socket.emit('radar_broadcast', { runners: visibleRunners, decoys: liveDecoys, jammed: false });
+          socket.emit('radar_broadcast', { runners: visibleRunners, runnerBearings, decoys: liveDecoys, jammed: false });
         }
       }
 

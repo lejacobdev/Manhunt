@@ -111,10 +111,9 @@ struct GameSettings: Codable, Equatable {
     let jailEnabled: Bool?
     let jailPolygon: [Coordinate]?
     let gamblingEnabled: Bool?
-    /// Absent decodes as enabled — anti-cheat defaults on for sessions created before this
-    /// toggle shipped. Still labeled BETA in the UI: the accuracy/motion/speed/teleport
-    /// checks are new enough that a false-positive rejection can look like a frozen radar,
-    /// so hosts get an escape hatch rather than being stuck fighting it mid-match.
+    /// Absent decodes as disabled — off by default. Labeled BETA in the UI: the
+    /// accuracy/motion/speed/teleport checks are new enough that a false-positive
+    /// rejection can look like a frozen radar, so it's opt-in rather than on by default.
     let antiCheatEnabled: Bool?
 }
 
@@ -261,8 +260,21 @@ struct CompassUpdate: Codable {
     }
 }
 
+/// One runner's bearing/distance from a hunter's own position — the hunter-side mirror of
+/// `HunterBearing`, computed the same way but from the opposite direction.
+struct RunnerBearing: Codable, Identifiable {
+    let runnerId: String
+    let username: String
+    let distanceMeters: Int
+    let bearingDegrees: Double
+    var id: String { runnerId }
+}
+
 struct RadarBroadcast: Codable {
     let runners: [PlayerState]
+    /// Absent from an older/never-updated server payload decodes as nil, not a decode
+    /// failure — see `GameViewModel.visibleRunnerBearings`, which treats nil as empty.
+    let runnerBearings: [RunnerBearing]?
     let decoys: [DecoyBlip]?
     let jammed: Bool
 }

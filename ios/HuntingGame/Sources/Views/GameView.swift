@@ -54,9 +54,9 @@ struct GameView: View {
                 // edge, so the map stays visible through the middle of the screen.
                 // Only floats up here — aligned above the right dock column — when
                 // that column is actually occupied by the host panel; a non-host
-                // runner has nothing on the right, so their radar lives in the
+                // hunter/runner has nothing on the right, so their radar lives in the
                 // bottom dock's right slot instead (see rightDockPanels).
-                if viewModel.role == .runner && viewModel.isHost {
+                if (viewModel.role == .runner || viewModel.role == .hunter) && viewModel.isHost {
                     radarDock
                 }
                 bottomDock
@@ -242,9 +242,9 @@ struct GameView: View {
         HStack {
             Spacer()
             SpatialRadarView(
-                distanceMeters: viewModel.nearestHunterDistance,
-                bearingDegrees: viewModel.nearestHunterBearing,
-                hunters: viewModel.visibleHunterBearings,
+                distanceMeters: viewModel.role == .hunter ? nil : viewModel.nearestHunterDistance,
+                bearingDegrees: viewModel.role == .hunter ? nil : viewModel.nearestHunterBearing,
+                targets: radarTargets,
                 currentHeading: viewModel.currentHeadingDegrees,
                 role: viewModel.role,
                 diameter: ADATheme.dockPanelWidth
@@ -253,6 +253,20 @@ struct GameView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
+    }
+
+    /// Bearings for whichever role this device is playing, mapped into the radar gauge's
+    /// role-neutral shape — a hunter's radar and a runner's compass share the same visual,
+    /// just pointed at the opposite side.
+    private var radarTargets: [RadarBearing] {
+        if viewModel.role == .hunter {
+            return viewModel.visibleRunnerBearings.map {
+                RadarBearing(id: $0.runnerId, username: $0.username, distanceMeters: $0.distanceMeters, bearingDegrees: $0.bearingDegrees)
+            }
+        }
+        return viewModel.visibleHunterBearings.map {
+            RadarBearing(id: $0.hunterId, username: $0.username, distanceMeters: $0.distanceMeters, bearingDegrees: $0.bearingDegrees)
+        }
     }
 
     private var topBar: some View {
@@ -362,14 +376,14 @@ struct GameView: View {
 
     private var rightDockPanels: [AnyView] {
         var panels: [AnyView] = []
-        // A non-host runner has no host panel to dock the compass above (see the
+        // A non-host hunter/runner has no host panel to dock the compass above (see the
         // `radarDock` placement further up), so it takes this slot instead.
-        if viewModel.role == .runner && !viewModel.isHost {
+        if (viewModel.role == .runner || viewModel.role == .hunter) && !viewModel.isHost {
             panels.append(AnyView(
                 SpatialRadarView(
-                    distanceMeters: viewModel.nearestHunterDistance,
-                    bearingDegrees: viewModel.nearestHunterBearing,
-                    hunters: viewModel.visibleHunterBearings,
+                    distanceMeters: viewModel.role == .hunter ? nil : viewModel.nearestHunterDistance,
+                    bearingDegrees: viewModel.role == .hunter ? nil : viewModel.nearestHunterBearing,
+                    targets: radarTargets,
                     currentHeading: viewModel.currentHeadingDegrees,
                     role: viewModel.role,
                     diameter: ADATheme.dockPanelWidth
@@ -483,10 +497,10 @@ struct GameView: View {
         VStack(spacing: 16) {
             Image(systemName: "flag.checkered.circle.fill")
                 .font(.system(size: 36, weight: .bold))
-                .foregroundColor(ADATheme.spatialCyan)
-                .shadow(color: ADATheme.spatialCyan, radius: 12)
+                .foregroundColor(gameOverTint)
+                .shadow(color: gameOverTint, radius: 12)
 
-            Text("MATCH ENDED")
+            Text(gameOverHeadline)
                 .font(ADATheme.displayFont(size: 20))
                 .foregroundColor(.white)
 
@@ -506,14 +520,37 @@ struct GameView: View {
                         Text("WATCH REPLAY")
                     }
                 }
-                .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
+                .buttonStyle(GlowButtonStyle(tint: gameOverTint))
             }
         }
         .padding(32)
-        .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.spatialCyan)
+        .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: gameOverTint)
         .padding(.horizontal, 40)
         .sheet(isPresented: $showReplay) {
             MatchReplayView(sessionCode: viewModel.roomCode)
+        }
+    }
+
+    /// nil for an inconclusive end (the host cut it short, or an unrecognized reason) —
+    /// everything else has a real winning side, so the overlay can be colored/labeled
+    /// to match instead of always reading as a neutral "match ended".
+    private var gameOverWinner: PlayerRole? {
+        switch socket.gameOverReason {
+        case "TIME_EXPIRED", "ALL_HUNTERS_ELIMINATED": return .runner
+        case "ALL_RUNNERS_RESOLVED": return .hunter
+        default: return nil
+        }
+    }
+
+    private var gameOverTint: Color {
+        gameOverWinner.map { ADATheme.accent(for: $0) } ?? ADATheme.spatialCyan
+    }
+
+    private var gameOverHeadline: String {
+        switch gameOverWinner {
+        case .hunter: return "HUNTERS WIN"
+        case .runner: return "RUNNERS WIN"
+        default: return "MATCH ENDED"
         }
     }
 
