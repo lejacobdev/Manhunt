@@ -379,70 +379,18 @@ io.on('connection', (socket: Socket) => {
         (x) => x.role === 'RUNNER' && !x.isCaught && !x.isExtracted && !x.isOut && hasFix(x)
       );
 
-      if (p.role === 'RUNNER' && !p.isCaught && hunters.length > 0) {
-        const rPt = turf.point([p.lng, p.lat]);
-        // One entry per visible hunter, not just the nearest — the runner's compass draws
-        // an arrow toward each of them, with the closest one picked out as the headline
-        // number. Sorted nearest-first so the client can just take index 0 as "closest"
-        // without re-deriving it.
-        const bearings = hunters
-          .map((h) => {
-            const hPt = turf.point([h.lng, h.lat]);
-            return {
-              hunterId: h.id,
-              username: h.username,
-              distanceMeters: Math.round(turf.distance(rPt, hPt, { units: 'meters' })),
-              bearingDegrees: (turf.bearing(rPt, hPt) + 360) % 360,
-            };
-          })
-          .sort((a, b) => a.distanceMeters - b.distanceMeters);
-
-        socket.emit('compass_update', {
-          // Kept at the top level (redundant with bearings[0]) for older clients/watch
-          // app code that only ever reads a single nearest distance/bearing.
-          distanceMeters: bearings[0].distanceMeters,
-          bearingDegrees: bearings[0].bearingDegrees,
-          hunters: bearings,
-        });
-      }
-
+      // Radar/compass used to only ever refresh for the player whose own tick this was —
+      // a stationary hunter's radar wouldn't learn a runner had reappeared (e.g. after a
+      // reconnect) until the hunter themselves moved enough to trigger their own next
+      // location update, and likewise for a stationary runner's compass. A mover's update
+      // changes every *other* relevant player's bearing to them, so it's pushed to all of
+      // them now, not just reflected back to the mover.
       if (p.role === 'HUNTER') {
-        // Radar used to only refresh on a timer (radarIntervalSec, with a faster forced
-        // rate under Thermal Vision) — now it's pushed on every accepted location update
-        // for every hunter alike, the same live cadence the runner's own compass already
-        // gets. Thermal Vision's real effect (piercing INVISIBILITY_10MIN, see below) is
-        // unchanged; only the "everyone else waits, thermal refreshes faster" timing gate
-        // is gone.
-        const thermalActive = isBuffActive(p, 'THERMAL_VISION');
-        if (isBuffActive(p, 'EMP_JAMMER')) {
-          socket.emit('radar_broadcast', { runners: [], runnerBearings: [], decoys: [], jammed: true });
-        } else {
-          const hunterPt = turf.point([p.lng, p.lat]);
-          // Thermal Vision pierces every invisible runner's cloak everywhere on the map,
-          // not just nearby ones — but only for the hunter who actually activated it; every
-          // other hunter's own radar still filters them out normally.
-          const visibleRunners = runners.filter((r) => !isBuffActive(r, 'INVISIBILITY_10MIN') || thermalActive);
-          // Mirrors the runner's own compass_update bearing computation, just from the
-          // hunter's side — gives the hunter's radar the same directional gauge a runner's
-          // compass already gets, instead of only the plain nearby-runners list.
-          const runnerBearings = visibleRunners
-            .map((r) => {
-              const rPt = turf.point([r.lng, r.lat]);
-              return {
-                runnerId: r.id,
-                username: r.username,
-                distanceMeters: Math.round(turf.distance(hunterPt, rPt, { units: 'meters' })),
-                bearingDegrees: (turf.bearing(hunterPt, rPt) + 360) % 360,
-              };
-            })
-            .sort((a, b) => a.distanceMeters - b.distanceMeters);
-          pruneExpiredDecoys(decoys, roomCode);
-          const liveDecoys = (decoys.get(roomCode) ?? []).map((d) => {
-            const pos = currentDecoyPosition(d);
-            return { lat: pos.lat, lng: pos.lng, isDecoy: true };
-          });
-          socket.emit('radar_broadcast', { runners: visibleRunners, runnerBearings, decoys: liveDecoys, jammed: false });
-        }
+        for (const runner of runners) pushCompassToRunner(runner, hunters);
+        pushRadarToHunter(roomCode, p, runners);
+      } else if (p.role === 'RUNNER') {
+        pushCompassToRunner(p, hunters);
+        for (const hunter of hunters) pushRadarToHunter(roomCode, hunter, runners);
       }
 
       io.to(`${roomCode}_observers`).emit('roster_update', publicRoster(session));
@@ -998,6 +946,71 @@ function publicRoster(session: Map<string, PlayerState>): PlayerState[] {
     if (!isBuffActive(p, 'INVISIBILITY_10MIN')) return p;
     return { ...p, lat: 0, lng: 0 };
   });
+}
+
+/**
+ * Recomputes and pushes one runner's compass reading (bearing/distance to every visible
+ * hunter). Factored out of `send_location_update` so it can fire either from that runner's
+ * own tick, or — whenever a hunter's tick lands — for every runner in the room at once.
+ * Without the latter, a runner learned a hunter appeared, moved, or reconnected only on
+ * their own next GPS tick, which could be indefinitely if they happened to be standing
+ * still — this is also what made a just-reconnected player invisible to everyone else
+ * until they personally moved enough to trigger their own send_location_update.
+ */
+function pushCompassToRunner(runner: PlayerState, hunters: PlayerState[]) {
+  if (runner.isCaught || hunters.length === 0) return;
+  const rPt = turf.point([runner.lng, runner.lat]);
+  const bearings = hunters
+    .map((h) => {
+      const hPt = turf.point([h.lng, h.lat]);
+      return {
+        hunterId: h.id,
+        username: h.username,
+        distanceMeters: Math.round(turf.distance(rPt, hPt, { units: 'meters' })),
+        bearingDegrees: (turf.bearing(rPt, hPt) + 360) % 360,
+      };
+    })
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
+  io.to(runner.id).emit('compass_update', {
+    // Kept at the top level (redundant with bearings[0]) for older clients/watch app code
+    // that only ever reads a single nearest distance/bearing.
+    distanceMeters: bearings[0].distanceMeters,
+    bearingDegrees: bearings[0].bearingDegrees,
+    hunters: bearings,
+  });
+}
+
+/** Mirrors `pushCompassToRunner` for a hunter's radar — pushed either from that hunter's
+ *  own tick, or for every hunter in the room whenever a runner's tick lands, each
+ *  respecting their own Thermal Vision/EMP Jammer buffs individually. */
+function pushRadarToHunter(roomCode: string, hunter: PlayerState, runners: PlayerState[]) {
+  if (isBuffActive(hunter, 'EMP_JAMMER')) {
+    io.to(hunter.id).emit('radar_broadcast', { runners: [], runnerBearings: [], decoys: [], jammed: true });
+    return;
+  }
+  const thermalActive = isBuffActive(hunter, 'THERMAL_VISION');
+  const hunterPt = turf.point([hunter.lng, hunter.lat]);
+  // Thermal Vision pierces every invisible runner's cloak everywhere on the map, not just
+  // nearby ones — but only for the hunter who actually activated it; every other hunter's
+  // own radar keeps filtering invisible runners out normally.
+  const visibleRunners = runners.filter((r) => !isBuffActive(r, 'INVISIBILITY_10MIN') || thermalActive);
+  const runnerBearings = visibleRunners
+    .map((r) => {
+      const rPt = turf.point([r.lng, r.lat]);
+      return {
+        runnerId: r.id,
+        username: r.username,
+        distanceMeters: Math.round(turf.distance(hunterPt, rPt, { units: 'meters' })),
+        bearingDegrees: (turf.bearing(hunterPt, rPt) + 360) % 360,
+      };
+    })
+    .sort((a, b) => a.distanceMeters - b.distanceMeters);
+  pruneExpiredDecoys(decoys, roomCode);
+  const liveDecoys = (decoys.get(roomCode) ?? []).map((d) => {
+    const pos = currentDecoyPosition(d);
+    return { lat: pos.lat, lng: pos.lng, isDecoy: true };
+  });
+  io.to(hunter.id).emit('radar_broadcast', { runners: visibleRunners, runnerBearings, decoys: liveDecoys, jammed: false });
 }
 
 async function resolveSessionId(roomCode: string): Promise<string | undefined> {
