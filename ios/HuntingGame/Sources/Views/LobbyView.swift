@@ -17,8 +17,9 @@ struct LobbyView: View {
             ZStack {
                 // Same radar backdrop as AuthView (see RadarSweepBackdrop) — Mission
                 // Control shouldn't feel like a plain settings screen once sign-in
-                // already reads as part of the tactical HUD.
-                RadarSweepBackdrop(accent: ADATheme.runnerGreen, center: .top)
+                // already reads as part of the tactical HUD. Centered on the screen, not
+                // pinned to the top edge, so it reads as a circle instead of a clipped wedge.
+                RadarSweepBackdrop(accent: ADATheme.runnerGreen)
                     .edgesIgnoringSafeArea(.all)
 
                 // Vertically centered rather than stacked from the top edge: this screen

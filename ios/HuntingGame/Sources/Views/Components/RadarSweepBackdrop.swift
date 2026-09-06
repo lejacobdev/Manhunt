@@ -7,13 +7,18 @@ import SwiftUI
 /// of a plain form with a generic glow behind it.
 struct RadarSweepBackdrop: View {
     var accent: Color = ADATheme.runnerGreen
-    var center: UnitPoint = .top
+    var center: UnitPoint = .center
 
     @State private var scanRotation: Double = 0
 
     var body: some View {
         GeometryReader { proxy in
-            let side = max(proxy.size.width, proxy.size.height) * 1.3
+            // Anchoring the circle's actual center at the screen's top edge (the previous
+            // behavior) meant only its bottom hemisphere was ever visible, and the sweep
+            // wedge could poke into frame as a hard-edged diagonal instead of reading as
+            // part of a circle — sized to the screen's own width now, and small enough
+            // that at the default centered position it sits fully inside the frame.
+            let side = proxy.size.width * 1.15
 
             ZStack {
                 Circle()

@@ -10,10 +10,28 @@ struct AuthView: View {
             ZStack {
                 // Same tactical radar drawing the live HUD uses (SpatialRadarView),
                 // scaled up and stripped of its needle/readout — ties sign-in into
-                // the same HUD system instead of a plain app-glow background.
-                RadarSweepBackdrop(accent: ADATheme.runnerGreen, center: .top)
+                // the same HUD system instead of a plain app-glow background. Centered
+                // on the screen, not pinned to the top edge, so the full circle (and its
+                // rotating sweep) reads as a circle instead of a clipped wedge.
+                RadarSweepBackdrop(accent: ADATheme.runnerGreen)
                     .edgesIgnoringSafeArea(.all)
 
+                content
+            }
+            .obsidianBackdrop()
+        }
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.5)) { hasAppeared = true }
+        }
+    }
+
+    /// Vertically centered when it fits the screen, scrolling normally once the error
+    /// message or a taller keyboard-avoidance pushes it past a screenful — previously a
+    /// plain top-anchored VStack with a trailing Spacer, which left the whole form
+    /// crammed against the top edge with empty space below it.
+    private var content: some View {
+        GeometryReader { proxy in
+            ScrollView {
                 VStack(spacing: 20) {
                     VStack(spacing: 6) {
                         HuntingGameWordmark(size: 32)
@@ -38,7 +56,6 @@ struct AuthView: View {
                         }
                         .padding(.top, 4)
                     }
-                    .padding(.top, 60)
                     .opacity(hasAppeared ? 1 : 0)
                     .offset(y: hasAppeared ? 0 : -12)
 
@@ -87,16 +104,13 @@ struct AuthView: View {
                     .buttonStyle(GlowButtonStyle(tint: ADATheme.runnerGreen, isLoading: viewModel.isLoading))
                     .padding(.horizontal)
                     .disabled(viewModel.isLoading)
-
-                    Spacer()
                 }
                 .adaptiveContentWidth()
+                .padding(.vertical, 28)
+                .frame(minHeight: proxy.size.height, alignment: .center)
+                .frame(maxWidth: .infinity)
                 .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
             }
-            .obsidianBackdrop()
-        }
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.5)) { hasAppeared = true }
         }
     }
 
@@ -111,17 +125,20 @@ struct AuthView: View {
     }
 }
 
-/// Shared glass-surfaced text field styling for the auth/lobby forms.
+/// Shared text field styling for the auth/lobby forms. A solid light surface with dark
+/// text, like a standard system text field, rather than a translucent dark fill — sitting
+/// inside an already-dark glass card, a same-tone-as-everything-else field had almost no
+/// visible boundary and didn't read as something you could tap and type into.
 struct ADATextField: View {
     let placeholder: String
     @Binding var text: String
 
     var body: some View {
-        TextField("", text: $text, prompt: Text(placeholder).foregroundColor(.white.opacity(0.35)))
+        TextField("", text: $text, prompt: Text(placeholder).foregroundColor(FieldSurface.placeholderColor))
             .font(ADATheme.uiFont(size: 15))
-            .foregroundColor(.white)
+            .foregroundColor(FieldSurface.textColor)
             .padding()
-            .background(GlassFieldBackground())
+            .background(FieldSurface())
     }
 }
 
@@ -130,25 +147,26 @@ struct ADASecureField: View {
     @Binding var text: String
 
     var body: some View {
-        SecureField("", text: $text, prompt: Text(placeholder).foregroundColor(.white.opacity(0.35)))
+        SecureField("", text: $text, prompt: Text(placeholder).foregroundColor(FieldSurface.placeholderColor))
             .font(ADATheme.uiFont(size: 15))
-            .foregroundColor(.white)
+            .foregroundColor(FieldSurface.textColor)
             .padding()
-            .background(GlassFieldBackground())
+            .background(FieldSurface())
     }
 }
 
-/// Form-field surface: a flat fill and a hairline rim, matching how `GlassButtonStyle`
-/// treats its own controls. Deliberately has no sheen gradient — fields always sit inside
-/// an already-glass card, and a second highlight on top of that one read as a stray
-/// gradient smeared across the top of every input rather than as depth.
-private struct GlassFieldBackground: View {
+/// A plain light input surface — near-white fill, a soft hairline rim — read clearly as a
+/// text field against the app's dark glass cards, the way a native system field would.
+private struct FieldSurface: View {
+    static let textColor = Color(white: 0.12)
+    static let placeholderColor = Color(white: 0.45)
+
     var body: some View {
         RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous)
-            .fill(Color.white.opacity(0.07))
+            .fill(Color(white: 0.96))
             .overlay(
                 RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous)
-                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
             )
     }
 }
