@@ -11,22 +11,43 @@ struct LobbyView: View {
     @State private var showHistory = false
     @State private var joiningInvite: GameInvite?
     @State private var launchedGame: (player: GamePlayer, session: GameSession)?
+    @State private var selectedTab: AppTab = .play
 
     var body: some View {
-        // Friends used to be a button opening a sheet; it's a proper tab now, same level
-        // as Play, rather than something layered on top of it.
-        TabView {
-            playTab
-                .tabItem { Label("Play", systemImage: "gamecontroller.fill") }
+        // Replaces the system TabView chrome with a floating pill + circle (see
+        // FloatingTabBar) — SwiftUI's TabView has no supported way to swap out its own
+        // bottom bar's visual, so this reimplements the "everyone mounted, only the
+        // selected one visible/interactive" behavior TabView otherwise gives for free
+        // (state — scroll position, loaded data — survives switching away and back).
+        ZStack(alignment: .bottom) {
+            ZStack {
+                playTab
+                    .opacity(selectedTab == .play ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .play)
+                    .accessibilityHidden(selectedTab != .play)
 
-            FriendsView()
-                .tabItem { Label("Friends", systemImage: "person.2.fill") }
+                FriendsView()
+                    .opacity(selectedTab == .friends ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .friends)
+                    .accessibilityHidden(selectedTab != .friends)
 
-            LeaderboardView()
-                .tabItem { Label("Leaderboard", systemImage: "trophy.fill") }
+                LeaderboardView()
+                    .opacity(selectedTab == .leaderboard ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .leaderboard)
+                    .accessibilityHidden(selectedTab != .leaderboard)
 
-            ProfileView()
-                .tabItem { Label("Profile", systemImage: "person.crop.circle.fill") }
+                ProfileView()
+                    .opacity(selectedTab == .profile ? 1 : 0)
+                    .allowsHitTesting(selectedTab == .profile)
+                    .accessibilityHidden(selectedTab != .profile)
+            }
+            // Reserves room at the bottom of every tab's own scroll content so the last
+            // row/button isn't sitting underneath the floating bar drawn on top of it.
+            .safeAreaInset(edge: .bottom) {
+                Color.clear.frame(height: 78)
+            }
+
+            FloatingTabBar(selection: $selectedTab)
         }
         .tint(ADATheme.runnerGreen)
         .preferredColorScheme(.dark)
