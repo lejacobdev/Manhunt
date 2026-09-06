@@ -45,14 +45,23 @@ enum AppTab: String, CaseIterable, Identifiable {
 /// The circle doubles as the bar's own collapse toggle rather than being a fixed, unrelated
 /// button (Apple News' circle is a permanent Search shortcut) — collapsed, it's the *entire*
 /// bar: just that one circle, tinted with and showing the current tab's icon, sitting at the
-/// trailing edge. Tapping it expands the full pill out to its leading side; tapping it again
-/// collapses back down. Picking a different tab from the expanded pill doesn't auto-collapse
-/// — collapsing is a deliberate, separate action from navigating.
+/// trailing edge. Tapping it expands the full pill out to its leading side. It also auto-
+/// collapses on its own after a few seconds of not being touched, or the instant the parent
+/// reports scroll/swipe activity elsewhere on screen (`activitySignal`) — the bar shouldn't
+/// keep sitting open over content nobody's using it. There's deliberately no separate
+/// "close" glyph: the circle always shows the current tab's own icon in both states, since
+/// collapsing now happens on its own rather than needing an explicit affordance for it.
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
+    /// Bumped by the parent on every scroll/page-swipe touch anywhere in the content below
+    /// — any change collapses the bar immediately (if it was open) and resets the idle timer.
+    var activitySignal: Int = 0
+
     @State private var isExpanded = true
+    @State private var collapseWorkItem: DispatchWorkItem?
 
     private let circleDiameter: CGFloat = 58
+    private let autoCollapseDelay: TimeInterval = 3
 
     var body: some View {
         HStack(spacing: 10) {
@@ -71,6 +80,22 @@ struct FloatingTabBar: View {
         .padding(.horizontal, 16)
         .padding(.bottom, 6)
         .animation(ADATheme.controlSpring, value: isExpanded)
+        .onAppear { scheduleAutoCollapse() }
+        .onChange(of: activitySignal) { _ in
+            collapseWorkItem?.cancel()
+            if isExpanded {
+                withAnimation(ADATheme.controlSpring) { isExpanded = false }
+            }
+        }
+    }
+
+    private func scheduleAutoCollapse() {
+        collapseWorkItem?.cancel()
+        let work = DispatchWorkItem {
+            withAnimation(ADATheme.controlSpring) { isExpanded = false }
+        }
+        collapseWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + autoCollapseDelay, execute: work)
     }
 
     private var pill: some View {
@@ -78,6 +103,7 @@ struct FloatingTabBar: View {
             ForEach(AppTab.allCases) { tab in
                 Button {
                     withAnimation(ADATheme.controlSpring) { selection = tab }
+                    scheduleAutoCollapse()
                 } label: {
                     VStack(spacing: 3) {
                         Image(systemName: tab.icon)
@@ -102,15 +128,20 @@ struct FloatingTabBar: View {
 
     private var toggleCircle: some View {
         Button {
-            withAnimation(ADATheme.controlSpring) { isExpanded.toggle() }
+            let expanding = !isExpanded
+            withAnimation(ADATheme.controlSpring) { isExpanded = expanding }
+            if expanding { scheduleAutoCollapse() } else { collapseWorkItem?.cancel() }
         } label: {
-            Image(systemName: isExpanded ? "xmark" : selection.icon)
+            // Always the current tab's own icon — no separate "close" glyph, since
+            // collapsing is now automatic rather than something this button needs to spell
+            // out as an action of its own.
+            Image(systemName: selection.icon)
                 .font(.system(size: 19, weight: .bold))
-                .foregroundColor(isExpanded ? .white.opacity(0.75) : selection.accent)
+                .foregroundColor(selection.accent)
                 .frame(width: circleDiameter, height: circleDiameter)
         }
         .buttonStyle(.plain)
-        .glassCard(cornerRadius: circleDiameter / 2, tint: isExpanded ? .white : selection.accent)
+        .glassCard(cornerRadius: circleDiameter / 2, tint: selection.accent)
         // A fixed identity across the expand/collapse transition — without this the glow/
         // icon-swap reads as the circle itself being replaced rather than one button
         // changing state, since its tint and glyph both change at the same moment the pill

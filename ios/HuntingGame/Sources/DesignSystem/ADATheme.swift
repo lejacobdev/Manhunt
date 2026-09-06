@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // Color(hex:) lives in Shared/TacticalPalette.swift, which is compiled into
 // this target too — see that file for the definition.
@@ -156,6 +157,26 @@ extension View {
     func adaptiveContentWidth(_ maxWidth: CGFloat = ADATheme.maxContentWidth) -> some View {
         frame(maxWidth: maxWidth)
             .frame(maxWidth: .infinity)
+    }
+}
+
+extension Color {
+    /// Linear RGBA blend between two colors — used to crossfade the shared radar backdrop's
+    /// tint continuously as the swipeable pager's drag progresses between two tabs' accent
+    /// colors, rather than jump-cutting once a swipe settles. SwiftUI's own `Color` has no
+    /// built-in interpolation, so this goes through UIColor's component accessors.
+    static func interpolate(from: Color, to: Color, fraction: Double) -> Color {
+        let f = min(max(fraction, 0), 1)
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        UIColor(from).getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        UIColor(to).getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        return Color(
+            red: Double(r1 + (r2 - r1) * f),
+            green: Double(g1 + (g2 - g1) * f),
+            blue: Double(b1 + (b2 - b1) * f),
+            opacity: Double(a1 + (a2 - a1) * f)
+        )
     }
 }
 

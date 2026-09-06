@@ -6,40 +6,37 @@ struct LeaderboardView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                RadarSweepBackdrop(accent: ADATheme.tacticalAmber)
-                    .edgesIgnoringSafeArea(.all)
+            // No backdrop of its own — this is only ever used as a tab, and LobbyView's
+            // shared RadarSweepBackdrop (crossfading tint as the pager swipes) shows
+            // through from behind it.
+            VStack(spacing: 0) {
+                sortPicker
 
-                VStack(spacing: 0) {
-                    sortPicker
-
-                    if viewModel.isLoading && viewModel.leaderboard == nil {
-                        Spacer()
-                        ProgressView().tint(ADATheme.tacticalAmber)
-                        Spacer()
-                    } else if let error = viewModel.errorMessage, viewModel.leaderboard == nil {
-                        Spacer()
-                        Text(error)
-                            .font(ADATheme.uiFont(size: 13, weight: .medium))
-                            .foregroundColor(ADATheme.hunterRed)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                        Spacer()
-                    } else if let entries = viewModel.leaderboard?.entries, entries.isEmpty {
-                        Spacer()
-                        Text("No finished matches yet — play a game to get on the board.")
-                            .font(ADATheme.uiFont(size: 13, weight: .medium))
-                            .foregroundColor(.white.opacity(0.4))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                        Spacer()
-                    } else {
-                        list
-                    }
+                if viewModel.isLoading && viewModel.leaderboard == nil {
+                    Spacer()
+                    ProgressView().tint(ADATheme.tacticalAmber)
+                    Spacer()
+                } else if let error = viewModel.errorMessage, viewModel.leaderboard == nil {
+                    Spacer()
+                    Text(error)
+                        .font(ADATheme.uiFont(size: 13, weight: .medium))
+                        .foregroundColor(ADATheme.hunterRed)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                    Spacer()
+                } else if let entries = viewModel.leaderboard?.entries, entries.isEmpty {
+                    Spacer()
+                    Text("No finished matches yet — play a game to get on the board.")
+                        .font(ADATheme.uiFont(size: 13, weight: .medium))
+                        .foregroundColor(.white.opacity(0.4))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                    Spacer()
+                } else {
+                    list
                 }
-                .adaptiveContentWidth()
             }
-            .obsidianBackdrop()
+            .adaptiveContentWidth()
             .navigationTitle("Leaderboard")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)

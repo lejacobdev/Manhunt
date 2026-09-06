@@ -12,45 +12,71 @@ struct LobbyView: View {
     @State private var joiningInvite: GameInvite?
     @State private var launchedGame: (player: GamePlayer, session: GameSession)?
     @State private var selectedTab: AppTab = .play
+    /// Continuous [0, 3] position across the 4 tabs, fractional mid-swipe — drives the
+    /// shared backdrop's interpolated tint. Kept in sync with `selectedTab` on a tap-driven
+    /// switch too (see the `onChange` below), so tapping a tab crossfades the color exactly
+    /// the same way swiping to it would, instead of only the swipe gesture animating it.
+    @State private var pageProgress: Double = 0
+    /// Bumped on every scroll/swipe touch anywhere in the paged content — purely an
+    /// activity pulse for FloatingTabBar to collapse itself on, unrelated to paging.
+    @State private var scrollActivity = 0
+
+    private var interpolatedBackdropAccent: Color {
+        let tabs = AppTab.allCases
+        let clamped = min(max(pageProgress, 0), Double(tabs.count - 1))
+        let lowerIndex = Int(clamped.rounded(.down))
+        let upperIndex = min(lowerIndex + 1, tabs.count - 1)
+        return Color.interpolate(from: tabs[lowerIndex].accent, to: tabs[upperIndex].accent, fraction: clamped - Double(lowerIndex))
+    }
 
     var body: some View {
         // Replaces the system TabView chrome with a floating pill + circle (see
-        // FloatingTabBar) — SwiftUI's TabView has no supported way to swap out its own
-        // bottom bar's visual, so this reimplements the "everyone mounted, only the
-        // selected one visible/interactive" behavior TabView otherwise gives for free
-        // (state — scroll position, loaded data — survives switching away and back).
+        // FloatingTabBar), and its swipe-between-pages gesture with a hand-rolled one (see
+        // SwipeablePager) — SwiftUI's TabView has no supported way to swap out its own
+        // bottom bar's visual, and its page style doesn't expose continuous drag progress,
+        // which the shared backdrop below needs to crossfade its tint smoothly while
+        // dragging rather than snapping once a swipe settles.
         ZStack(alignment: .bottom) {
-            ZStack {
-                playTab
-                    .opacity(selectedTab == .play ? 1 : 0)
-                    .allowsHitTesting(selectedTab == .play)
-                    .accessibilityHidden(selectedTab != .play)
+            // One shared backdrop instead of each tab owning its own — its rotation was
+            // already synchronized process-wide (see RadarSweepBackdrop), and hoisting it
+            // here means switching or swiping between tabs only ever crossfades this single
+            // instance's *color*, with the sweep itself never restarting or jumping.
+            RadarSweepBackdrop(accent: interpolatedBackdropAccent)
+                .edgesIgnoringSafeArea(.all)
 
-                FriendsView()
-                    .opacity(selectedTab == .friends ? 1 : 0)
-                    .allowsHitTesting(selectedTab == .friends)
-                    .accessibilityHidden(selectedTab != .friends)
-
-                LeaderboardView()
-                    .opacity(selectedTab == .leaderboard ? 1 : 0)
-                    .allowsHitTesting(selectedTab == .leaderboard)
-                    .accessibilityHidden(selectedTab != .leaderboard)
-
-                ProfileView()
-                    .opacity(selectedTab == .profile ? 1 : 0)
-                    .allowsHitTesting(selectedTab == .profile)
-                    .accessibilityHidden(selectedTab != .profile)
+            SwipeablePager(
+                tabs: AppTab.allCases,
+                selection: $selectedTab,
+                onProgressChange: { pageProgress = $0 },
+                onDragActivity: { scrollActivity += 1 }
+            ) { tab in
+                switch tab {
+                case .play: playTab
+                case .friends: FriendsView()
+                case .leaderboard: LeaderboardView()
+                case .profile: ProfileView()
+                }
             }
             // Reserves room at the bottom of every tab's own scroll content so the last
             // row/button isn't sitting underneath the floating bar drawn on top of it.
             .safeAreaInset(edge: .bottom) {
                 Color.clear.frame(height: 78)
             }
+            // Catches vertical scrolling inside a page's own ScrollView too — simultaneous
+            // so it never competes with (or steals) that ScrollView's own pan gesture, it
+            // only ever piggybacks on it to learn "something is being dragged right now."
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 8).onChanged { _ in scrollActivity += 1 }
+            )
 
-            FloatingTabBar(selection: $selectedTab)
+            FloatingTabBar(selection: $selectedTab, activitySignal: scrollActivity)
         }
         .tint(ADATheme.runnerGreen)
         .preferredColorScheme(.dark)
+        .onChange(of: selectedTab) { newValue in
+            guard let index = AppTab.allCases.firstIndex(of: newValue) else { return }
+            withAnimation(ADATheme.controlSpring) { pageProgress = Double(index) }
+        }
         // A scanned friend code can arrive at any moment — including while a match is on
         // screen — so the prompt is mounted at the tab root rather than inside Friends,
         // which may not be the selected tab when the link opens.
@@ -61,19 +87,15 @@ struct LobbyView: View {
 
     private var playTab: some View {
         NavigationStack {
-            ZStack {
-                // Same radar backdrop as AuthView (see RadarSweepBackdrop) — Mission
-                // Control shouldn't feel like a plain settings screen once sign-in
-                // already reads as part of the tactical HUD. Centered on the screen, not
-                // pinned to the top edge, so it reads as a circle instead of a clipped wedge.
-                RadarSweepBackdrop(accent: ADATheme.runnerGreen)
-                    .edgesIgnoringSafeArea(.all)
-
-                // Vertically centered rather than stacked from the top edge: this screen
-                // holds only a handful of controls, so top-anchoring left the whole lower
-                // half empty. minHeight keeps it centered when it fits and lets it scroll
-                // normally once invites/session cards push it past a screenful.
-                GeometryReader { proxy in
+            // No backdrop of its own — this is only ever used as a tab, and LobbyView's
+            // shared RadarSweepBackdrop (crossfading tint as the pager swipes) shows
+            // through from behind it.
+            //
+            // Vertically centered rather than stacked from the top edge: this screen
+            // holds only a handful of controls, so top-anchoring left the whole lower
+            // half empty. minHeight keeps it centered when it fits and lets it scroll
+            // normally once invites/session cards push it past a screenful.
+            GeometryReader { proxy in
                 ScrollView {
                     VStack(spacing: 18) {
                         header
@@ -124,9 +146,7 @@ struct LobbyView: View {
                     .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
                     .animation(ADATheme.controlSpring, value: updateChecker.available)
                 }
-                }
             }
-            .obsidianBackdrop()
             .sheet(isPresented: $showHistory) {
                 MatchHistoryView()
             }

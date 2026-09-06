@@ -9,43 +9,40 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                RadarSweepBackdrop(accent: ADATheme.spatialCyan)
-                    .edgesIgnoringSafeArea(.all)
+            // No backdrop of its own — this is only ever used as a tab, and LobbyView's
+            // shared RadarSweepBackdrop (crossfading tint as the pager swipes) shows
+            // through from behind it.
+            ScrollView {
+                VStack(spacing: 18) {
+                    ProfileBody(viewModel: viewModel, fallbackUser: authSession.currentUser)
 
-                ScrollView {
-                    VStack(spacing: 18) {
-                        ProfileBody(viewModel: viewModel, fallbackUser: authSession.currentUser)
-
-                        if viewModel.profile != nil {
-                            Button {
-                                showQRSheet = true
-                            } label: {
-                                HStack { Image(systemName: "qrcode"); Text("MY FRIEND CODE") }
-                            }
-                            .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
-                            .padding(.horizontal)
+                    if viewModel.profile != nil {
+                        Button {
+                            showQRSheet = true
+                        } label: {
+                            HStack { Image(systemName: "qrcode"); Text("MY FRIEND CODE") }
                         }
-
-                        Button("SIGN OUT") {
-                            Task {
-                                // Unregister while the auth token is still valid to make the
-                                // call with — a signed-out device shouldn't keep receiving
-                                // this account's pushes.
-                                await PushNotificationManager.shared.unregisterCurrentToken()
-                                authSession.signOut()
-                            }
-                        }
-                        .font(ADATheme.telemetryFont(size: 11))
-                        .foregroundColor(.white.opacity(0.3))
-                        .tracking(1.5)
-                        .padding(.top, 4)
+                        .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
+                        .padding(.horizontal)
                     }
-                    .padding(.vertical, 20)
-                    .adaptiveContentWidth()
+
+                    Button("SIGN OUT") {
+                        Task {
+                            // Unregister while the auth token is still valid to make the
+                            // call with — a signed-out device shouldn't keep receiving
+                            // this account's pushes.
+                            await PushNotificationManager.shared.unregisterCurrentToken()
+                            authSession.signOut()
+                        }
+                    }
+                    .font(ADATheme.telemetryFont(size: 11))
+                    .foregroundColor(.white.opacity(0.3))
+                    .tracking(1.5)
+                    .padding(.top, 4)
                 }
+                .padding(.vertical, 20)
+                .adaptiveContentWidth()
             }
-            .obsidianBackdrop()
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)

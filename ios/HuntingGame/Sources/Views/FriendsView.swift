@@ -12,11 +12,18 @@ struct FriendsView: View {
     /// nothing to dismiss, so the Done button would be inert.
     var inviteSessionCode: String? = nil
 
+    /// True in the standalone-sheet usage (opened from a lobby to invite friends), where
+    /// there's no shared backdrop underneath to show through — false as a tab, where
+    /// LobbyView's own shared, color-crossfading RadarSweepBackdrop already sits behind it.
+    private var needsOwnBackdrop: Bool { inviteSessionCode != nil }
+
     var body: some View {
         NavigationStack {
             ZStack {
-                RadarSweepBackdrop(accent: ADATheme.hunterRed)
-                    .edgesIgnoringSafeArea(.all)
+                if needsOwnBackdrop {
+                    RadarSweepBackdrop(accent: ADATheme.hunterRed)
+                        .edgesIgnoringSafeArea(.all)
+                }
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -83,7 +90,7 @@ struct FriendsView: View {
                     .animation(ADATheme.controlSpring, value: viewModel.incomingRequests.map(\.id))
                 }
             }
-            .obsidianBackdrop()
+            .background((needsOwnBackdrop ? ADATheme.obsidianBackground : Color.clear).edgesIgnoringSafeArea(.all))
             .navigationTitle("Friends")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarColorScheme(.dark, for: .navigationBar)
