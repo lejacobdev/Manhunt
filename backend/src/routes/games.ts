@@ -281,20 +281,19 @@ gamesRouter.get('/history/mine', async (req: AuthedRequest, res) => {
 
 /**
  * Removes a single match from this account's own history (the swipe-to-delete row action)
- * — same hide, just scoped to one GamePlayer row instead of every ended one. The row still
- * has to be this caller's own and belong to a finished match, for the same reasons as
- * POST /history/clear below.
+ * — the row just has to be this caller's own. Unlike POST /history/clear below, this isn't
+ * restricted to finished matches: a stale/abandoned LOBBY membership (e.g. from testing, or
+ * a game that never actually started) is exactly the kind of clutter someone would want to
+ * swipe away, and hiding it here is purely a display-list change — it's a separate row from
+ * (and doesn't touch) GET /active/mine, which is what actually still lets you rejoin a
+ * genuinely open match.
  */
 gamesRouter.post('/history/:playerId/hide', async (req: AuthedRequest, res) => {
   const player = await prisma.gamePlayer.findUnique({
     where: { id: req.params.playerId },
-    include: { session: true },
   });
   if (!player || player.userId !== req.user!.userId) {
     return res.status(404).json({ error: 'History entry not found.' });
-  }
-  if (player.session.status !== 'ENDED') {
-    return res.status(409).json({ error: 'Only finished matches can be removed from history.' });
   }
   await prisma.gamePlayer.update({ where: { id: player.id }, data: { hiddenFromHistory: true } });
   return res.status(204).send();

@@ -52,16 +52,16 @@ struct MatchHistoryView: View {
                                     .listRowSeparator(.hidden)
                                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                        // Only a finished match can be individually removed —
-                                        // matches POST /history/:id/hide's own restriction, and
-                                        // a still-open one wouldn't make sense to "delete" while
-                                        // it's still tracked live via GET /active/mine anyway.
-                                        if entry.session.status == .ended {
-                                            Button(role: .destructive) {
-                                                Task { await hide(entry) }
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
-                                            }
+                                        // Any row can be swiped away, including a still-open
+                                        // lobby/active one (e.g. a stale test game you'll never
+                                        // return to) — this only hides it from this list, it's
+                                        // a separate row from (and doesn't touch) the current-
+                                        // game card above, which is what actually still lets you
+                                        // rejoin a genuinely open match via GET /active/mine.
+                                        Button(role: .destructive) {
+                                            Task { await hide(entry) }
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
                                         }
                                     }
                             }
