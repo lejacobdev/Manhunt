@@ -8,6 +8,8 @@ export interface CreateSessionInput {
   hostId: string;
   durationMinutes: number;
   radarIntervalSec: number;
+  /** Empty is valid — setup can finish later from the lobby via `setBoundary`, and the
+   *  match can't start until it's been set (see the `/start` route's guard). */
   boundsPolygon: Point2D[];
   powerUpCount?: number;
   mode?: GameMode;
@@ -15,6 +17,15 @@ export interface CreateSessionInput {
   jailPolygon?: Point2D[];
   gamblingEnabled?: boolean;
 }
+
+const POWER_UP_TYPES: PowerUpType[] = [
+  'INVISIBILITY_10MIN',
+  'GHOST_DECOY',
+  'EMP_JAMMER',
+  'THERMAL_VISION',
+  'ADRENALINE',
+  'SAFE_ZONE_FLARE',
+];
 
 export interface GameSettings {
   durationMinutes: number;
@@ -34,14 +45,9 @@ export class GameService {
       code = generateGameCode();
     }
 
-    // Standard mode's alternate win condition: reach a designated, verified
-    // public-land extraction point. Auto-selected from real Overpass data
-    // (parks/footways/plazas) rather than requiring host-side UI to place one.
-    let extractionPoint: Point2D | undefined;
-    if ((input.mode ?? 'STANDARD') === 'STANDARD') {
-      const extractionCandidates = await overpassSpawner.generatePublicPowerUpSpawns(input.boundsPolygon, 1);
-      extractionPoint = extractionCandidates[0];
-    }
+    const mode = input.mode ?? 'STANDARD';
+    const hasBoundary = input.boundsPolygon.length >= 3;
+    const extractionPoint = hasBoundary ? await this.generateExtractionPoint(input.boundsPolygon, mode) : undefined;
 
     const settings: GameSettings = {
       durationMinutes: input.durationMinutes,
@@ -58,38 +64,47 @@ export class GameService {
         code,
         hostId: input.hostId,
         status: 'LOBBY',
-        mode: input.mode ?? 'STANDARD',
+        mode,
         settings: settings as unknown as Prisma.InputJsonValue,
       },
     });
 
-    const spawnPoints = await overpassSpawner.generatePublicPowerUpSpawns(
-      input.boundsPolygon,
-      input.powerUpCount ?? 8
-    );
+    // A host can now open the lobby before drawing the play area at all — spawns only get
+    // laid out once there's a real boundary to place them inside: here immediately if one
+    // was supplied up front, or later from the settings route once it is.
+    if (hasBoundary) {
+      await this.layOutSpawns(session.id, input.boundsPolygon, input.durationMinutes, input.powerUpCount);
+    }
 
-    const powerUpTypes: PowerUpType[] = [
-      'INVISIBILITY_10MIN',
-      'GHOST_DECOY',
-      'EMP_JAMMER',
-      'THERMAL_VISION',
-      'ADRENALINE',
-      'SAFE_ZONE_FLARE',
-    ];
+    return session;
+  }
 
-    const expiresAt = new Date(Date.now() + input.durationMinutes * 60 * 1000);
+  /** The extraction point for STANDARD mode, generated from a boundary — used both at
+   *  creation and by the settings route when the boundary is set later from the lobby. */
+  public async generateExtractionPoint(boundsPolygon: Point2D[], mode: GameMode): Promise<Point2D | undefined> {
+    if (mode !== 'STANDARD') return undefined;
+    const candidates = await overpassSpawner.generatePublicPowerUpSpawns(boundsPolygon, 1);
+    return candidates[0];
+  }
 
+  /**
+   * Scatters power-up spawns across a play-area boundary. Called exactly once per session,
+   * either at creation (a boundary supplied up front) or later from the lobby settings route
+   * — whichever happens first. Deliberately not re-callable after spawns already exist:
+   * they'd be stranded outside a redrawn play area (see the settings route's guard).
+   */
+  public async layOutSpawns(sessionId: string, boundsPolygon: Point2D[], durationMinutes: number, powerUpCount?: number) {
+    const spawnPoints = await overpassSpawner.generatePublicPowerUpSpawns(boundsPolygon, powerUpCount ?? 8);
+    const expiresAt = new Date(Date.now() + durationMinutes * 60 * 1000);
     await prisma.powerUpSpawn.createMany({
       data: spawnPoints.map((pt) => ({
-        sessionId: session.id,
-        type: powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)],
+        sessionId,
+        type: POWER_UP_TYPES[Math.floor(Math.random() * POWER_UP_TYPES.length)],
         latitude: pt.lat,
         longitude: pt.lng,
         expiresAt,
       })),
     });
-
-    return session;
   }
 
   public async joinSession(

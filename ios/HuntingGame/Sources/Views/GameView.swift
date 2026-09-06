@@ -240,6 +240,7 @@ struct GameView: View {
             SpatialRadarView(
                 distanceMeters: viewModel.nearestHunterDistance,
                 bearingDegrees: viewModel.nearestHunterBearing,
+                hunters: viewModel.visibleHunterBearings,
                 currentHeading: viewModel.currentHeadingDegrees,
                 role: viewModel.role,
                 diameter: ADATheme.dockPanelWidth
@@ -364,6 +365,7 @@ struct GameView: View {
                 SpatialRadarView(
                     distanceMeters: viewModel.nearestHunterDistance,
                     bearingDegrees: viewModel.nearestHunterBearing,
+                    hunters: viewModel.visibleHunterBearings,
                     currentHeading: viewModel.currentHeadingDegrees,
                     role: viewModel.role,
                     diameter: ADATheme.dockPanelWidth
@@ -756,7 +758,7 @@ struct GameView: View {
         // the host/spectator roster feed) — same sentinel, same fix: don't plot it.
         var blips = viewModel.allPlayers
             .filter { $0.id != viewModel.gamePlayerId && !($0.lat == 0 && $0.lng == 0) }
-            .map { GameMapView.Blip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role) }
+            .map { GameMapView.Blip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role, username: $0.username) }
 
         if let selfCoordinate = viewModel.currentLocation?.coordinate {
             blips.append(GameMapView.Blip(id: viewModel.gamePlayerId, coordinate: selfCoordinate, kind: viewModel.role))

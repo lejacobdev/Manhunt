@@ -1,12 +1,15 @@
 import SwiftUI
 
-/// The runner's tactical compass: a Canvas-drawn radar reticle with a rotating
-/// scan sweep, a spring-loaded bearing needle that always points at the
-/// nearest hunter, and a live distance readout. Feeds the escalating
-/// CoreHaptics proximity pulse once distance drops under 25m.
+/// The runner's tactical compass: a Canvas-drawn radar reticle with a rotating scan sweep,
+/// one spring-loaded bearing needle per visible hunter, and a live distance readout for
+/// whichever is closest. Feeds the escalating CoreHaptics proximity pulse once the nearest
+/// distance drops under 25m.
 struct SpatialRadarView: View {
+    /// Legacy single-target fallback, used only when `hunters` is empty (e.g. a stale
+    /// server or the Xcode preview below) — otherwise `hunters` is the source of truth.
     let distanceMeters: Int?
     let bearingDegrees: Double?
+    var hunters: [HunterBearing] = []
     let currentHeading: Double
     let role: PlayerRole
     /// Outer diameter of the gauge. Every internal measurement is derived from this as a
@@ -69,36 +72,43 @@ struct SpatialRadarView: View {
                 .frame(width: 240 * scale, height: 240 * scale)
                 .rotationEffect(.degrees(scanRotation))
 
-            // Bearing needle + distance readout.
-            ZStack {
-                if hasSignal {
-                    VStack {
-                        Image(systemName: "triangle.fill")
-                            .font(.system(size: 16 * scale, weight: .bold))
-                            .foregroundColor(accentColor)
-                            .shadow(color: accentColor, radius: 8 * scale)
-                            .scaleEffect(pulseScale)
-                        Spacer()
-                    }
-                    .frame(height: 220 * scale)
-                    .rotationEffect(.degrees((bearingDegrees ?? 0) - currentHeading))
-                    .animation(ADATheme.spatialSpring, value: (bearingDegrees ?? 0) - currentHeading)
-                }
-
+            // One needle per visible hunter — the nearest is bigger, glowing, and pulses;
+            // the rest are dim so they read as "also out there" without competing with it.
+            ForEach(Array(effectiveHunters.enumerated()), id: \.element.hunterId) { index, hunter in
+                let isNearest = index == 0
                 VStack(spacing: 2 * scale) {
-                    Text(distanceMeters.map(String.init) ?? "--")
-                        .font(ADATheme.displayFont(size: 38 * scale))
-                        .foregroundColor(.white)
-                        .contentTransition(.numericText())
-                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: distanceMeters)
-                        .minimumScaleFactor(0.5)
-                        .lineLimit(1)
-
-                    Text(hasSignal ? "METERS" : "ACQUIRING")
-                        .font(ADATheme.telemetryFont(size: 10 * scale))
-                        .foregroundColor(.white.opacity(0.6))
-                        .tracking(2)
+                    Image(systemName: "triangle.fill")
+                        .font(.system(size: (isNearest ? 16 : 9) * scale, weight: .bold))
+                        .foregroundColor(isNearest ? accentColor : .white.opacity(0.45))
+                        .shadow(color: isNearest ? accentColor : .clear, radius: isNearest ? 8 * scale : 0)
+                        .scaleEffect(isNearest ? pulseScale : 1.0)
+                    if !isNearest {
+                        // Every non-nearest hunter still gets its own distance label — the
+                        // big center readout only ever shows the closest one.
+                        Text("\(hunter.distanceMeters)m")
+                            .font(ADATheme.telemetryFont(size: 8 * scale))
+                            .foregroundColor(.white.opacity(0.4))
+                    }
+                    Spacer()
                 }
+                .frame(height: 220 * scale)
+                .rotationEffect(.degrees(hunter.bearingDegrees - currentHeading))
+                .animation(ADATheme.spatialSpring, value: hunter.bearingDegrees - currentHeading)
+            }
+
+            VStack(spacing: 2 * scale) {
+                Text(nearestDistance.map(String.init) ?? "--")
+                    .font(ADATheme.displayFont(size: 38 * scale))
+                    .foregroundColor(.white)
+                    .contentTransition(.numericText())
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: nearestDistance)
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+
+                Text(hasSignal ? "METERS" : "ACQUIRING")
+                    .font(ADATheme.telemetryFont(size: 10 * scale))
+                    .foregroundColor(.white.opacity(0.6))
+                    .tracking(2)
             }
         }
         .frame(width: diameter, height: diameter)
@@ -111,23 +121,32 @@ struct SpatialRadarView: View {
                 pulseScale = 1.3
             }
         }
-        .onChange(of: distanceMeters) { newValue in
+        .onChange(of: nearestDistance) { newValue in
             handleProximityChange(newValue)
         }
     }
 
-    private var hasSignal: Bool { distanceMeters != nil }
+    /// `hunters` when the server sent any; otherwise the legacy single distance/bearing
+    /// pair wrapped as a one-item list, so the rendering loop above never needs two paths.
+    private var effectiveHunters: [HunterBearing] {
+        if !hunters.isEmpty { return hunters }
+        guard let distanceMeters, let bearingDegrees else { return [] }
+        return [HunterBearing(hunterId: "nearest", username: "", distanceMeters: distanceMeters, bearingDegrees: bearingDegrees)]
+    }
+
+    private var nearestDistance: Int? { effectiveHunters.first?.distanceMeters }
+    private var hasSignal: Bool { nearestDistance != nil }
 
     private var accentColor: Color {
-        if let distanceMeters, role == .runner {
-            return ADATheme.dangerColor(distanceMeters: distanceMeters)
+        if let nearestDistance, role == .runner {
+            return ADATheme.dangerColor(distanceMeters: nearestDistance)
         }
         return ADATheme.accent(for: role)
     }
 
     private var haloOpacity: Double {
-        guard let distanceMeters, role == .runner else { return 0.15 }
-        return distanceMeters < 15 ? 0.35 : (distanceMeters < 50 ? 0.22 : 0.15)
+        guard let nearestDistance, role == .runner else { return 0.15 }
+        return nearestDistance < 15 ? 0.35 : (nearestDistance < 50 ? 0.22 : 0.15)
     }
 
     private func handleProximityChange(_ distance: Int?) {

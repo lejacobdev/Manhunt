@@ -19,6 +19,10 @@ final class GameLobbyViewModel: ObservableObject {
     // so their read-only summary always reflects the current values.
     @Published var durationMinutes: Double
     @Published var radarIntervalSec: Double
+    /// The play area being drawn, before it's saved. Once `session.settings.boundsPolygon`
+    /// has 3+ points the area is locked in server-side, so this stops being editable —
+    /// see `isBoundarySet`.
+    @Published var boundaryPoints: [Coordinate]
     @Published var jailEnabled: Bool
     @Published var jailPoints: [Coordinate]
     @Published var gamblingEnabled: Bool
@@ -27,12 +31,18 @@ final class GameLobbyViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
 
     var isHost: Bool { session.hostId == player.userId }
+    var isBoundarySet: Bool { session.settings.boundsPolygon.count >= 3 }
+    /// The one thing setup actually requires — everything else (jail, gambling, the exact
+    /// duration) has a working default and can be changed later, but there's no match
+    /// without a play area to generate power-ups and an extraction point inside.
+    var isReadyToStart: Bool { isBoundarySet }
 
     init(session: GameSession, player: GamePlayer) {
         self.session = session
         self.player = player
         self.durationMinutes = Double(session.settings.durationMinutes)
         self.radarIntervalSec = Double(session.settings.radarIntervalSec)
+        self.boundaryPoints = session.settings.boundsPolygon
         self.jailEnabled = session.settings.jailEnabled ?? false
         self.jailPoints = session.settings.jailPolygon ?? []
         self.gamblingEnabled = session.settings.gamblingEnabled ?? false
@@ -63,6 +73,7 @@ final class GameLobbyViewModel: ObservableObject {
                 guard !self.isHost else { return }
                 self.durationMinutes = Double(settings.durationMinutes)
                 self.radarIntervalSec = Double(settings.radarIntervalSec)
+                self.boundaryPoints = settings.boundsPolygon
                 self.jailEnabled = settings.jailEnabled ?? false
                 self.jailPoints = settings.jailPolygon ?? []
                 self.gamblingEnabled = settings.gamblingEnabled ?? false
@@ -93,6 +104,14 @@ final class GameLobbyViewModel: ObservableObject {
 
     func saveSettings() async {
         guard isHost else { return }
+        if !isBoundarySet && boundaryPoints.count < 3 {
+            errorMessage = "Draw the play area (at least 3 points) before saving."
+            return
+        }
+        if jailEnabled && jailPoints.count < 3 {
+            errorMessage = "Draw a jail area (at least 3 points), or turn jail mode off."
+            return
+        }
         isSavingSettings = true
         defer { isSavingSettings = false }
         do {
@@ -100,6 +119,9 @@ final class GameLobbyViewModel: ObservableObject {
                 code: session.code,
                 durationMinutes: Int(durationMinutes),
                 radarIntervalSec: Int(radarIntervalSec),
+                // Only ever sent the one time it's actually unset — once the play area is
+                // locked in, resending the same points would just be rejected server-side.
+                boundsPolygon: isBoundarySet ? nil : boundaryPoints,
                 jailEnabled: jailEnabled,
                 jailPolygon: jailEnabled ? jailPoints : nil,
                 gamblingEnabled: gamblingEnabled
@@ -111,7 +133,7 @@ final class GameLobbyViewModel: ObservableObject {
     }
 
     func startGame() async {
-        guard isHost else { return }
+        guard isHost, isReadyToStart else { return }
         isStarting = true
         defer { isStarting = false }
         do {

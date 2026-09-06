@@ -9,6 +9,7 @@ import { zodErrorMessage } from '../utils/validation';
 // the caches are only read inside route handlers, which run long after both
 // modules have finished loading, never at module top level.
 import { io, sessionSettingsCache, sessionStartedAtCache } from '../server';
+import { GameMode } from '../types';
 
 export const gamesRouter = Router();
 gamesRouter.use(requireAuth);
@@ -19,7 +20,9 @@ const createSessionSchema = z
   .object({
     durationMinutes: z.number().min(5).max(240),
     radarIntervalSec: z.number().min(15).max(600),
-    boundsPolygon: z.array(pointSchema).min(3),
+    // Empty is valid now — hosting opens the lobby immediately, and the play area gets
+    // drawn from inside it (via PATCH /:code/settings) before the host can start.
+    boundsPolygon: z.array(pointSchema).optional().default([]),
     powerUpCount: z.number().min(1).max(30).optional(),
     mode: z.enum(['STANDARD', 'INFECTION', 'SQUAD']).optional(),
     // The host plays too — same role choice as anyone joining, no separate
@@ -92,6 +95,9 @@ gamesRouter.post('/:code/join', async (req: AuthedRequest, res) => {
 const updateSettingsSchema = z.object({
   durationMinutes: z.number().min(5).max(240).optional(),
   radarIntervalSec: z.number().min(15).max(600).optional(),
+  // Only meaningful the first time — see the guard below. Once spawns exist they're tied to
+  // this exact shape, so a later redraw would strand them outside the new play area.
+  boundsPolygon: z.array(pointSchema).optional(),
   jailEnabled: z.boolean().optional(),
   jailPolygon: z.array(pointSchema).optional(),
   gamblingEnabled: z.boolean().optional(),
@@ -99,10 +105,8 @@ const updateSettingsSchema = z.object({
 
 /**
  * Host-only settings changes from the pre-match lobby, so a host doesn't have to tear the
- * game down and re-host just to change the duration or turn jail on once everyone's in.
- *
- * Deliberately cannot change `boundsPolygon`: power-up spawns and the extraction point were
- * generated from it at creation and would be stranded outside a redrawn play area.
+ * game down and re-host just to change the duration, draw the play area, or turn jail on
+ * once everyone's in.
  */
 gamesRouter.patch('/:code/settings', async (req: AuthedRequest, res) => {
   const session = await gameService.getSessionByCode(req.params.code);
@@ -117,13 +121,28 @@ gamesRouter.patch('/:code/settings', async (req: AuthedRequest, res) => {
   if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
 
   const current = session.settings as unknown as GameSettings;
+  const settingBoundaryNow = (parsed.data.boundsPolygon?.length ?? 0) >= 3;
+  if (parsed.data.boundsPolygon && current.boundsPolygon.length >= 3) {
+    return res.status(409).json({ error: 'The play area is already set for this game and can\'t be redrawn.' });
+  }
+  if (parsed.data.boundsPolygon && !settingBoundaryNow) {
+    return res.status(400).json({ error: 'Draw a play-area boundary with at least 3 points.' });
+  }
+
   const merged: GameSettings = { ...current, ...parsed.data };
   // Turning jail on needs an area to hold people in — either one drawn in this request or
-  // one already stored from when the game was created.
+  // one already stored from a previous save.
   if (merged.jailEnabled && (merged.jailPolygon?.length ?? 0) < 3) {
     return res.status(400).json({ error: 'Draw a jail area with at least 3 points before enabling jail mode.' });
   }
   if (!merged.jailEnabled) merged.jailPolygon = undefined;
+
+  // First time the boundary is set: lay out the extraction point and power-up spawns that
+  // couldn't exist until there was a real play area to place them inside (see createSession).
+  if (settingBoundaryNow) {
+    merged.extractionPoint = await gameService.generateExtractionPoint(merged.boundsPolygon, session.mode as GameMode);
+    await gameService.layOutSpawns(session.id, merged.boundsPolygon, merged.durationMinutes);
+  }
 
   const updated = await gameService.updateSessionSettings(session.id, merged);
   sessionSettingsCache.set(session.code, merged);
@@ -151,6 +170,10 @@ gamesRouter.post('/:code/start', async (req: AuthedRequest, res) => {
   if (!session) return res.status(404).json({ error: 'Game not found.' });
   if (session.hostId !== req.user!.userId) {
     return res.status(403).json({ error: 'Only the host can start the game.' });
+  }
+  const settings = session.settings as unknown as GameSettings;
+  if (settings.boundsPolygon.length < 3) {
+    return res.status(409).json({ error: 'Draw the play area in Settings before starting.' });
   }
   const started = await gameService.startSession(session.id);
   // Live-patch the socket layer's cache so already-connected sockets (and any that

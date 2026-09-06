@@ -10,6 +10,9 @@ struct GameMapView: UIViewRepresentable {
         let id: String
         let coordinate: CLLocationCoordinate2D
         let kind: PlayerRole
+        /// Shown as a small label under the pin — nil for your own blip (no need to label
+        /// yourself) and always set for everyone else's.
+        var username: String? = nil
     }
 
     let players: [Blip]
@@ -68,8 +71,11 @@ struct GameMapView: UIViewRepresentable {
         // in place (their @objc dynamic coordinate is KVO-observed by MapKit),
         // and only actually add/remove annotations that entered or left.
         var desired: [String: (CLLocationCoordinate2D, BlipAnnotation.Kind)] = [:]
+        var usernames: [String: String] = [:]
         for player in players {
-            desired["player:\(player.id)"] = (player.coordinate, .player(player.kind))
+            let key = "player:\(player.id)"
+            desired[key] = (player.coordinate, .player(player.kind))
+            if let username = player.username { usernames[key] = username }
         }
         for decoy in decoys where decoy.isDecoy {
             desired["decoy:\(decoy.id)"] = (CLLocationCoordinate2D(latitude: decoy.lat, longitude: decoy.lng), .decoy)
@@ -104,6 +110,7 @@ struct GameMapView: UIViewRepresentable {
                     replacement.blipId = id
                     replacement.coordinate = coordinate
                     replacement.kind = kind
+                    replacement.username = usernames[id]
                     toAdd.append(replacement)
                 } else {
                     annotation.coordinate = coordinate
@@ -113,6 +120,7 @@ struct GameMapView: UIViewRepresentable {
                 annotation.blipId = id
                 annotation.coordinate = coordinate
                 annotation.kind = kind
+                annotation.username = usernames[id]
                 toAdd.append(annotation)
             }
         }
@@ -266,21 +274,56 @@ struct GameMapView: UIViewRepresentable {
                 view.markerTintColor = UIColor(ADATheme.accent(for: role))
                 view.glyphImage = UIImage(systemName: role == .hunter ? "figure.run" : "figure.walk")
                 view.canShowCallout = false
+                Self.applyNameLabel(blip.username, to: view)
             case .decoy:
                 view.markerTintColor = UIColor(ADATheme.spatialCyan)
                 view.glyphImage = UIImage(systemName: "person.fill.questionmark")
                 view.canShowCallout = false
+                Self.applyNameLabel(nil, to: view)
             case .extraction:
                 view.markerTintColor = UIColor(ADATheme.runnerGreen)
                 view.glyphImage = UIImage(systemName: "flag.checkered")
                 view.canShowCallout = false
+                Self.applyNameLabel(nil, to: view)
             case .powerUpSpawn(_, let type):
                 view.markerTintColor = UIColor(ADATheme.accent(for: type))
                 view.glyphImage = UIImage(systemName: type.iconName)
                 view.canShowCallout = true
                 view.detailCalloutAccessoryView = nil
+                Self.applyNameLabel(nil, to: view)
             }
             return view
+        }
+
+        /// A small always-visible name pill under the marker — unlike a callout, it doesn't
+        /// need a tap to show. Same reused `MKMarkerAnnotationView` the pin already is, so
+        /// this only ever adds/updates/removes one tagged subview rather than changing the
+        /// marker itself.
+        private static let nameLabelTag = 9001
+
+        private static func applyNameLabel(_ username: String?, to view: MKMarkerAnnotationView) {
+            view.subviews.filter { $0.tag == nameLabelTag }.forEach { $0.removeFromSuperview() }
+            guard let username, !username.isEmpty else { return }
+
+            let label = UILabel()
+            label.tag = nameLabelTag
+            label.text = username.uppercased()
+            label.font = .systemFont(ofSize: 10, weight: .bold)
+            label.textColor = .white
+            label.backgroundColor = UIColor.black.withAlphaComponent(0.6)
+            label.textAlignment = .center
+            label.layer.cornerRadius = 6
+            label.layer.masksToBounds = true
+            label.sizeToFit()
+            label.frame = label.frame.insetBy(dx: -6, dy: -3)
+
+            // Fixed offset rather than derived from `view.bounds`: at this point in
+            // `viewFor annotation`, before MapKit has added the view to its hierarchy and
+            // run layout, a freshly-created marker's bounds can still read as zero — a
+            // constant matching the standard marker balloon's own size is more reliable
+            // than a fraction of a size that might not be resolved yet.
+            label.center = CGPoint(x: 15, y: 42)
+            view.addSubview(label)
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
@@ -317,5 +360,6 @@ private final class BlipAnnotation: NSObject, MKAnnotation {
     var blipId: String = ""
     @objc dynamic var coordinate = CLLocationCoordinate2D()
     var kind: Kind = .decoy
+    var username: String?
     var title: String? { if case .powerUpSpawn(_, let type) = kind { return type.displayName } else { return nil } }
 }

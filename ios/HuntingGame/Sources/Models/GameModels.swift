@@ -227,9 +227,32 @@ struct DecoyBlip: Codable, Identifiable {
     let isDecoy: Bool
 }
 
-struct CompassUpdate: Codable {
+/// One hunter's bearing/distance from the runner's own position, as computed server-side.
+struct HunterBearing: Codable, Identifiable {
+    let hunterId: String
+    let username: String
     let distanceMeters: Int
     let bearingDegrees: Double
+    var id: String { hunterId }
+}
+
+struct CompassUpdate: Codable {
+    /// The nearest hunter's distance/bearing — kept alongside `hunters` (equal to its
+    /// first, closest entry) for the Watch app and Live Activity, which only ever show one.
+    let distanceMeters: Int
+    let bearingDegrees: Double
+    /// Every currently-visible hunter, nearest first. Absent decodes as empty rather than
+    /// failing — a defensive fallback, not an expected shape from this server.
+    let hunters: [HunterBearing]
+
+    enum CodingKeys: String, CodingKey { case distanceMeters, bearingDegrees, hunters }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        distanceMeters = try container.decode(Int.self, forKey: .distanceMeters)
+        bearingDegrees = try container.decode(Double.self, forKey: .bearingDegrees)
+        hunters = try container.decodeIfPresent([HunterBearing].self, forKey: .hunters) ?? []
+    }
 }
 
 struct RadarBroadcast: Codable {

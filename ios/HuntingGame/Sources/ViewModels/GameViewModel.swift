@@ -559,6 +559,7 @@ final class GameViewModel: ObservableObject {
 
     var nearestHunterDistance: Int? { socket.compass?.distanceMeters }
     var nearestHunterBearing: Double? { socket.compass?.bearingDegrees }
+    var visibleHunterBearings: [HunterBearing] { socket.compass?.hunters ?? [] }
     var zone: ZoneUpdate? { socket.zone }
     /// Flares that haven't burned out yet — an expired one stops protecting anyone
     /// server-side, so it shouldn't keep drawing a bubble on the map either.

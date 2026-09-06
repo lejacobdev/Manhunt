@@ -375,20 +375,29 @@ io.on('connection', (socket: Socket) => {
       );
 
       if (p.role === 'RUNNER' && !p.isCaught && hunters.length > 0) {
-        let minDist = Infinity;
-        let nearestHunterBearing = 0;
         const rPt = turf.point([p.lng, p.lat]);
-        for (const h of hunters) {
-          const hPt = turf.point([h.lng, h.lat]);
-          const dist = turf.distance(rPt, hPt, { units: 'meters' });
-          if (dist < minDist) {
-            minDist = dist;
-            nearestHunterBearing = turf.bearing(rPt, hPt);
-          }
-        }
+        // One entry per visible hunter, not just the nearest — the runner's compass draws
+        // an arrow toward each of them, with the closest one picked out as the headline
+        // number. Sorted nearest-first so the client can just take index 0 as "closest"
+        // without re-deriving it.
+        const bearings = hunters
+          .map((h) => {
+            const hPt = turf.point([h.lng, h.lat]);
+            return {
+              hunterId: h.id,
+              username: h.username,
+              distanceMeters: Math.round(turf.distance(rPt, hPt, { units: 'meters' })),
+              bearingDegrees: (turf.bearing(rPt, hPt) + 360) % 360,
+            };
+          })
+          .sort((a, b) => a.distanceMeters - b.distanceMeters);
+
         socket.emit('compass_update', {
-          distanceMeters: Math.round(minDist),
-          bearingDegrees: (nearestHunterBearing + 360) % 360,
+          // Kept at the top level (redundant with bearings[0]) for older clients/watch
+          // app code that only ever reads a single nearest distance/bearing.
+          distanceMeters: bearings[0].distanceMeters,
+          bearingDegrees: bearings[0].bearingDegrees,
+          hunters: bearings,
         });
       }
 

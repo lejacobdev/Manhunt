@@ -201,12 +201,14 @@ final class APIClient {
         return resp.session
     }
 
-    /// Host-only lobby edit — everything but the boundary polygon (fixed at creation,
-    /// since power-up spawns and the extraction point were already generated from it).
-    func updateSessionSettings(code: String, durationMinutes: Int?, radarIntervalSec: Int?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, gamblingEnabled: Bool?) async throws -> GameSession {
+    /// Host-only lobby edit. `boundsPolygon` only actually does anything the first time —
+    /// once the play area is set, spawns are already tied to that exact shape and the
+    /// server rejects a redraw.
+    func updateSessionSettings(code: String, durationMinutes: Int?, radarIntervalSec: Int?, boundsPolygon: [Coordinate]?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, gamblingEnabled: Bool?) async throws -> GameSession {
         struct Body: Encodable {
             let durationMinutes: Int?
             let radarIntervalSec: Int?
+            let boundsPolygon: [Coordinate]?
             let jailEnabled: Bool?
             let jailPolygon: [Coordinate]?
             let gamblingEnabled: Bool?
@@ -214,7 +216,7 @@ final class APIClient {
         struct Response: Decodable { let session: GameSession }
         let resp: Response = try await patch(
             "/games/\(code)/settings",
-            body: Body(durationMinutes: durationMinutes, radarIntervalSec: radarIntervalSec, jailEnabled: jailEnabled, jailPolygon: jailPolygon, gamblingEnabled: gamblingEnabled)
+            body: Body(durationMinutes: durationMinutes, radarIntervalSec: radarIntervalSec, boundsPolygon: boundsPolygon, jailEnabled: jailEnabled, jailPolygon: jailPolygon, gamblingEnabled: gamblingEnabled)
         )
         return resp.session
     }

@@ -7,7 +7,7 @@ struct FriendsView: View {
 
     /// When set, this sheet was opened from a lobby the user is currently hosting/in —
     /// friends get an INVITE button that sends them a lobby invite for this session.
-    var inviteSessionCode: String?
+    var inviteSessionCode: String? = nil
 
     var body: some View {
         NavigationStack {
