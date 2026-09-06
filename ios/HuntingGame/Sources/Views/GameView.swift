@@ -50,15 +50,11 @@ struct GameView: View {
             VStack {
                 topBar
                 Spacer()
-                // Nothing here floats mid-screen: everything below hugs the bottom
-                // edge, so the map stays visible through the middle of the screen.
-                // Only floats up here — aligned above the right dock column — when
-                // that column is actually occupied by the host panel; a non-host
-                // hunter/runner has nothing on the right, so their radar lives in the
-                // bottom dock's right slot instead (see rightDockPanels).
-                if (viewModel.role == .runner || viewModel.role == .hunter) && viewModel.isHost {
-                    radarDock
-                }
+                // Nothing here floats mid-screen: everything below hugs the bottom edge,
+                // so the map stays visible through the middle of the screen. The radar/
+                // compass docks inside bottomDock's own right column (see rightDockPanels)
+                // rather than floating separately above it, so expanding a panel in one
+                // column never shifts the other column's vertical position.
                 bottomDock
             }
             .adaptiveContentWidth(ADATheme.dockContentWidth)
@@ -235,26 +231,6 @@ struct GameView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
-    /// The runner's proximity compass — shrunk down and docked above the right-hand
-    /// column (where the host panel lives) instead of a huge circle dominating the
-    /// screen, with its own left/right edges matching that column's.
-    private var radarDock: some View {
-        HStack {
-            Spacer()
-            SpatialRadarView(
-                distanceMeters: viewModel.role == .hunter ? nil : viewModel.nearestHunterDistance,
-                bearingDegrees: viewModel.role == .hunter ? nil : viewModel.nearestHunterBearing,
-                targets: radarTargets,
-                currentHeading: viewModel.currentHeadingDegrees,
-                role: viewModel.role,
-                diameter: ADATheme.dockPanelWidth
-            )
-            .transition(.scale.combined(with: .opacity))
-        }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
-    }
-
     /// Bearings for whichever role this device is playing, mapped into the radar gauge's
     /// role-neutral shape — a hunter's radar and a runner's compass share the same visual,
     /// just pointed at the opposite side.
@@ -376,9 +352,12 @@ struct GameView: View {
 
     private var rightDockPanels: [AnyView] {
         var panels: [AnyView] = []
-        // A non-host hunter/runner has no host panel to dock the compass above (see the
-        // `radarDock` placement further up), so it takes this slot instead.
-        if (viewModel.role == .runner || viewModel.role == .hunter) && !viewModel.isHost {
+        // Lives in the right column itself (above the host panel, for a host) rather than
+        // floating separately above the whole dock — floating it above meant expanding the
+        // *left* column (e.g. the hunter's runner list) pushed this independently-positioned
+        // gauge upward too, since both sat below the same flexible Spacer. Docked here, it
+        // only ever moves in response to this column's own content.
+        if viewModel.role == .runner || viewModel.role == .hunter {
             panels.append(AnyView(
                 SpatialRadarView(
                     distanceMeters: viewModel.role == .hunter ? nil : viewModel.nearestHunterDistance,
