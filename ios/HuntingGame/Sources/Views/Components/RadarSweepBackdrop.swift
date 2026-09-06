@@ -13,12 +13,11 @@ struct RadarSweepBackdrop: View {
 
     var body: some View {
         GeometryReader { proxy in
-            // Anchoring the circle's actual center at the screen's top edge (the previous
-            // behavior) meant only its bottom hemisphere was ever visible, and the sweep
-            // wedge could poke into frame as a hard-edged diagonal instead of reading as
-            // part of a circle — sized to the screen's own width now, and small enough
-            // that at the default centered position it sits fully inside the frame.
-            let side = proxy.size.width * 1.15
+            // Sized to the screen's diagonal (not just its width/height) and centered, so
+            // the glow and sweep genuinely reach every corner of the screen rather than
+            // sitting in a smaller circle with visible dead space around it — the radial
+            // gradient's outer edge lands almost exactly on the corners at this radius.
+            let side = (proxy.size.width * proxy.size.width + proxy.size.height * proxy.size.height).squareRoot() * 1.05
 
             ZStack {
                 Circle()

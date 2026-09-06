@@ -155,18 +155,20 @@ struct ADASecureField: View {
     }
 }
 
-/// A plain light input surface — near-white fill, a soft hairline rim — read clearly as a
-/// text field against the app's dark glass cards, the way a native system field would.
+/// A sunken input surface: the app's own obsidian background dropped into the lighter
+/// glass card around it, with a tactical-cyan rim — reads clearly as "type here" (unlike
+/// the old barely-there translucent-white fill) without breaking out of the dark theme
+/// the way a plain white field would.
 private struct FieldSurface: View {
-    static let textColor = Color(white: 0.12)
-    static let placeholderColor = Color(white: 0.45)
+    static let textColor = Color.white
+    static let placeholderColor = Color.white.opacity(0.4)
 
     var body: some View {
         RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous)
-            .fill(Color(white: 0.96))
+            .fill(ADATheme.obsidianBackground)
             .overlay(
                 RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous)
-                    .stroke(Color.black.opacity(0.08), lineWidth: 1)
+                    .stroke(ADATheme.spatialCyan.opacity(0.35), lineWidth: 1)
             )
     }
 }
