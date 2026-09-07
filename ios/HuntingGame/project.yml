@@ -101,6 +101,12 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Every screen in this app is a fixed-portrait, bottom-docked HUD layout (see
+        # LobbyView/GameView) — never built or tested for landscape. Restricting to
+        # iPhone-only here (overriding the project-wide "1,2") is what actually fits,
+        # rather than declaring all four iPad-multitasking orientations for a UI that
+        # was never designed to support them.
+        TARGETED_DEVICE_FAMILY: "1"
 
   HuntingGameWidgets:
     type: app-extension
@@ -151,6 +157,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SKIP_INSTALL: YES
 
   HuntingGameWatchWidgets:
@@ -172,5 +179,5 @@ targets:
       path: WatchWidgets/HuntingGameWatchWidgets/HuntingGameWatchWidgets.entitlements
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp.watchkitextension.widgets
+        PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp.widgets
         SKIP_INSTALL: YES

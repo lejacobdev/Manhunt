@@ -28,10 +28,15 @@ jobs:
       # Pins a specific Xcode rather than trusting whatever macos-15 defaults to today —
       # GitHub reshuffles the preinstalled set periodically, and a silent Xcode bump is a
       # bad way to discover a build now behaves differently.
+      # Apple now rejects any upload built with less than the iOS 26 SDK (Xcode 26+) —
+      # this used to be 16.2, which archived fine but was refused at upload time
+      # ("must be built with the iOS 26 SDK"). 26.3 is the newest non-preview release
+      # actions/runner-images has on this runner (see its macos-15-Readme.md); avoid the
+      # 27 preview so a build doesn't depend on beta tooling.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "16.2"
+          xcode-version: "26.3"
 
       # Xcode 16 split each platform's SDK into a separately-downloadable component, and
       # this runner image's cached Xcode 16.2 install didn't have iOS or watchOS pulled in
