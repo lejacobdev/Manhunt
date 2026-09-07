@@ -34,13 +34,20 @@ struct LobbyView: View {
         // which the shared backdrop below needs to crossfade its tint smoothly while
         // dragging rather than snapping once a swipe settles.
         ZStack(alignment: .bottom) {
-            // One shared backdrop instead of each tab owning its own — its rotation was
-            // already synchronized process-wide (see RadarSweepBackdrop), and hoisting it
-            // here means switching or swiping between tabs only ever crossfades this single
-            // instance's *color*, with the sweep itself never restarting or jumping.
+            // Covers the safe-area insets (status bar / home indicator strips) that the
+            // pages themselves don't extend into, so the sweep runs edge to edge. The
+            // pages each paint this same backdrop again internally — see below.
             RadarSweepBackdrop(accent: interpolatedBackdropAccent)
                 .edgesIgnoringSafeArea(.all)
 
+            // Every tab paints its *own* copy of the backdrop rather than letting this
+            // one show through from behind: each page is a NavigationStack, which fills
+            // the safe-area content region with an opaque background of its own and so
+            // covers anything an ancestor drew there. Handing each page the same
+            // interpolated accent keeps them indistinguishable from one shared instance —
+            // the sweep angle is already synchronized process-wide off a shared epoch
+            // (see RadarSweepBackdrop), so nothing restarts or jumps between them, and
+            // the color still crossfades continuously as a swipe drags.
             SwipeablePager(
                 tabs: AppTab.allCases,
                 selection: $selectedTab,
@@ -48,9 +55,9 @@ struct LobbyView: View {
             ) { tab in
                 switch tab {
                 case .play: playTab
-                case .friends: FriendsView()
-                case .leaderboard: LeaderboardView()
-                case .profile: ProfileView()
+                case .friends: FriendsView(backdropAccent: interpolatedBackdropAccent)
+                case .leaderboard: LeaderboardView(backdropAccent: interpolatedBackdropAccent)
+                case .profile: ProfileView(backdropAccent: interpolatedBackdropAccent)
                 }
             }
             // Reserves room at the bottom of every tab's own scroll content so the last
@@ -77,66 +84,70 @@ struct LobbyView: View {
 
     private var playTab: some View {
         NavigationStack {
-            // No backdrop of its own — this is only ever used as a tab, and LobbyView's
-            // shared RadarSweepBackdrop (crossfading tint as the pager swipes) shows
-            // through from behind it.
-            //
-            // Vertically centered rather than stacked from the top edge: this screen
-            // holds only a handful of controls, so top-anchoring left the whole lower
-            // half empty. minHeight keeps it centered when it fits and lets it scroll
-            // normally once invites/session cards push it past a screenful.
-            GeometryReader { proxy in
-                ScrollView {
-                    VStack(spacing: 18) {
-                        header
+            ZStack {
+                RadarSweepBackdrop(accent: interpolatedBackdropAccent)
+                    .edgesIgnoringSafeArea(.all)
 
-                        if let update = updateChecker.available {
-                            UpdateBannerView(update: update, onDismiss: { updateChecker.dismiss() })
+                // Vertically centered rather than stacked from the top edge: this screen
+                // holds only a handful of controls, so top-anchoring left the whole lower
+                // half empty. minHeight keeps it centered when it fits and lets it scroll
+                // normally once invites/session cards push it past a screenful.
+                GeometryReader { proxy in
+                    ScrollView {
+                        VStack(spacing: 18) {
+                            header
+
+                            if let update = updateChecker.available {
+                                UpdateBannerView(update: update, onDismiss: { updateChecker.dismiss() })
+                                    .transition(.move(edge: .top).combined(with: .opacity))
+                            }
+
+                            if !presence.incomingInvites.isEmpty {
+                                InviteBannerView(
+                                    invites: presence.incomingInvites,
+                                    onJoin: { joiningInvite = $0 },
+                                    onDecline: { invite in
+                                        Task { _ = try? await presence.respondToInvite(invite, accept: false) }
+                                    }
+                                )
                                 .transition(.move(edge: .top).combined(with: .opacity))
-                        }
+                            }
 
-                        if !presence.incomingInvites.isEmpty {
-                            InviteBannerView(
-                                invites: presence.incomingInvites,
-                                onJoin: { joiningInvite = $0 },
-                                onDecline: { invite in
-                                    Task { _ = try? await presence.respondToInvite(invite, accept: false) }
+                            joinSection
+                            hostSection
+
+                            Button {
+                                showHistory = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                    Text("HISTORY")
                                 }
-                            )
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                        }
+                            }
+                            .buttonStyle(GlassButtonStyle(tint: .white))
+                            .padding(.horizontal)
 
-                        joinSection
-                        hostSection
-
-                        Button {
-                            showHistory = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "clock.arrow.circlepath")
-                                Text("HISTORY")
+                            if let error = viewModel.errorMessage {
+                                Text(error)
+                                    .font(ADATheme.telemetryFont(size: 12))
+                                    .foregroundColor(ADATheme.hunterRed)
+                                    .padding(.horizontal)
+                                    .transition(.opacity)
                             }
                         }
-                        .buttonStyle(GlassButtonStyle(tint: .white))
-                        .padding(.horizontal)
-
-                        if let error = viewModel.errorMessage {
-                            Text(error)
-                                .font(ADATheme.telemetryFont(size: 12))
-                                .foregroundColor(ADATheme.hunterRed)
-                                .padding(.horizontal)
-                                .transition(.opacity)
-                        }
+                        .adaptiveContentWidth()
+                        .padding(.vertical, 28)
+                        .frame(minHeight: proxy.size.height, alignment: .center)
+                        .frame(maxWidth: .infinity)
+                        .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
+                        .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
+                        .animation(ADATheme.controlSpring, value: updateChecker.available)
                     }
-                    .adaptiveContentWidth()
-                    .padding(.vertical, 28)
-                    .frame(minHeight: proxy.size.height, alignment: .center)
-                    .frame(maxWidth: .infinity)
-                    .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
-                    .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
-                    .animation(ADATheme.controlSpring, value: updateChecker.available)
                 }
             }
+            // The sweep itself is translucent, so it needs a dark ground of its own rather
+            // than relying on whatever the enclosing NavigationStack happens to fill with.
+            .obsidianBackdrop()
             .sheet(isPresented: $showHistory) {
                 MatchHistoryView()
             }

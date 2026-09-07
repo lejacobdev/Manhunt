@@ -7,54 +7,59 @@ struct ProfileView: View {
     @EnvironmentObject var authSession: AuthSession
     @State private var showQRSheet = false
 
+    /// The tint for this tab's own backdrop, handed down by LobbyView so it matches the
+    /// other tabs' mid-swipe crossfade exactly — see the comment on its `SwipeablePager`
+    /// for why each page paints its own instance instead of sharing one.
+    var backdropAccent: Color = ADATheme.spatialCyan
+
     var body: some View {
         NavigationStack {
-            // No backdrop of its own — this is only ever used as a tab, and LobbyView's
-            // shared RadarSweepBackdrop (crossfading tint as the pager swipes) shows
-            // through from behind it. Deliberately no `.navigationTitle` here (see the
-            // title Text below instead) — giving this NavigationStack's root a real system
-            // title bar makes iOS back it with an opaque layer that blocks that shared
-            // backdrop from showing through at all, leaving only a sliver of tint visible
-            // at the very top/bottom edges. Play tab (LobbyView's own playTab) never hit
-            // this because it never sets a navigationTitle either.
-            ScrollView {
-                VStack(spacing: 18) {
-                    Text("Profile")
-                        .font(ADATheme.displayFont(size: 20))
-                        .foregroundColor(.white)
-                        .padding(.top, 8)
+            ZStack {
+                RadarSweepBackdrop(accent: backdropAccent)
+                    .edgesIgnoringSafeArea(.all)
 
-                    ProfileBody(viewModel: viewModel, fallbackUser: authSession.currentUser)
+                ScrollView {
+                    VStack(spacing: 18) {
+                        Text("Profile")
+                            .font(ADATheme.displayFont(size: 20))
+                            .foregroundColor(.white)
+                            .padding(.top, 8)
 
-                    if viewModel.profile != nil {
-                        Button {
-                            showQRSheet = true
-                        } label: {
-                            HStack { Image(systemName: "qrcode"); Text("MY FRIEND CODE") }
+                        ProfileBody(viewModel: viewModel, fallbackUser: authSession.currentUser)
+
+                        if viewModel.profile != nil {
+                            Button {
+                                showQRSheet = true
+                            } label: {
+                                HStack { Image(systemName: "qrcode"); Text("MY FRIEND CODE") }
+                            }
+                            .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
+                            .padding(.horizontal)
                         }
-                        .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
-                        .padding(.horizontal)
-                    }
 
-                    Button("SIGN OUT") {
-                        Task {
-                            // Unregister while the auth token is still valid to make the
-                            // call with — a signed-out device shouldn't keep receiving
-                            // this account's pushes.
-                            await PushNotificationManager.shared.unregisterCurrentToken()
-                            authSession.signOut()
+                        Button("SIGN OUT") {
+                            Task {
+                                // Unregister while the auth token is still valid to make the
+                                // call with — a signed-out device shouldn't keep receiving
+                                // this account's pushes.
+                                await PushNotificationManager.shared.unregisterCurrentToken()
+                                authSession.signOut()
+                            }
                         }
+                        .font(ADATheme.telemetryFont(size: 11))
+                        .foregroundColor(.white.opacity(0.3))
+                        .tracking(1.5)
+                        .padding(.top, 4)
                     }
-                    .font(ADATheme.telemetryFont(size: 11))
-                    .foregroundColor(.white.opacity(0.3))
-                    .tracking(1.5)
-                    .padding(.top, 4)
+                    .padding(.vertical, 20)
+                    .adaptiveContentWidth()
                 }
-                .padding(.vertical, 20)
-                .adaptiveContentWidth()
+                .refreshable { await viewModel.load() }
             }
+            // The sweep itself is translucent, so it needs a dark ground of its own rather
+            // than relying on whatever the enclosing NavigationStack happens to fill with.
+            .obsidianBackdrop()
             .task { await viewModel.load() }
-            .refreshable { await viewModel.load() }
             .sheet(isPresented: $showQRSheet) {
                 if let user = viewModel.profile?.user {
                     FriendCodeSheet(username: user.username, userTag: user.userTag)

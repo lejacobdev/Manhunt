@@ -12,24 +12,24 @@ struct FriendsView: View {
     /// nothing to dismiss, so the Done button would be inert.
     var inviteSessionCode: String? = nil
 
+    /// As a tab, LobbyView hands down the same crossfading tint every other tab is using
+    /// so all four stay in step mid-swipe — see the comment on its `SwipeablePager` for
+    /// why each page paints its own backdrop instead of sharing one. Nil in the
+    /// standalone-sheet usage, which isn't part of that crossfade and just uses its own
+    /// fixed accent.
+    var backdropAccent: Color? = nil
+
     /// True in the standalone-sheet usage (opened from a lobby to invite friends), where
-    /// there's no shared backdrop underneath to show through — false as a tab, where
-    /// LobbyView's own shared, color-crossfading RadarSweepBackdrop already sits behind it.
-    private var needsOwnBackdrop: Bool { inviteSessionCode != nil }
+    /// there's no pager, no crossfade, and a solid background of its own underneath.
+    private var isSheet: Bool { inviteSessionCode != nil }
 
     var body: some View {
-        // Deliberately no `.navigationTitle` on this NavigationStack's root (see `header`
-        // below instead) — as a tab, that would back the root with an opaque layer that
-        // blocks LobbyView's shared backdrop from showing through behind it, leaving only
-        // a sliver of tint visible at the very top/bottom edges. In the standalone-sheet
-        // usage this doesn't matter either way since `needsOwnBackdrop` already supplies
-        // a background directly inside this same NavigationStack.
+        // Deliberately no `.navigationTitle` on this NavigationStack's root — see `header`
+        // below, which stands in for one.
         NavigationStack {
             ZStack {
-                if needsOwnBackdrop {
-                    RadarSweepBackdrop(accent: ADATheme.hunterRed)
-                        .edgesIgnoringSafeArea(.all)
-                }
+                RadarSweepBackdrop(accent: backdropAccent ?? ADATheme.hunterRed)
+                    .edgesIgnoringSafeArea(.all)
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -98,7 +98,9 @@ struct FriendsView: View {
                     .animation(ADATheme.controlSpring, value: viewModel.incomingRequests.map(\.id))
                 }
             }
-            .background((needsOwnBackdrop ? ADATheme.obsidianBackground : Color.clear).edgesIgnoringSafeArea(.all))
+            // The sweep itself is translucent, so it needs a dark ground of its own rather
+            // than relying on whatever the enclosing NavigationStack happens to fill with.
+            .obsidianBackdrop()
             .sheet(isPresented: $showScanner) {
                 AddFriendSheet(mode: .scan) {
                     Task { await viewModel.loadAll() }
