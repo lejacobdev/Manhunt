@@ -15,9 +15,6 @@ struct SwipeablePager<Content: View>: View {
     /// Continuous position in `[0, tabs.count - 1]`, fractional while mid-drag — the parent
     /// derives the backdrop's interpolated tint from this on every update.
     var onProgressChange: (Double) -> Void = { _ in }
-    /// Fired on every drag update (regardless of direction) — the parent uses this purely
-    /// as an activity signal to collapse the floating tab bar, not for paging itself.
-    var onDragActivity: () -> Void = {}
     @ViewBuilder let content: (AppTab) -> Content
 
     @State private var dragTranslation: CGFloat = 0
@@ -42,7 +39,6 @@ struct SwipeablePager<Content: View>: View {
     private func dragGesture(width: CGFloat) -> some Gesture {
         DragGesture(minimumDistance: 12)
             .onChanged { value in
-                onDragActivity()
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
                 dragTranslation = value.translation.width
                 let progress = Double(currentIndex) - Double(value.translation.width / width)

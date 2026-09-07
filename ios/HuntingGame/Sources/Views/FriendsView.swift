@@ -18,6 +18,12 @@ struct FriendsView: View {
     private var needsOwnBackdrop: Bool { inviteSessionCode != nil }
 
     var body: some View {
+        // Deliberately no `.navigationTitle` on this NavigationStack's root (see `header`
+        // below instead) — as a tab, that would back the root with an opaque layer that
+        // blocks LobbyView's shared backdrop from showing through behind it, leaving only
+        // a sliver of tint visible at the very top/bottom edges. In the standalone-sheet
+        // usage this doesn't matter either way since `needsOwnBackdrop` already supplies
+        // a background directly inside this same NavigationStack.
         NavigationStack {
             ZStack {
                 if needsOwnBackdrop {
@@ -27,6 +33,8 @@ struct FriendsView: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
+                        header
+
                         ADATextField(placeholder: "Search username or username#tag", text: $viewModel.searchQuery)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -91,25 +99,6 @@ struct FriendsView: View {
                 }
             }
             .background((needsOwnBackdrop ? ADATheme.obsidianBackground : Color.clear).edgesIgnoringSafeArea(.all))
-            .navigationTitle("Friends")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button {
-                        showScanner = true
-                    } label: {
-                        Image(systemName: "qrcode.viewfinder")
-                    }
-                    .foregroundColor(ADATheme.spatialCyan)
-                }
-                if inviteSessionCode != nil {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Done") { dismiss() }
-                            .foregroundColor(ADATheme.spatialCyan)
-                    }
-                }
-            }
             .sheet(isPresented: $showScanner) {
                 AddFriendSheet(mode: .scan) {
                     Task { await viewModel.loadAll() }
@@ -118,6 +107,37 @@ struct FriendsView: View {
             .task { await viewModel.loadAll() }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// Stands in for a real navigation bar (see the `body` comment for why) — QR scan and,
+    /// only in the invite-sheet usage, a Done button, with the title kept visually centered
+    /// by reserving the same width on the trailing side even when Done isn't shown.
+    private var header: some View {
+        HStack {
+            Button {
+                showScanner = true
+            } label: {
+                Image(systemName: "qrcode.viewfinder")
+                    .font(.system(size: 17, weight: .semibold))
+            }
+            .foregroundColor(ADATheme.spatialCyan)
+
+            Spacer()
+
+            Text("Friends")
+                .font(ADATheme.displayFont(size: 20))
+                .foregroundColor(.white)
+
+            Spacer()
+
+            if inviteSessionCode != nil {
+                Button("Done") { dismiss() }
+                    .foregroundColor(ADATheme.spatialCyan)
+            } else {
+                Color.clear.frame(width: 22, height: 22)
+            }
+        }
+        .padding(.horizontal)
     }
 
     private var requestsSection: some View {

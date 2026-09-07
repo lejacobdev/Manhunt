@@ -11,9 +11,19 @@ struct ProfileView: View {
         NavigationStack {
             // No backdrop of its own — this is only ever used as a tab, and LobbyView's
             // shared RadarSweepBackdrop (crossfading tint as the pager swipes) shows
-            // through from behind it.
+            // through from behind it. Deliberately no `.navigationTitle` here (see the
+            // title Text below instead) — giving this NavigationStack's root a real system
+            // title bar makes iOS back it with an opaque layer that blocks that shared
+            // backdrop from showing through at all, leaving only a sliver of tint visible
+            // at the very top/bottom edges. Play tab (LobbyView's own playTab) never hit
+            // this because it never sets a navigationTitle either.
             ScrollView {
                 VStack(spacing: 18) {
+                    Text("Profile")
+                        .font(ADATheme.displayFont(size: 20))
+                        .foregroundColor(.white)
+                        .padding(.top, 8)
+
                     ProfileBody(viewModel: viewModel, fallbackUser: authSession.currentUser)
 
                     if viewModel.profile != nil {
@@ -43,9 +53,6 @@ struct ProfileView: View {
                 .padding(.vertical, 20)
                 .adaptiveContentWidth()
             }
-            .navigationTitle("Profile")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await viewModel.load() }
             .refreshable { await viewModel.load() }
             .sheet(isPresented: $showQRSheet) {

@@ -8,8 +8,16 @@ struct LeaderboardView: View {
         NavigationStack {
             // No backdrop of its own — this is only ever used as a tab, and LobbyView's
             // shared RadarSweepBackdrop (crossfading tint as the pager swipes) shows
-            // through from behind it.
+            // through from behind it. Deliberately no `.navigationTitle` (see the title
+            // Text below instead) — a real system title bar on this NavigationStack's root
+            // backs it with an opaque layer that blocks that shared backdrop from showing
+            // through, leaving only a sliver of tint visible at the very top/bottom edges.
             VStack(spacing: 0) {
+                Text("Leaderboard")
+                    .font(ADATheme.displayFont(size: 20))
+                    .foregroundColor(.white)
+                    .padding(.top, 12)
+
                 sortPicker
 
                 if viewModel.isLoading && viewModel.leaderboard == nil {
@@ -37,9 +45,6 @@ struct LeaderboardView: View {
                 }
             }
             .adaptiveContentWidth()
-            .navigationTitle("Leaderboard")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarColorScheme(.dark, for: .navigationBar)
             .task { await viewModel.load() }
             .refreshable { await viewModel.load() }
         }

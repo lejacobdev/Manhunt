@@ -17,9 +17,6 @@ struct LobbyView: View {
     /// switch too (see the `onChange` below), so tapping a tab crossfades the color exactly
     /// the same way swiping to it would, instead of only the swipe gesture animating it.
     @State private var pageProgress: Double = 0
-    /// Bumped on every scroll/swipe touch anywhere in the paged content — purely an
-    /// activity pulse for FloatingTabBar to collapse itself on, unrelated to paging.
-    @State private var scrollActivity = 0
 
     private var interpolatedBackdropAccent: Color {
         let tabs = AppTab.allCases
@@ -47,8 +44,7 @@ struct LobbyView: View {
             SwipeablePager(
                 tabs: AppTab.allCases,
                 selection: $selectedTab,
-                onProgressChange: { pageProgress = $0 },
-                onDragActivity: { scrollActivity += 1 }
+                onProgressChange: { pageProgress = $0 }
             ) { tab in
                 switch tab {
                 case .play: playTab
@@ -62,14 +58,8 @@ struct LobbyView: View {
             .safeAreaInset(edge: .bottom) {
                 Color.clear.frame(height: 78)
             }
-            // Catches vertical scrolling inside a page's own ScrollView too — simultaneous
-            // so it never competes with (or steals) that ScrollView's own pan gesture, it
-            // only ever piggybacks on it to learn "something is being dragged right now."
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 8).onChanged { _ in scrollActivity += 1 }
-            )
 
-            FloatingTabBar(selection: $selectedTab, activitySignal: scrollActivity)
+            FloatingTabBar(selection: $selectedTab)
         }
         .tint(ADATheme.runnerGreen)
         .preferredColorScheme(.dark)
