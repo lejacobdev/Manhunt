@@ -71,6 +71,12 @@ targets:
         CFBundleDisplayName: Hunting Game
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        # The app only makes standard HTTPS/WSS calls (URLSession, Socket.IO) to its own
+        # backend — no custom or proprietary cryptography of its own — so this is exempt.
+        # Declaring it here answers App Store Connect's "Missing Compliance" export
+        # question automatically on every future TestFlight/App Store upload, instead of
+        # it blocking each build from testing until answered by hand in the web UI.
+        ITSAppUsesNonExemptEncryption: false
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
