@@ -19,12 +19,12 @@ concurrency:
 
 jobs:
   build-and-upload:
-    # macos-26, not macos-15: this image's Xcode 26.3 already ships with the matching
-    # iOS/watchOS platform SDKs baked in (confirmed against actions/runner-images'
-    # macos-26-Readme.md), where macos-15's Xcode 26.3 was an extra, non-default install
-    # with no platform pre-cached — hence the download step below actually re-fetching
-    # multiple GB on every single run. Kept the step anyway as a defensive fallback in
-    # case a future image update ever drops the pre-cache; it should just no-op here.
+    # macos-26, not macos-15: this image's default Xcode (26.6, pinned below) already
+    # ships with the matching iOS/watchOS platform SDKs baked in. A non-default Xcode on
+    # either image — 26.3 was tried on both — needs those platforms downloaded fresh on
+    # every single run, and it's a genuine multi-GB simulator-runtime fetch, not a quick
+    # check. Kept the download step anyway as a defensive fallback in case a future image
+    # update ever drops the pre-cache; it should just no-op here.
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -36,13 +36,15 @@ jobs:
       # bad way to discover a build now behaves differently.
       # Apple now rejects any upload built with less than the iOS 26 SDK (Xcode 26+) —
       # this used to be 16.2, which archived fine but was refused at upload time
-      # ("must be built with the iOS 26 SDK"). 26.3 is the newest non-preview release
-      # actions/runner-images has on this runner (see its macos-15-Readme.md); avoid the
-      # 27 preview so a build doesn't depend on beta tooling.
+      # ("must be built with the iOS 26 SDK"). Pinned to 26.6 specifically because it's
+      # this runner image's *default* Xcode (see macos-26-Readme.md) — a non-default
+      # version like 26.3 still needed its platform SDKs downloaded fresh on every run
+      # (a genuine multi-GB simulator-runtime fetch, not a quick check), which is exactly
+      # what pinning to the pre-baked default avoids.
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.3"
+          xcode-version: "26.6"
 
       # Xcode 16 split each platform's SDK into a separately-downloadable component, and
       # this runner image's cached Xcode 16.2 install didn't have iOS or watchOS pulled in
