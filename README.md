@@ -528,9 +528,59 @@ The output is **unsigned**. Options:
   Check TrollStore's current compatibility list before relying on this.
 - **A real Apple Developer account, signed properly** — if you'd rather
   ship via TestFlight or the App Store instead of sideloading, don't use
-  this script's output. Instead, open the project in Xcode with a paid
-  team selected under Signing & Capabilities, then Product → Archive →
-  Distribute App, and let Xcode/Transporter handle signing and upload.
+  this script's output at all; it's pseudo-signed and App Store Connect
+  will reject it. Use the TestFlight workflow below instead.
+
+### Shipping to TestFlight (no Mac required)
+
+`.github/workflows/testflight.yml` archives and uploads a properly signed
+build from a GitHub-hosted macOS runner, so a paid Apple Developer account
+is the only Apple-side hardware you need — no local Mac, and no Fastlane or
+Match certificate repo either. `xcodebuild -allowProvisioningUpdates`
+creates and renews the certificates and provisioning profiles itself using
+an App Store Connect API key, which is the part Match otherwise exists to
+work around.
+
+It's the only path that ships the **Watch app**: the runner has real Xcode,
+so all four targets (app, widgets, watch app, watch widgets) build, unlike
+the Linux/xtool route above.
+
+The workflow is `workflow_dispatch` only — every run costs paid macOS runner
+minutes on a private repo and burns an App Store Connect build number — so
+start it from the Actions tab or with `gh workflow run testflight.yml`.
+
+One-time setup, all of it on Apple's and GitHub's side:
+
+1. In App Store Connect, create the app record for bundle ID
+   `com.huntinggame.app`. `-allowProvisioningUpdates` can create the
+   *identifiers* and profiles for every target on its own, but it cannot
+   create the app record — an upload with no record to land in fails.
+2. Under [Users and Access → Integrations
+   → Keys](https://appstoreconnect.apple.com/access/integrations/api),
+   generate an API key with the **Admin** or **App Manager** role. A
+   Developer-role key can only *use* existing profiles, not create the new
+   ones this needs on a first run. Download the `.p8` — it's offered once.
+3. Add four repository secrets under Settings → Secrets and variables →
+   Actions:
+
+   | Secret | Value |
+   | --- | --- |
+   | `APPLE_TEAM_ID` | Your 10-character Team ID ([membership page](https://developer.apple.com/account/#/membership)) |
+   | `APP_STORE_CONNECT_KEY_ID` | The key's Key ID, from the Keys table |
+   | `APP_STORE_CONNECT_ISSUER_ID` | The Issuer ID shown above that same table |
+   | `APP_STORE_CONNECT_API_KEY_B64` | The `.p8` file, base64-encoded: `base64 -i AuthKey_XXXX.p8 \| pbcopy` |
+
+`APPLE_TEAM_ID` is the CI stand-in for the local, gitignored
+`Config.xcconfig` (see `Config.xcconfig.example`) — the workflow writes that
+file from the secret on each run, because XcodeGen regenerates the whole
+`.xcodeproj` and would otherwise leave it with no team to sign with.
+
+`MARKETING_VERSION` stays pinned at `1.0.0` in `project.yml`; the build
+number is overridden per run with the workflow run number, since App Store
+Connect refuses the same version+build pair twice. Bump `MARKETING_VERSION`
+by hand when you want a new user-visible version. Note this is a separate
+counter from the SideStore `1.0.<N>` build number above — the two
+distribution paths don't share versioning.
 
 ---
 
