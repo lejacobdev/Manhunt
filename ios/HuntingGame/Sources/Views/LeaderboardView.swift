@@ -4,64 +4,45 @@ struct LeaderboardView: View {
     @StateObject private var viewModel = LeaderboardViewModel()
     @EnvironmentObject var authSession: AuthSession
 
-    /// The tint for this tab's own backdrop, handed down by LobbyView so it matches the
-    /// other tabs' mid-swipe crossfade exactly — see the comment on its `SwipeablePager`
-    /// for why each page paints its own instance instead of sharing one.
-    var backdropAccent: Color = ADATheme.tacticalAmber
-    /// How far to shift that backdrop so it stays pinned to the screen while this page
-    /// slides — supplied by the pager, and nil only when the page is fully off screen.
-    /// Zero (the default) is the standalone, unpaged case.
-    var backdropOffset: CGFloat? = 0
-
+    /// No backdrop or NavigationStack of its own — LobbyView owns both, so its stationary
+    /// backdrop shows through this page and the friend-profile rows below push onto its
+    /// stack.
     var body: some View {
-        NavigationStack {
-            ZStack {
-                if let backdropOffset {
-                    RadarSweepBackdrop(accent: backdropAccent)
-                        .edgesIgnoringSafeArea(.all)
-                        .offset(x: backdropOffset)
-                }
+        VStack(spacing: 0) {
+            Text("Leaderboard")
+                .font(ADATheme.displayFont(size: 20))
+                .foregroundColor(.white)
+                .padding(.top, 12)
 
-                VStack(spacing: 0) {
-                    Text("Leaderboard")
-                        .font(ADATheme.displayFont(size: 20))
-                        .foregroundColor(.white)
-                        .padding(.top, 12)
+            sortPicker
 
-                    sortPicker
-
-                    if viewModel.isLoading && viewModel.leaderboard == nil {
-                        Spacer()
-                        ProgressView().tint(ADATheme.tacticalAmber)
-                        Spacer()
-                    } else if let error = viewModel.errorMessage, viewModel.leaderboard == nil {
-                        Spacer()
-                        Text(error)
-                            .font(ADATheme.uiFont(size: 13, weight: .medium))
-                            .foregroundColor(ADATheme.hunterRed)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                        Spacer()
-                    } else if let entries = viewModel.leaderboard?.entries, entries.isEmpty {
-                        Spacer()
-                        Text("No finished matches yet — play a game to get on the board.")
-                            .font(ADATheme.uiFont(size: 13, weight: .medium))
-                            .foregroundColor(.white.opacity(0.4))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                        Spacer()
-                    } else {
-                        list
-                    }
-                }
-                .adaptiveContentWidth()
+            if viewModel.isLoading && viewModel.leaderboard == nil {
+                Spacer()
+                ProgressView().tint(ADATheme.tacticalAmber)
+                Spacer()
+            } else if let error = viewModel.errorMessage, viewModel.leaderboard == nil {
+                Spacer()
+                Text(error)
+                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                    .foregroundColor(ADATheme.hunterRed)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                Spacer()
+            } else if let entries = viewModel.leaderboard?.entries, entries.isEmpty {
+                Spacer()
+                Text("No finished matches yet — play a game to get on the board.")
+                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                    .foregroundColor(.white.opacity(0.4))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                Spacer()
+            } else {
+                list
             }
-            // The sweep itself is translucent, so it needs a dark ground of its own rather
-            // than relying on whatever the enclosing NavigationStack happens to fill with.
-            .obsidianBackdrop()
-            .task { await viewModel.load() }
-            .refreshable { await viewModel.load() }
         }
+        .adaptiveContentWidth()
+        .task { await viewModel.load() }
+        .refreshable { await viewModel.load() }
     }
 
     private var sortPicker: some View {

@@ -34,42 +34,41 @@ struct LobbyView: View {
         // which the shared backdrop below needs to crossfade its tint smoothly while
         // dragging rather than snapping once a swipe settles.
         ZStack(alignment: .bottom) {
-            // Covers the safe-area insets (status bar / home indicator strips) that the
-            // pages themselves don't extend into, so the sweep runs edge to edge. The
-            // pages each paint this same backdrop again internally — see below.
-            RadarSweepBackdrop(accent: interpolatedBackdropAccent)
-                .edgesIgnoringSafeArea(.all)
+            // One NavigationStack for the whole tab UI, rather than one per page. A
+            // NavigationStack fills its content region with an opaque background, so a
+            // per-page stack would cover this backdrop — and giving each page its own
+            // backdrop instead makes it travel with the page as it slides. Hosting the
+            // single stack here puts the backdrop *inside* it, where nothing covers it,
+            // and leaves it genuinely stationary: swiping and tapping both just slide
+            // pages over a backdrop that never moves and only crossfades its tint.
+            // Friends' and Leaderboard's rows push onto this stack.
+            NavigationStack {
+                ZStack {
+                    RadarSweepBackdrop(accent: interpolatedBackdropAccent)
+                        .edgesIgnoringSafeArea(.all)
 
-            // Every tab paints its *own* copy of the backdrop rather than letting this
-            // one show through from behind: each page is a NavigationStack, which fills
-            // the safe-area content region with an opaque background of its own and so
-            // covers anything an ancestor drew there. They stay indistinguishable from a
-            // single shared instance because all three inputs match — the same
-            // interpolated accent, a sweep angle already synchronized process-wide off a
-            // shared epoch (see RadarSweepBackdrop), and the pager's per-page offset that
-            // pins each copy to the same screen rect while the pages slide over it.
-            SwipeablePager(
-                tabs: AppTab.allCases,
-                selection: $selectedTab,
-                onProgressChange: { pageProgress = $0 }
-            ) { tab, backdropOffset in
-                switch tab {
-                case .play:
-                    playTab(backdropOffset: backdropOffset)
-                case .friends:
-                    FriendsView(backdropAccent: interpolatedBackdropAccent, backdropOffset: backdropOffset)
-                case .leaderboard:
-                    LeaderboardView(backdropAccent: interpolatedBackdropAccent, backdropOffset: backdropOffset)
-                case .profile:
-                    ProfileView(backdropAccent: interpolatedBackdropAccent, backdropOffset: backdropOffset)
+                    SwipeablePager(
+                        tabs: AppTab.allCases,
+                        selection: $selectedTab,
+                        onProgressChange: { pageProgress = $0 }
+                    ) { tab in
+                        switch tab {
+                        case .play: playTab
+                        case .friends: FriendsView()
+                        case .leaderboard: LeaderboardView()
+                        case .profile: ProfileView()
+                        }
+                    }
+                    // Reserves room at the bottom of every tab's own scroll content so the
+                    // last row/button isn't sitting underneath the floating bar on top of it.
+                    .safeAreaInset(edge: .bottom) {
+                        Color.clear.frame(height: 78)
+                    }
                 }
             }
-            // Reserves room at the bottom of every tab's own scroll content so the last
-            // row/button isn't sitting underneath the floating bar drawn on top of it.
-            .safeAreaInset(edge: .bottom) {
-                Color.clear.frame(height: 78)
-            }
 
+            // Outside the stack on purpose, so it keeps floating above a pushed screen
+            // (a friend's profile) instead of being slid away with the tabs.
             FloatingTabBar(selection: $selectedTab)
         }
         .tint(ADATheme.runnerGreen)
@@ -86,96 +85,86 @@ struct LobbyView: View {
         }
     }
 
-    private func playTab(backdropOffset: CGFloat?) -> some View {
-        NavigationStack {
-            ZStack {
-                if let backdropOffset {
-                    RadarSweepBackdrop(accent: interpolatedBackdropAccent)
-                        .edgesIgnoringSafeArea(.all)
-                        .offset(x: backdropOffset)
-                }
+    /// No backdrop or NavigationStack of its own — LobbyView owns both, so the stationary
+    /// backdrop simply shows through this page.
+    ///
+    /// Vertically centered rather than stacked from the top edge: this screen holds only a
+    /// handful of controls, so top-anchoring left the whole lower half empty. minHeight
+    /// keeps it centered when it fits and lets it scroll normally once invites/session
+    /// cards push it past a screenful.
+    private var playTab: some View {
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 18) {
+                    header
 
-                // Vertically centered rather than stacked from the top edge: this screen
-                // holds only a handful of controls, so top-anchoring left the whole lower
-                // half empty. minHeight keeps it centered when it fits and lets it scroll
-                // normally once invites/session cards push it past a screenful.
-                GeometryReader { proxy in
-                    ScrollView {
-                        VStack(spacing: 18) {
-                            header
+                    if let update = updateChecker.available {
+                        UpdateBannerView(update: update, onDismiss: { updateChecker.dismiss() })
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
 
-                            if let update = updateChecker.available {
-                                UpdateBannerView(update: update, onDismiss: { updateChecker.dismiss() })
-                                    .transition(.move(edge: .top).combined(with: .opacity))
+                    if !presence.incomingInvites.isEmpty {
+                        InviteBannerView(
+                            invites: presence.incomingInvites,
+                            onJoin: { joiningInvite = $0 },
+                            onDecline: { invite in
+                                Task { _ = try? await presence.respondToInvite(invite, accept: false) }
                             }
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
 
-                            if !presence.incomingInvites.isEmpty {
-                                InviteBannerView(
-                                    invites: presence.incomingInvites,
-                                    onJoin: { joiningInvite = $0 },
-                                    onDecline: { invite in
-                                        Task { _ = try? await presence.respondToInvite(invite, accept: false) }
-                                    }
-                                )
-                                .transition(.move(edge: .top).combined(with: .opacity))
-                            }
+                    joinSection
+                    hostSection
 
-                            joinSection
-                            hostSection
-
-                            Button {
-                                showHistory = true
-                            } label: {
-                                HStack {
-                                    Image(systemName: "clock.arrow.circlepath")
-                                    Text("HISTORY")
-                                }
-                            }
-                            .buttonStyle(GlassButtonStyle(tint: .white))
-                            .padding(.horizontal)
-
-                            if let error = viewModel.errorMessage {
-                                Text(error)
-                                    .font(ADATheme.telemetryFont(size: 12))
-                                    .foregroundColor(ADATheme.hunterRed)
-                                    .padding(.horizontal)
-                                    .transition(.opacity)
-                            }
+                    Button {
+                        showHistory = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "clock.arrow.circlepath")
+                            Text("HISTORY")
                         }
-                        .adaptiveContentWidth()
-                        .padding(.vertical, 28)
-                        .frame(minHeight: proxy.size.height, alignment: .center)
-                        .frame(maxWidth: .infinity)
-                        .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
-                        .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
-                        .animation(ADATheme.controlSpring, value: updateChecker.available)
+                    }
+                    .buttonStyle(GlassButtonStyle(tint: .white))
+                    .padding(.horizontal)
+
+                    if let error = viewModel.errorMessage {
+                        Text(error)
+                            .font(ADATheme.telemetryFont(size: 12))
+                            .foregroundColor(ADATheme.hunterRed)
+                            .padding(.horizontal)
+                            .transition(.opacity)
                     }
                 }
+                .adaptiveContentWidth()
+                .padding(.vertical, 28)
+                .frame(minHeight: proxy.size.height, alignment: .center)
+                .frame(maxWidth: .infinity)
+                .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
+                .animation(ADATheme.controlSpring, value: presence.incomingInvites.map(\.id))
+                .animation(ADATheme.controlSpring, value: updateChecker.available)
             }
-            // The sweep itself is translucent, so it needs a dark ground of its own rather
-            // than relying on whatever the enclosing NavigationStack happens to fill with.
-            .obsidianBackdrop()
-            .sheet(isPresented: $showHistory) {
-                MatchHistoryView()
-            }
-            .sheet(item: $joiningInvite) { invite in
-                InviteJoinSheet(invite: invite) { role, squad in
-                    guard let session = try? await presence.respondToInvite(invite, accept: true) else { return }
-                    guard let (player, joinedSession) = try? await APIClient.shared.joinGame(code: session.code, role: role, squad: squad) else { return }
-                    launchedGame = (player, joinedSession)
-                }
-            }
-            .fullScreenCover(item: Binding(
-                get: { launchedGame.map { GameLaunch(player: $0.player, session: $0.session) } },
-                set: { _ in launchedGame = nil }
-            )) { launch in
-                // Always the waiting room first — it swaps itself to GameView the moment
-                // the match is (or becomes) active, so rejoining an already-running match
-                // and entering a fresh lobby both funnel through the same entry point.
-                GameLobbyView(gamePlayer: launch.player, session: launch.session)
-            }
-            .onAppear { locationManager.requestAuthorizationAndStart() }
         }
+        .sheet(isPresented: $showHistory) {
+            MatchHistoryView()
+        }
+        .sheet(item: $joiningInvite) { invite in
+            InviteJoinSheet(invite: invite) { role, squad in
+                guard let session = try? await presence.respondToInvite(invite, accept: true) else { return }
+                guard let (player, joinedSession) = try? await APIClient.shared.joinGame(code: session.code, role: role, squad: squad) else { return }
+                launchedGame = (player, joinedSession)
+            }
+        }
+        .fullScreenCover(item: Binding(
+            get: { launchedGame.map { GameLaunch(player: $0.player, session: $0.session) } },
+            set: { _ in launchedGame = nil }
+        )) { launch in
+            // Always the waiting room first — it swaps itself to GameView the moment
+            // the match is (or becomes) active, so rejoining an already-running match
+            // and entering a fresh lobby both funnel through the same entry point.
+            GameLobbyView(gamePlayer: launch.player, session: launch.session)
+        }
+        .onAppear { locationManager.requestAuthorizationAndStart() }
     }
 
     /// Wordmark, section label and who you're signed in as, as one block — these were three

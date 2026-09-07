@@ -12,110 +12,105 @@ struct FriendsView: View {
     /// nothing to dismiss, so the Done button would be inert.
     var inviteSessionCode: String? = nil
 
-    /// As a tab, LobbyView hands down the same crossfading tint every other tab is using
-    /// so all four stay in step mid-swipe — see the comment on its `SwipeablePager` for
-    /// why each page paints its own backdrop instead of sharing one. Nil in the
-    /// standalone-sheet usage, which isn't part of that crossfade and just uses its own
-    /// fixed accent.
-    var backdropAccent: Color? = nil
-    /// How far to shift that backdrop so it stays pinned to the screen while this page
-    /// slides — supplied by the pager, and nil only when the page is fully off screen.
-    /// Zero (the default) is the standalone-sheet case, which never moves.
-    var backdropOffset: CGFloat? = 0
-
     /// True in the standalone-sheet usage (opened from a lobby to invite friends), where
-    /// there's no pager, no crossfade, and a Done button to dismiss with.
+    /// there's a Done button to dismiss with.
     private var isSheet: Bool { inviteSessionCode != nil }
 
     var body: some View {
-        // Deliberately no `.navigationTitle` on this NavigationStack's root — see `header`
-        // below, which stands in for one.
-        NavigationStack {
-            ZStack {
-                if let backdropOffset {
-                    RadarSweepBackdrop(accent: backdropAccent ?? ADATheme.hunterRed)
+        if isSheet {
+            // As a sheet there's no ambient NavigationStack for the rows below to push
+            // into and no backdrop behind it, so it brings both of its own. Deliberately
+            // no `.navigationTitle` — see `header`, which stands in for one.
+            NavigationStack {
+                ZStack {
+                    RadarSweepBackdrop(accent: ADATheme.hunterRed)
                         .edgesIgnoringSafeArea(.all)
-                        .offset(x: backdropOffset)
+
+                    content
                 }
-
-                ScrollView {
-                    VStack(spacing: 16) {
-                        header
-
-                        ADATextField(placeholder: "Search username or username#tag", text: $viewModel.searchQuery)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .padding(.horizontal)
-                            .onChange(of: viewModel.searchQuery) { _ in
-                                Task { await viewModel.search() }
-                            }
-
-                        if !viewModel.searchResults.isEmpty {
-                            VStack(spacing: 8) {
-                                ForEach(viewModel.searchResults) { user in
-                                    HStack {
-                                        HStack(spacing: 8) {
-                                            Circle()
-                                                .fill(ADATheme.spatialCyan.opacity(0.25))
-                                                .frame(width: 28, height: 28)
-                                                .overlay(
-                                                    Text(user.username.prefix(1).uppercased())
-                                                        .font(ADATheme.telemetryFont(size: 11))
-                                                        .foregroundColor(ADATheme.spatialCyan)
-                                                )
-                                            Text(user.tagLabel)
-                                                .font(ADATheme.uiFont(size: 13))
-                                                .foregroundColor(.white)
-                                        }
-                                        Spacer()
-                                        Button("ADD") { Task { await viewModel.sendRequest(to: user) } }
-                                            .buttonStyle(GlassButtonStyle(tint: ADATheme.runnerGreen))
-                                    }
-                                    .padding(12)
-                                    .glassCard(cornerRadius: ADATheme.controlCornerRadius)
-                                    .transition(.scale.combined(with: .opacity))
-                                }
-                            }
-                            .padding(.horizontal)
-                            .animation(ADATheme.controlSpring, value: viewModel.searchResults.map(\.id))
-                        }
-
-                        if let message = viewModel.lastActionMessage {
-                            StatusBadge(icon: "checkmark.circle.fill", text: message.uppercased(), tint: ADATheme.runnerGreen)
-                                .transition(.scale.combined(with: .opacity))
-                        }
-                        if let error = viewModel.errorMessage {
-                            Text(error)
-                                .font(ADATheme.telemetryFont(size: 12))
-                                .foregroundColor(ADATheme.hunterRed)
-                                .padding(.horizontal)
-                        }
-
-                        if !viewModel.incomingRequests.isEmpty {
-                            requestsSection
-                        }
-
-                        friendsSection
-
-                        Spacer(minLength: 20)
-                    }
-                    .padding(.top)
-                    .adaptiveContentWidth()
-                    .animation(ADATheme.ambientSpring, value: viewModel.lastActionMessage)
-                    .animation(ADATheme.controlSpring, value: viewModel.incomingRequests.map(\.id))
-                }
+                .obsidianBackdrop()
             }
-            // The sweep itself is translucent, so it needs a dark ground of its own rather
-            // than relying on whatever the enclosing NavigationStack happens to fill with.
-            .obsidianBackdrop()
-            .sheet(isPresented: $showScanner) {
-                AddFriendSheet(mode: .scan) {
-                    Task { await viewModel.loadAll() }
-                }
-            }
-            .task { await viewModel.loadAll() }
+            .preferredColorScheme(.dark)
+        } else {
+            // As a tab, LobbyView owns the NavigationStack these rows push into, and its
+            // stationary backdrop shows through.
+            content
         }
-        .preferredColorScheme(.dark)
+    }
+
+    private var content: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                header
+
+                ADATextField(placeholder: "Search username or username#tag", text: $viewModel.searchQuery)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(.horizontal)
+                    .onChange(of: viewModel.searchQuery) { _ in
+                        Task { await viewModel.search() }
+                    }
+
+                if !viewModel.searchResults.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(viewModel.searchResults) { user in
+                            HStack {
+                                HStack(spacing: 8) {
+                                    Circle()
+                                        .fill(ADATheme.spatialCyan.opacity(0.25))
+                                        .frame(width: 28, height: 28)
+                                        .overlay(
+                                            Text(user.username.prefix(1).uppercased())
+                                                .font(ADATheme.telemetryFont(size: 11))
+                                                .foregroundColor(ADATheme.spatialCyan)
+                                        )
+                                    Text(user.tagLabel)
+                                        .font(ADATheme.uiFont(size: 13))
+                                        .foregroundColor(.white)
+                                }
+                                Spacer()
+                                Button("ADD") { Task { await viewModel.sendRequest(to: user) } }
+                                    .buttonStyle(GlassButtonStyle(tint: ADATheme.runnerGreen))
+                            }
+                            .padding(12)
+                            .glassCard(cornerRadius: ADATheme.controlCornerRadius)
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .padding(.horizontal)
+                    .animation(ADATheme.controlSpring, value: viewModel.searchResults.map(\.id))
+                }
+
+                if let message = viewModel.lastActionMessage {
+                    StatusBadge(icon: "checkmark.circle.fill", text: message.uppercased(), tint: ADATheme.runnerGreen)
+                        .transition(.scale.combined(with: .opacity))
+                }
+                if let error = viewModel.errorMessage {
+                    Text(error)
+                        .font(ADATheme.telemetryFont(size: 12))
+                        .foregroundColor(ADATheme.hunterRed)
+                        .padding(.horizontal)
+                }
+
+                if !viewModel.incomingRequests.isEmpty {
+                    requestsSection
+                }
+
+                friendsSection
+
+                Spacer(minLength: 20)
+            }
+            .padding(.top)
+            .adaptiveContentWidth()
+            .animation(ADATheme.ambientSpring, value: viewModel.lastActionMessage)
+            .animation(ADATheme.controlSpring, value: viewModel.incomingRequests.map(\.id))
+        }
+        .sheet(isPresented: $showScanner) {
+            AddFriendSheet(mode: .scan) {
+                Task { await viewModel.loadAll() }
+            }
+        }
+        .task { await viewModel.loadAll() }
     }
 
     /// Stands in for a real navigation bar (see the `body` comment for why) — QR scan and,

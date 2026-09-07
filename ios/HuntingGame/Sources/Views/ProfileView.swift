@@ -7,70 +7,50 @@ struct ProfileView: View {
     @EnvironmentObject var authSession: AuthSession
     @State private var showQRSheet = false
 
-    /// The tint for this tab's own backdrop, handed down by LobbyView so it matches the
-    /// other tabs' mid-swipe crossfade exactly — see the comment on its `SwipeablePager`
-    /// for why each page paints its own instance instead of sharing one.
-    var backdropAccent: Color = ADATheme.spatialCyan
-    /// How far to shift that backdrop so it stays pinned to the screen while this page
-    /// slides — supplied by the pager, and nil only when the page is fully off screen.
-    /// Zero (the default) is the standalone, unpaged case.
-    var backdropOffset: CGFloat? = 0
-
+    /// No backdrop or NavigationStack of its own — LobbyView owns both, so its stationary
+    /// backdrop simply shows through this page.
     var body: some View {
-        NavigationStack {
-            ZStack {
-                if let backdropOffset {
-                    RadarSweepBackdrop(accent: backdropAccent)
-                        .edgesIgnoringSafeArea(.all)
-                        .offset(x: backdropOffset)
-                }
+        ScrollView {
+            VStack(spacing: 18) {
+                Text("Profile")
+                    .font(ADATheme.displayFont(size: 20))
+                    .foregroundColor(.white)
+                    .padding(.top, 8)
 
-                ScrollView {
-                    VStack(spacing: 18) {
-                        Text("Profile")
-                            .font(ADATheme.displayFont(size: 20))
-                            .foregroundColor(.white)
-                            .padding(.top, 8)
+                ProfileBody(viewModel: viewModel, fallbackUser: authSession.currentUser)
 
-                        ProfileBody(viewModel: viewModel, fallbackUser: authSession.currentUser)
-
-                        if viewModel.profile != nil {
-                            Button {
-                                showQRSheet = true
-                            } label: {
-                                HStack { Image(systemName: "qrcode"); Text("MY FRIEND CODE") }
-                            }
-                            .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
-                            .padding(.horizontal)
-                        }
-
-                        Button("SIGN OUT") {
-                            Task {
-                                // Unregister while the auth token is still valid to make the
-                                // call with — a signed-out device shouldn't keep receiving
-                                // this account's pushes.
-                                await PushNotificationManager.shared.unregisterCurrentToken()
-                                authSession.signOut()
-                            }
-                        }
-                        .font(ADATheme.telemetryFont(size: 11))
-                        .foregroundColor(.white.opacity(0.3))
-                        .tracking(1.5)
-                        .padding(.top, 4)
+                if viewModel.profile != nil {
+                    Button {
+                        showQRSheet = true
+                    } label: {
+                        HStack { Image(systemName: "qrcode"); Text("MY FRIEND CODE") }
                     }
-                    .padding(.vertical, 20)
-                    .adaptiveContentWidth()
+                    .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
+                    .padding(.horizontal)
                 }
-                .refreshable { await viewModel.load() }
+
+                Button("SIGN OUT") {
+                    Task {
+                        // Unregister while the auth token is still valid to make the
+                        // call with — a signed-out device shouldn't keep receiving
+                        // this account's pushes.
+                        await PushNotificationManager.shared.unregisterCurrentToken()
+                        authSession.signOut()
+                    }
+                }
+                .font(ADATheme.telemetryFont(size: 11))
+                .foregroundColor(.white.opacity(0.3))
+                .tracking(1.5)
+                .padding(.top, 4)
             }
-            // The sweep itself is translucent, so it needs a dark ground of its own rather
-            // than relying on whatever the enclosing NavigationStack happens to fill with.
-            .obsidianBackdrop()
-            .task { await viewModel.load() }
-            .sheet(isPresented: $showQRSheet) {
-                if let user = viewModel.profile?.user {
-                    FriendCodeSheet(username: user.username, userTag: user.userTag)
-                }
+            .padding(.vertical, 20)
+            .adaptiveContentWidth()
+        }
+        .refreshable { await viewModel.load() }
+        .task { await viewModel.load() }
+        .sheet(isPresented: $showQRSheet) {
+            if let user = viewModel.profile?.user {
+                FriendCodeSheet(username: user.username, userTag: user.userTag)
             }
         }
     }
