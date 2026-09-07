@@ -51,7 +51,13 @@ targets:
       - path: Sources
       - path: Shared
       - path: LiveActivityShared
-    resources:
+      # Was under `resources:` instead — every other target here lists its own folder
+      # under `sources:` and gets its .xcassets auto-detected and compiled into
+      # Assets.car that way; `resources:` for this one specific folder silently never
+      # made it into a Copy/Compile build phase at all. Confirmed by inspecting an actual
+      # archived .xcarchive: the watch app's Assets.car (under `sources:`) was there, the
+      # main app's simply wasn't, which is why every icon size in it kept validating as
+      # "missing" no matter how the icon set itself was structured.
       - path: Resources
     dependencies:
       - package: SocketIO
