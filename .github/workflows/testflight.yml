@@ -33,6 +33,16 @@ jobs:
         with:
           xcode-version: "16.2"
 
+      # Xcode 16 split each platform's SDK into a separately-downloadable component, and
+      # this runner image's cached Xcode 16.2 install didn't have iOS or watchOS pulled in
+      # (archiving failed with "iOS 18.2 is not installed"/"first download and install the
+      # platform" before it built anything) — both are needed since the app embeds a watch
+      # target. Anonymous, no Apple ID sign-in required for release-channel platforms.
+      - name: Download iOS and watchOS platforms
+        run: |
+          sudo xcodebuild -downloadPlatform iOS
+          sudo xcodebuild -downloadPlatform watchOS
+
       - name: Install XcodeGen
         run: brew install xcodegen
 
