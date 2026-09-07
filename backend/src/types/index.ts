@@ -106,3 +106,9 @@ export const JAIL_VIOLATION_COUNTDOWN_MS = 10_000;
 /** A catch request a runner never answers (backgrounded app, etc.) auto-expires so it
  *  can't permanently block the hunter from requesting again. */
 export const CATCH_REQUEST_TIMEOUT_MS = 20_000;
+
+/** How long an unfinished session may sit with nobody connected to it before the server
+ *  closes it on its own. Without this, a lobby someone opened and walked away from stays
+ *  LOBBY/ACTIVE forever, and every member of it keeps being offered a way back into a game
+ *  nobody is playing (see GET /games/active/mine). */
+export const ABANDONED_SESSION_TIMEOUT_MS = 5 * 60_000;

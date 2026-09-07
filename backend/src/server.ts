@@ -30,6 +30,7 @@ import {
   usePowerUp,
 } from './services/PowerUpService';
 import {
+  ABANDONED_SESSION_TIMEOUT_MS,
   AuthTokenPayload,
   BOUNDARY_BUFFER_METERS,
   BOUNDARY_DAMAGE_TICK_MS,
@@ -138,6 +139,11 @@ const jailViolationSince: Map<string, Map<string, number>> = new Map();
 // be asked about one catch at a time; a hunter, however, may have requests out to several
 // runners at once, hence requestId to disambiguate which one a later deny-confirm is about).
 const pendingCatchRequests: Map<string, Map<string, { requestId: string; hunterId: string; hunterUsername: string; requestedAt: number }>> = new Map();
+// roomCode -> epoch ms of when the room's last connected player left. Only rooms with
+// nobody in them are in here; a rejoin removes the key. Drives the abandoned-session
+// sweep below, which closes a game everyone walked away from rather than leaving it
+// open forever for every one of its members.
+const sessionEmptySince: Map<string, number> = new Map();
 // roomCode -> runnerId -> an in-progress gamble duel. A gamble is no longer a single
 // coin flip: once started it runs round after round until one side is out of hearts, so
 // the pair has to be remembered between rounds while the runner calls each toss.
@@ -255,6 +261,8 @@ io.on('connection', (socket: Socket) => {
 
       if (!activeSessions.has(roomCode)) activeSessions.set(roomCode, new Map());
       const session = activeSessions.get(roomCode)!;
+      // Somebody's back — cancel any abandonment countdown started when the room emptied.
+      sessionEmptySince.delete(roomCode);
 
       const state: PlayerState = {
         id: gamePlayer.id,
@@ -921,6 +929,10 @@ function cleanupSocket(socket: Socket) {
     session.delete(gamePlayerId);
     io.to(roomCode).emit('player_left', { gamePlayerId });
     if (session.size === 0) {
+      // Last one out. The room's live state goes now, but the *session* stays open for
+      // ABANDONED_SESSION_TIMEOUT_MS so a dropped connection or a quick app restart can
+      // walk straight back into it; only if nobody does is it closed for everyone.
+      sessionEmptySince.set(roomCode, Date.now());
       activeSessions.delete(roomCode);
       sessionModes.delete(roomCode);
       sessionSettingsCache.delete(roomCode);
@@ -1322,6 +1334,56 @@ async function endMatch(roomCode: string, reason: string) {
   io.to(roomCode).emit('game_over', { reason });
 }
 
+/**
+ * Closes any unfinished session that's had nobody connected to it for longer than
+ * ABANDONED_SESSION_TIMEOUT_MS, so a lobby or match everyone walked away from doesn't stay
+ * open forever — an open session is what GET /games/active/mine hands back as "the game
+ * you're still in", so leaving it dangling keeps offering every one of its members a way
+ * back into a game nobody is playing, and blocks them from being seen as free to host or
+ * join another. Marking it ENDED resolves it for all of them at once and moves it into
+ * their match history like any other finished game.
+ *
+ * Driven off the DB rather than the in-memory rooms because an abandoned room is, by
+ * definition, no longer in `activeSessions` — cleanupSocket drops it the moment the last
+ * player leaves. Sessions this process has never seen occupied (created just before a
+ * restart, say) start their countdown at the first sweep that finds them, which also gives
+ * clients a full timeout's grace to reconnect after a deploy.
+ */
+async function closeAbandonedSessions() {
+  const open = await prisma.gameSession.findMany({
+    where: { status: { in: ['LOBBY', 'ACTIVE'] } },
+    select: { id: true, code: true },
+  });
+  const openCodes = new Set(open.map((s) => s.code));
+  for (const code of sessionEmptySince.keys()) {
+    if (!openCodes.has(code)) sessionEmptySince.delete(code);
+  }
+
+  const now = Date.now();
+  for (const session of open) {
+    if ((activeSessions.get(session.code)?.size ?? 0) > 0) {
+      sessionEmptySince.delete(session.code);
+      continue;
+    }
+    const emptySince = sessionEmptySince.get(session.code);
+    if (emptySince === undefined) {
+      sessionEmptySince.set(session.code, now);
+      continue;
+    }
+    if (now - emptySince < ABANDONED_SESSION_TIMEOUT_MS) continue;
+
+    sessionEmptySince.delete(session.code);
+    pendingLogs.delete(session.code);
+    await gameService.endSession(session.id);
+    sessionStartedAtCache.delete(session.code);
+    // Nobody is in the room to hear this by definition — it's here for the edge case of a
+    // socket that joined the room without ever registering a player state, so it isn't
+    // left sitting in a match the server has just closed underneath it.
+    io.to(session.code).emit('game_over', { reason: 'ABANDONED' });
+    console.log(`[Session] closed abandoned game ${session.code} — empty for over ${ABANDONED_SESSION_TIMEOUT_MS / 60_000} min`);
+  }
+}
+
 async function endMatchIfExpired(roomCode: string): Promise<boolean> {
   const startedAtMs = sessionStartedAtCache.get(roomCode);
   const settings = sessionSettingsCache.get(roomCode);
@@ -1392,6 +1454,13 @@ setInterval(async () => {
     }
   }
 }, 10_000);
+
+// Deliberately its own, slower loop: it's one DB query against an unfinished-session index
+// and the thing it's watching for takes minutes, so there's no reason to run it at the
+// per-tick cadence of the live game loop above.
+setInterval(() => {
+  closeAbandonedSessions().catch((err) => console.error('[Session] abandoned sweep failed', err));
+}, 30_000);
 
 const PORT = Number(process.env.PORT ?? 4000);
 

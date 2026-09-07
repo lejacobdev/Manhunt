@@ -533,6 +533,7 @@ struct GameView: View {
         case "ALL_RUNNERS_RESOLVED": return "All runners caught or eliminated."
         case "ALL_HUNTERS_ELIMINATED": return "All hunters were eliminated — the runners win!"
         case "HOST_ENDED": return "The host ended the match early."
+        case "ABANDONED": return "Everyone had left — the match was closed automatically."
         default: return "The match has ended."
         }
     }
