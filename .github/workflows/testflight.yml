@@ -19,7 +19,13 @@ concurrency:
 
 jobs:
   build-and-upload:
-    runs-on: macos-15
+    # macos-26, not macos-15: this image's Xcode 26.3 already ships with the matching
+    # iOS/watchOS platform SDKs baked in (confirmed against actions/runner-images'
+    # macos-26-Readme.md), where macos-15's Xcode 26.3 was an extra, non-default install
+    # with no platform pre-cached — hence the download step below actually re-fetching
+    # multiple GB on every single run. Kept the step anyway as a defensive fallback in
+    # case a future image update ever drops the pre-cache; it should just no-op here.
+    runs-on: macos-26
     timeout-minutes: 45
     steps:
       - name: Checkout
