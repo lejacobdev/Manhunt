@@ -43,21 +43,25 @@ struct LobbyView: View {
             // Every tab paints its *own* copy of the backdrop rather than letting this
             // one show through from behind: each page is a NavigationStack, which fills
             // the safe-area content region with an opaque background of its own and so
-            // covers anything an ancestor drew there. Handing each page the same
-            // interpolated accent keeps them indistinguishable from one shared instance —
-            // the sweep angle is already synchronized process-wide off a shared epoch
-            // (see RadarSweepBackdrop), so nothing restarts or jumps between them, and
-            // the color still crossfades continuously as a swipe drags.
+            // covers anything an ancestor drew there. They stay indistinguishable from a
+            // single shared instance because all three inputs match — the same
+            // interpolated accent, a sweep angle already synchronized process-wide off a
+            // shared epoch (see RadarSweepBackdrop), and the pager's per-page offset that
+            // pins each copy to the same screen rect while the pages slide over it.
             SwipeablePager(
                 tabs: AppTab.allCases,
                 selection: $selectedTab,
                 onProgressChange: { pageProgress = $0 }
-            ) { tab in
+            ) { tab, backdropOffset in
                 switch tab {
-                case .play: playTab
-                case .friends: FriendsView(backdropAccent: interpolatedBackdropAccent)
-                case .leaderboard: LeaderboardView(backdropAccent: interpolatedBackdropAccent)
-                case .profile: ProfileView(backdropAccent: interpolatedBackdropAccent)
+                case .play:
+                    playTab(backdropOffset: backdropOffset)
+                case .friends:
+                    FriendsView(backdropAccent: interpolatedBackdropAccent, backdropOffset: backdropOffset)
+                case .leaderboard:
+                    LeaderboardView(backdropAccent: interpolatedBackdropAccent, backdropOffset: backdropOffset)
+                case .profile:
+                    ProfileView(backdropAccent: interpolatedBackdropAccent, backdropOffset: backdropOffset)
                 }
             }
             // Reserves room at the bottom of every tab's own scroll content so the last
@@ -82,11 +86,14 @@ struct LobbyView: View {
         }
     }
 
-    private var playTab: some View {
+    private func playTab(backdropOffset: CGFloat?) -> some View {
         NavigationStack {
             ZStack {
-                RadarSweepBackdrop(accent: interpolatedBackdropAccent)
-                    .edgesIgnoringSafeArea(.all)
+                if let backdropOffset {
+                    RadarSweepBackdrop(accent: interpolatedBackdropAccent)
+                        .edgesIgnoringSafeArea(.all)
+                        .offset(x: backdropOffset)
+                }
 
                 // Vertically centered rather than stacked from the top edge: this screen
                 // holds only a handful of controls, so top-anchoring left the whole lower

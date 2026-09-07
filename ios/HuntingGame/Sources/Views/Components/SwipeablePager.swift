@@ -15,7 +15,11 @@ struct SwipeablePager<Content: View>: View {
     /// Continuous position in `[0, tabs.count - 1]`, fractional while mid-drag — the parent
     /// derives the backdrop's interpolated tint from this on every update.
     var onProgressChange: (Double) -> Void = { _ in }
-    @ViewBuilder let content: (AppTab) -> Content
+    /// Called with each tab and the x offset that tab must apply to a full-bleed
+    /// background layer for it to appear pinned to the screen while the page itself
+    /// slides — see the note on `body` for why pages paint their own. Nil while the page
+    /// is entirely off screen, meaning there's nothing to draw.
+    @ViewBuilder let content: (AppTab, CGFloat?) -> Content
 
     @State private var dragTranslation: CGFloat = 0
 
@@ -25,9 +29,19 @@ struct SwipeablePager<Content: View>: View {
         GeometryReader { proxy in
             let width = max(proxy.size.width, 1)
             HStack(spacing: 0) {
-                ForEach(tabs) { tab in
-                    content(tab)
+                // Each page paints its own copy of the shared backdrop, because a page is
+                // a NavigationStack and fills its frame with an opaque background that
+                // would cover anything drawn behind the pager. Handing each one the
+                // negation of its current on-screen origin cancels the pager's own
+                // translation, so those copies all land on the same screen rect and read
+                // as a single backdrop that stays put while the content slides over it.
+                // Clipping each page to its frame is what keeps that illusion intact:
+                // a page only ever reveals the slice of the backdrop it currently covers.
+                ForEach(Array(tabs.enumerated()), id: \.element.id) { index, tab in
+                    let pageOrigin = CGFloat(index - currentIndex) * width + dragTranslation
+                    content(tab, abs(pageOrigin) < width ? -pageOrigin : nil)
                         .frame(width: width)
+                        .clipped()
                 }
             }
             .offset(x: -CGFloat(currentIndex) * width + dragTranslation)

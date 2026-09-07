@@ -18,9 +18,13 @@ struct FriendsView: View {
     /// standalone-sheet usage, which isn't part of that crossfade and just uses its own
     /// fixed accent.
     var backdropAccent: Color? = nil
+    /// How far to shift that backdrop so it stays pinned to the screen while this page
+    /// slides — supplied by the pager, and nil only when the page is fully off screen.
+    /// Zero (the default) is the standalone-sheet case, which never moves.
+    var backdropOffset: CGFloat? = 0
 
     /// True in the standalone-sheet usage (opened from a lobby to invite friends), where
-    /// there's no pager, no crossfade, and a solid background of its own underneath.
+    /// there's no pager, no crossfade, and a Done button to dismiss with.
     private var isSheet: Bool { inviteSessionCode != nil }
 
     var body: some View {
@@ -28,8 +32,11 @@ struct FriendsView: View {
         // below, which stands in for one.
         NavigationStack {
             ZStack {
-                RadarSweepBackdrop(accent: backdropAccent ?? ADATheme.hunterRed)
-                    .edgesIgnoringSafeArea(.all)
+                if let backdropOffset {
+                    RadarSweepBackdrop(accent: backdropAccent ?? ADATheme.hunterRed)
+                        .edgesIgnoringSafeArea(.all)
+                        .offset(x: backdropOffset)
+                }
 
                 ScrollView {
                     VStack(spacing: 16) {
@@ -132,7 +139,7 @@ struct FriendsView: View {
 
             Spacer()
 
-            if inviteSessionCode != nil {
+            if isSheet {
                 Button("Done") { dismiss() }
                     .foregroundColor(ADATheme.spatialCyan)
             } else {

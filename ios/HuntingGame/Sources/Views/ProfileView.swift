@@ -11,12 +11,19 @@ struct ProfileView: View {
     /// other tabs' mid-swipe crossfade exactly — see the comment on its `SwipeablePager`
     /// for why each page paints its own instance instead of sharing one.
     var backdropAccent: Color = ADATheme.spatialCyan
+    /// How far to shift that backdrop so it stays pinned to the screen while this page
+    /// slides — supplied by the pager, and nil only when the page is fully off screen.
+    /// Zero (the default) is the standalone, unpaged case.
+    var backdropOffset: CGFloat? = 0
 
     var body: some View {
         NavigationStack {
             ZStack {
-                RadarSweepBackdrop(accent: backdropAccent)
-                    .edgesIgnoringSafeArea(.all)
+                if let backdropOffset {
+                    RadarSweepBackdrop(accent: backdropAccent)
+                        .edgesIgnoringSafeArea(.all)
+                        .offset(x: backdropOffset)
+                }
 
                 ScrollView {
                     VStack(spacing: 18) {
