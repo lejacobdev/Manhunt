@@ -41,7 +41,17 @@
 
 * { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html {
+  scroll-behavior: smooth;
+  /* One overflowing element anywhere (a fixed-width mockup, a long word) turning into a
+     horizontal scrollbar/rubber-band on iPhone is the single most common "site is broken
+     on mobile" bug — this is a blanket backstop on top of fixing the actual causes below. */
+  overflow-x: hidden;
+}
+
+/* Anchor targets (#features, #showcase) would otherwise land right under the sticky nav —
+   this gives every section enough headroom that its heading clears it. */
+section[id] { scroll-margin-top: 84px; }
 
 body {
   margin: 0;
@@ -115,7 +125,8 @@ h1, h2, h3 { margin: 0; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 18px 24px;
+  gap: 12px;
+  padding: 16px 20px;
   background: rgba(9, 11, 16, 0.72);
   backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
@@ -145,7 +156,20 @@ h1, h2, h3 { margin: 0; }
   color: #08130c;
   text-decoration: none;
   font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
   box-shadow: 0 6px 20px rgba(var(--runner-green-rgb), 0.35);
+}
+
+/* The wordmark + 4 nav links + CTA button never fit an iPhone's width side by side — with
+   no rule to resolve that, the nav either overflowed the viewport (forcing the whole page
+   to scroll horizontally) or squeezed everything down to the point of overlapping. Below
+   this width it's just the wordmark and the CTA; Features/Showcase/Privacy/Legal are one
+   tap away from the footer, which already links all four. */
+@media (max-width: 640px) {
+  .nav-links { display: none; }
+  .nav { padding: 14px 16px; }
+  .nav-cta { padding: 8px 13px; font-size: 11px; }
 }
 
 /* ---------- Glass surfaces (exact port of GlassCardModifier) ---------- */
@@ -325,54 +349,107 @@ section.tight { padding: 56px 0; }
 .feature-card h3 { font-family: var(--font-ui); font-weight: 700; font-size: 16px; margin-bottom: 6px; }
 .feature-card p { color: var(--text-dim); font-size: 14px; margin: 0; }
 
-/* ---------- Phone mockup frame ---------- */
+/* ---------- Phone mockup frame (real device silhouette: Dynamic Island + side
+   buttons, holding an actual screenshot rather than a hand-drawn approximation of
+   one) ---------- */
 
 .phone {
-  width: 260px;
+  position: relative;
+  width: 230px;
   aspect-ratio: 9 / 19.3;
-  border-radius: 42px;
-  padding: 8px;
-  background: linear-gradient(160deg, #2a2f38, #0d0f13);
-  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  border-radius: 46px;
+  padding: 10px;
+  background: linear-gradient(160deg, #3d424d, #14161c 55%, #05060a);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55), inset 0 0 0 1.5px rgba(255, 255, 255, 0.12);
   flex-shrink: 0;
 }
+/* Volume cluster (left) / power button (right) — just enough silhouette to read as a
+   real device at this size, not meant to be a pixel-accurate iPhone diagram. */
+.phone::before, .phone::after {
+  content: "";
+  position: absolute;
+  background: #14161c;
+  border-radius: 2px;
+}
+.phone::before { left: -3px; top: 21%; width: 3px; height: 15%; }
+.phone::after { right: -3px; top: 26%; width: 3px; height: 10%; }
+
 .phone-screen {
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: 34px;
+  border-radius: 38px;
   overflow: hidden;
   background: var(--bg);
 }
-.phone-notch {
+.phone-screen img {
   position: absolute;
-  top: 0;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.phone-island {
+  position: absolute;
+  top: 14px;
   left: 50%;
   transform: translateX(-50%);
-  width: 42%;
-  height: 22px;
-  background: #0d0f13;
-  border-radius: 0 0 14px 14px;
+  width: 32%;
+  height: 9px;
+  background: #000;
+  border-radius: 999px;
   z-index: 5;
 }
 
+/* ---------- App Store-style screenshot cards: bold caption, real device frame,
+   cropped at the bottom edge of the card rather than showing the whole phone ---------- */
+
+.screenshot-card {
+  flex: 0 0 auto;
+  width: 280px;
+  padding: 30px 18px 0;
+  border-radius: var(--radius-card);
+  background: linear-gradient(180deg, var(--bg-elevated), var(--bg) 70%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  text-align: center;
+}
+.screenshot-card .cap-title {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 22px;
+  line-height: 1.15;
+  color: var(--text);
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+.screenshot-card .cap-sub {
+  font-size: 13px;
+  color: var(--text-dim);
+  margin: 0 0 22px;
+}
+.screenshot-card .phone-crop {
+  height: 400px;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+}
+
+/* No horizontal padding/margin of its own — it sits inside .wrap (which already
+   supplies the page's side gutters) and only needs room to breathe vertically for
+   the scroll-snap and shadow; adding its own would fight .wrap's centering. */
 .showcase-row {
   display: flex;
-  gap: 32px;
+  gap: 24px;
   overflow-x: auto;
-  padding: 8px 4px 24px;
+  padding-top: 8px;
+  padding-bottom: 24px;
   scroll-snap-type: x proximity;
 }
-.showcase-item { scroll-snap-align: center; text-align: center; }
-.showcase-item figcaption {
-  margin-top: 16px;
-  font-family: var(--font-telemetry);
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  color: var(--text-dim);
-  max-width: 260px;
+.showcase-item { scroll-snap-align: center; }
+
+@media (max-width: 620px) {
+  .screenshot-card { width: 82vw; }
 }
-.showcase-item figcaption strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 12px; }
 
 /* ---------- Legal / privacy pages ---------- */
 

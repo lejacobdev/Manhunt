@@ -123,159 +123,63 @@
   <div class="wrap">
     <div class="eyebrow" style="text-align:center;">APP PREVIEW</div>
     <h2 class="display" style="text-align:center; font-size:clamp(24px,4vw,34px); margin:10px 0 12px;">
-      The actual HUD, not a mockup of one
+      Real screens, straight from the app
     </h2>
     <p style="text-align:center; color:var(--text-faint); font-size:13px; max-width:520px; margin:0 auto 40px;">
-      Recreated pixel-for-copy from the live SwiftUI source — same colors, same labels, same
-      layout running on-device today.
+      Actual on-device screenshots — not mockups.
     </p>
 
-    <div class="showcase-row wrap" style="justify-content:center;">
+    <div class="showcase-row">
 
-      <!-- Mission Control / Play tab -->
-      <figure class="showcase-item">
-        <div class="phone">
-          <div class="phone-screen">
-            <div class="phone-notch"></div>
-            <div class="radar" style="--accent-rgb: var(--runner-green-rgb)">
-              <div class="radar-glow"></div>
-              <div class="radar-ring r1" style="width:220px;height:220px;"></div>
-              <div class="radar-ring r2" style="width:340px;height:340px;"></div>
-              <div class="radar-cross"></div>
-            </div>
-            <div style="position:relative; padding:34px 14px 0; text-align:center; font-size:10px;">
-              <div class="wordmark" style="font-size:15px; justify-content:center; display:flex;">HUNTING G<svg viewBox="0 0 416 512" style="width:0.66em;height:0.74em"><g transform="matrix(1,0,0,-1,0,448)"><path d="M306.0 366.0Q292 352 272.0 352.0Q252 352 238.0 366.0Q224 380 224.0 400.0Q224 420 238.0 434.0Q252 448 272.0 448.0Q292 448 306.0 434.0Q320 420 320.0 400.0Q320 380 306.0 366.0ZM114 131Q126 103 152 88L162 82L154 61Q141 32 109 32H32Q19 32 9.5 41.5Q0 51 0.0 64.0Q0 77 9.5 86.5Q19 96 32 96H99ZM384 224Q397 224 406.5 214.5Q416 205 416.0 192.0Q416 179 406.5 169.5Q397 160 384 160H330Q300 160 287 187L267 228L235 150L297 114Q311 105 317.0 90.0Q323 75 318 60L287 -42Q280 -64 256 -64Q251 -64 246 -62Q234 -59 228.0 -47.0Q222 -35 225 -22L253 65L168 115Q147 128 139.5 151.0Q132 174 142 196L179 283L164 288Q151 291 139 281L99 251Q89 243 76.0 244.5Q63 246 55.0 256.5Q47 267 48.5 280.5Q50 294 61 302L100 332Q137 360 181 349L252 328Q294 317 314 277L340 224Z"/></g></svg>ME</div>
-              <div class="telemetry" style="font-size:8px; color:var(--runner-green); margin-top:4px;">MISSION CONTROL</div>
-              <div style="display:flex; align-items:center; justify-content:center; gap:5px; margin-top:6px;">
-                <span style="width:5px;height:5px;border-radius:50%;background:var(--runner-green);box-shadow:0 0 5px var(--runner-green);"></span>
-                <span class="telemetry" style="font-size:7px; color:rgba(255,255,255,.5);">JHUNTER#4471</span>
-              </div>
-
-              <div class="glass" style="margin:16px 8px 0; padding:12px; text-align:center;">
-                <div class="telemetry" style="font-size:16px; letter-spacing:.1em;">— — — —</div>
-                <div style="height:8px;"></div>
-                <div class="btn btn-glow" style="font-size:9px; padding:9px; width:100%;">JOIN GAME</div>
-              </div>
-
-              <div class="glass" style="margin:10px 8px 0; padding:12px; text-align:left;">
-                <div style="display:flex; gap:4px; font-size:7px; margin-bottom:8px;">
-                  <span class="badge green" style="padding:3px 7px; font-size:7px;">STANDARD</span>
-                  <span class="badge" style="padding:3px 7px; font-size:7px; color:var(--text-faint); background:rgba(255,255,255,.06);">SQUAD</span>
-                  <span class="badge" style="padding:3px 7px; font-size:7px; color:var(--text-faint); background:rgba(255,255,255,.06);">INFECTION</span>
-                </div>
-                <div class="btn" style="background:var(--spatial-cyan); color:#08130c; font-size:9px; padding:9px; width:100%; font-family:var(--font-telemetry);">HOST NEW GAME</div>
-              </div>
+      <figure class="showcase-item screenshot-card">
+        <div class="cap-title">Draw Your<br>Arena</div>
+        <div class="phone-crop">
+          <div class="phone">
+            <div class="phone-screen">
+              <div class="phone-island"></div>
+              <img src="/assets/screenshots/game-settings.png" alt="Drawing the play-area boundary on the map, with jail mode and gambling toggles">
             </div>
           </div>
         </div>
-        <figcaption><strong>Mission Control</strong>Join a code, or host a new match in seconds.</figcaption>
       </figure>
 
-      <!-- Live match HUD -->
-      <figure class="showcase-item">
-        <div class="phone">
-          <div class="phone-screen" style="background:#0b0e13;">
-            <div class="phone-notch"></div>
-            <div style="position:absolute; inset:0; background:
-              radial-gradient(circle at 30% 35%, rgba(255,255,255,.05), transparent 40%),
-              radial-gradient(circle at 70% 65%, rgba(255,255,255,.04), transparent 35%);">
-            </div>
-            <div style="position:relative; padding:30px 10px 0; display:flex; flex-direction:column; height:100%;">
-              <div style="display:flex; align-items:center; justify-content:space-between;">
-                <span class="badge red" style="font-size:7px; padding:4px 8px;">● HUNTER</span>
-                <span class="telemetry" style="font-size:10px;">18:42</span>
-                <span class="badge amber" style="font-size:7px; padding:4px 8px;">SAFE</span>
-              </div>
-
-              <div style="flex:1; position:relative; margin:10px 0;">
-                <span style="position:absolute; top:35%; left:55%; width:8px;height:8px;border-radius:50%;background:var(--runner-green);box-shadow:0 0 8px var(--runner-green);"></span>
-                <span style="position:absolute; top:60%; left:25%; width:8px;height:8px;border-radius:50%;background:var(--spatial-cyan);box-shadow:0 0 8px var(--spatial-cyan);"></span>
-                <span style="position:absolute; top:20%; left:20%; width:6px;height:6px;border-radius:50%;background:var(--text-faint);"></span>
-              </div>
-
-              <div style="display:flex; gap:6px; align-items:flex-end; padding-bottom:10px;">
-                <div class="glass" style="flex:1; padding:8px; font-size:7px;">
-                  <div class="telemetry" style="font-size:6.5px; color:var(--text-faint); margin-bottom:5px;">EQUIPMENT</div>
-                  <div style="display:flex; gap:4px;">
-                    <span style="width:16px;height:16px;border-radius:5px;background:rgba(var(--stealth-purple-rgb),.25);"></span>
-                    <span style="width:16px;height:16px;border-radius:5px;background:rgba(var(--spatial-cyan-rgb),.25);"></span>
-                    <span style="width:16px;height:16px;border-radius:5px;background:rgba(var(--tactical-amber-rgb),.25);"></span>
-                  </div>
-                </div>
-                <div class="glass" style="flex:1; padding:8px; font-size:7px;">
-                  <div class="telemetry" style="font-size:6.5px; color:var(--text-faint); margin-bottom:5px;">RADAR</div>
-                  <div class="telemetry" style="font-size:9px; color:var(--runner-green);">42m N</div>
-                </div>
-              </div>
+      <figure class="showcase-item screenshot-card">
+        <div class="cap-title">Track Live</div>
+        <div class="cap-sub">Radar and compass HUD</div>
+        <div class="phone-crop">
+          <div class="phone">
+            <div class="phone-screen">
+              <div class="phone-island"></div>
+              <img src="/assets/screenshots/live-hud.png" alt="Live match HUD showing the runner's radar, hearts, and nearby power-ups">
             </div>
           </div>
         </div>
-        <figcaption><strong>Live Match HUD</strong>Radar, compass, power-ups, and catch verification — one glance.</figcaption>
       </figure>
 
-      <!-- Leaderboard -->
-      <figure class="showcase-item">
-        <div class="phone">
-          <div class="phone-screen">
-            <div class="phone-notch"></div>
-            <div style="position:relative; padding:32px 12px 0;">
-              <div style="text-align:center; font-size:13px; font-weight:800; font-family:var(--font-display);">Leaderboard</div>
-              <div style="display:flex; gap:4px; margin:10px 0; font-size:7px;">
-                <span class="badge amber" style="padding:4px 8px; font-size:7px;">KILLS</span>
-                <span class="badge" style="padding:4px 8px; font-size:7px; color:var(--text-faint); background:rgba(255,255,255,.06);">WINS</span>
-                <span class="badge" style="padding:4px 8px; font-size:7px; color:var(--text-faint); background:rgba(255,255,255,.06);">PLAYTIME</span>
-              </div>
-              <div style="display:flex; flex-direction:column; gap:6px;">
-                <div class="glass" style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; font-size:8px;">
-                  <span>🥇 sarahv#0192</span><span style="color:var(--tactical-amber); font-weight:700;">31</span>
-                </div>
-                <div class="glass" style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; font-size:8px;">
-                  <span>🥈 kmartinez#7</span><span style="color:var(--tactical-amber); font-weight:700;">27</span>
-                </div>
-                <div class="glass" style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; font-size:8px;">
-                  <span>🥉 jhunter#4471</span><span style="color:var(--tactical-amber); font-weight:700;">22</span>
-                </div>
-                <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 10px; font-size:8px; color:var(--text-faint);">
-                  <span>4&nbsp;&nbsp;dpark#88</span><span>19</span>
-                </div>
-              </div>
+      <figure class="showcase-item screenshot-card">
+        <div class="cap-title">Easy Join</div>
+        <div class="cap-sub">Join games without much effort</div>
+        <div class="phone-crop">
+          <div class="phone">
+            <div class="phone-screen">
+              <div class="phone-island"></div>
+              <img src="/assets/screenshots/mission-control.png" alt="Mission Control screen with join code, mode picker, and host button">
             </div>
           </div>
         </div>
-        <figcaption><strong>Leaderboard</strong>Sort by kills, wins, or total playtime.</figcaption>
       </figure>
 
-      <!-- Friends -->
-      <figure class="showcase-item">
-        <div class="phone">
-          <div class="phone-screen">
-            <div class="phone-notch"></div>
-            <div style="position:relative; padding:32px 12px 0;">
-              <div style="display:flex; align-items:center; justify-content:space-between; font-size:9px;">
-                <span style="color:var(--spatial-cyan);">▢</span>
-                <span style="font-weight:800; font-family:var(--font-display); font-size:13px;">Friends</span>
-                <span style="width:10px;"></span>
-              </div>
-              <div class="glass" style="margin-top:12px; padding:8px 10px; font-size:7px; color:var(--text-faint);">Search username or #tag</div>
-              <div class="telemetry" style="font-size:6.5px; color:var(--text-faint); margin:14px 0 6px;">YOUR FRIENDS</div>
-              <div style="display:flex; flex-direction:column; gap:6px;">
-                <div class="glass" style="display:flex; align-items:center; gap:6px; padding:8px 10px; font-size:8px;">
-                  <span style="width:6px;height:6px;border-radius:50%;background:var(--runner-green);box-shadow:0 0 5px var(--runner-green);"></span>
-                  sarahv#0192
-                </div>
-                <div class="glass" style="display:flex; align-items:center; gap:6px; padding:8px 10px; font-size:8px;">
-                  <span style="width:6px;height:6px;border-radius:50%;background:var(--runner-green);box-shadow:0 0 5px var(--runner-green);"></span>
-                  kmartinez#7391
-                </div>
-                <div class="glass" style="display:flex; align-items:center; gap:6px; padding:8px 10px; font-size:8px; opacity:.5;">
-                  <span style="width:6px;height:6px;border-radius:50%;background:var(--text-faint);"></span>
-                  dpark#8801
-                </div>
-              </div>
+      <figure class="showcase-item screenshot-card">
+        <div class="cap-title">Play With<br>Friends</div>
+        <div class="cap-sub">Invite friends and see their progress</div>
+        <div class="phone-crop">
+          <div class="phone">
+            <div class="phone-screen">
+              <div class="phone-island"></div>
+              <img src="/assets/screenshots/profile.png" alt="Profile screen with match stats and career totals">
             </div>
           </div>
         </div>
-        <figcaption><strong>Friends</strong>Add by QR code or handle, then invite straight into your lobby.</figcaption>
       </figure>
 
     </div>
