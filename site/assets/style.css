@@ -445,7 +445,16 @@ section.tight { padding: 56px 0; }
   padding-bottom: 24px;
   scroll-snap-type: x proximity;
 }
-.showcase-item { scroll-snap-align: center; }
+.showcase-item { scroll-snap-align: center; flex-shrink: 0; margin: 0; }
+.showcase-item img {
+  width: 280px;
+  height: auto;
+  border-radius: var(--radius-card);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
+}
+@media (max-width: 620px) {
+  .showcase-item img { width: 78vw; }
+}
 
 @media (max-width: 620px) {
   .screenshot-card { width: 82vw; }
