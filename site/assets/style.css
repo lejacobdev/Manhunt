@@ -1,0 +1,425 @@
+/* Hunting Game — shared design system for lejacob.dev
+   Ported 1:1 from the app's own ADATheme.swift / TacticalPalette.swift —
+   same hex values, same corner radii, same font pairing (SF Pro Rounded
+   display + SF Mono telemetry), so the site reads as the same product as
+   the HUD it's advertising rather than a generic marketing skin. */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #090b10;
+  --bg-elevated: #1a1f2e;
+  --glass: rgba(255, 255, 255, 0.08);
+  --glass-strong: rgba(255, 255, 255, 0.12);
+  --border-glass: rgba(255, 255, 255, 0.15);
+  --text: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.55);
+  --text-faint: rgba(255, 255, 255, 0.35);
+
+  --hunter-red: #d93a4a;
+  --hunter-red-rgb: 217, 58, 74;
+  --runner-green: #22c55e;
+  --runner-green-rgb: 34, 197, 94;
+  --tactical-amber: #f5a524;
+  --tactical-amber-rgb: 245, 165, 36;
+  --spatial-cyan: #49d4ff;
+  --spatial-cyan-rgb: 73, 212, 255;
+  --stealth-purple: #a78bfa;
+  --stealth-purple-rgb: 167, 139, 250;
+  --neutral-gray: #9ba1ac;
+
+  --radius-card: 24px;
+  --radius-control: 16px;
+  --radius-sheet: 32px;
+
+  --font-display: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-telemetry: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+  --max-width: 1120px;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.6 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+img { max-width: 100%; display: block; }
+
+a { color: inherit; }
+
+.wrap {
+  max-width: var(--max-width);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ---------- Typography ---------- */
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.telemetry {
+  font-family: var(--font-telemetry);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+h1, h2, h3 { margin: 0; }
+
+.eyebrow {
+  font-family: var(--font-telemetry);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--runner-green);
+}
+
+/* ---------- Wordmark (exact port of HuntingGameWordmark.swift) ---------- */
+
+.wordmark {
+  display: inline-flex;
+  align-items: baseline;
+  font-family: var(--font-display);
+  font-weight: 900;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.wordmark svg {
+  fill: var(--runner-green);
+  filter: drop-shadow(0 0 12px rgba(var(--runner-green-rgb), 0.55));
+  position: relative;
+  top: 0.11em;
+  margin: 0 0.04em;
+}
+
+/* ---------- Nav ---------- */
+
+.nav {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  background: rgba(9, 11, 16, 0.72);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.nav-links {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+  font-family: var(--font-telemetry);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.nav-links a { color: var(--text-dim); text-decoration: none; transition: color 0.15s; }
+.nav-links a:hover { color: var(--text); }
+
+.nav-cta {
+  font-family: var(--font-telemetry);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  padding: 9px 16px;
+  border-radius: var(--radius-control);
+  background: var(--runner-green);
+  color: #08130c;
+  text-decoration: none;
+  font-weight: 700;
+  box-shadow: 0 6px 20px rgba(var(--runner-green-rgb), 0.35);
+}
+
+/* ---------- Glass surfaces (exact port of GlassCardModifier) ---------- */
+
+.glass {
+  position: relative;
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--border-glass);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+.glass::before {
+  /* the "liquid-glass" top sheen every card/panel/sheet gets in-app */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.18), transparent 55%);
+  pointer-events: none;
+}
+
+.glass-tint-green { background: linear-gradient(var(--glass), var(--glass)), radial-gradient(circle at 30% 0%, rgba(var(--runner-green-rgb), 0.12), transparent 60%); }
+.glass-tint-red { background: linear-gradient(var(--glass), var(--glass)), radial-gradient(circle at 30% 0%, rgba(var(--hunter-red-rgb), 0.12), transparent 60%); }
+.glass-tint-amber { background: linear-gradient(var(--glass), var(--glass)), radial-gradient(circle at 30% 0%, rgba(var(--tactical-amber-rgb), 0.12), transparent 60%); }
+.glass-tint-cyan { background: linear-gradient(var(--glass), var(--glass)), radial-gradient(circle at 30% 0%, rgba(var(--spatial-cyan-rgb), 0.12), transparent 60%); }
+.glass-tint-purple { background: linear-gradient(var(--glass), var(--glass)), radial-gradient(circle at 30% 0%, rgba(var(--stealth-purple-rgb), 0.12), transparent 60%); }
+
+/* ---------- Buttons (exact port of GlowButtonStyle / GlassButtonStyle) ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--font-telemetry);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  border-radius: var(--radius-control);
+  padding: 15px 26px;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.btn:active { transform: scale(0.97); }
+
+.btn-glow {
+  background: var(--runner-green);
+  color: #08130c;
+  font-weight: 700;
+  box-shadow: 0 8px 26px rgba(var(--runner-green-rgb), 0.45);
+}
+.btn-glow:hover { box-shadow: 0 10px 32px rgba(var(--runner-green-rgb), 0.6); }
+.btn-glow.cyan { background: var(--spatial-cyan); box-shadow: 0 8px 26px rgba(var(--spatial-cyan-rgb), 0.45); }
+
+.btn-glass {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.btn-glass:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* ---------- Status badge (exact port of StatusBadge) ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-telemetry);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 6px 12px;
+  border-radius: 999px;
+}
+.badge.green { color: var(--runner-green); background: rgba(var(--runner-green-rgb), 0.18); border: 1px solid rgba(var(--runner-green-rgb), 0.6); }
+.badge.red { color: var(--hunter-red); background: rgba(var(--hunter-red-rgb), 0.18); border: 1px solid rgba(var(--hunter-red-rgb), 0.6); }
+.badge.amber { color: var(--tactical-amber); background: rgba(var(--tactical-amber-rgb), 0.18); border: 1px solid rgba(var(--tactical-amber-rgb), 0.6); }
+.badge.cyan { color: var(--spatial-cyan); background: rgba(var(--spatial-cyan-rgb), 0.18); border: 1px solid rgba(var(--spatial-cyan-rgb), 0.6); }
+.badge.purple { color: var(--stealth-purple); background: rgba(var(--stealth-purple-rgb), 0.18); border: 1px solid rgba(var(--stealth-purple-rgb), 0.6); }
+
+/* ---------- Radar sweep backdrop (exact port of RadarSweepBackdrop.swift:
+   3 rings at .18/.32/.46 of half-width, a crosshair reticle, a radial glow,
+   and a conic sweep wedge on a real 9s rotation — the same period the app
+   itself uses, so it doesn't just look like the app, it moves at the same
+   speed) ---------- */
+
+.radar {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  z-index: 0;
+  pointer-events: none;
+  --accent-rgb: var(--runner-green-rgb);
+}
+
+.radar-glow {
+  position: absolute;
+  inset: -20%;
+  background: radial-gradient(circle at center, rgba(var(--accent-rgb), 0.12) 4%, transparent 50%);
+}
+
+.radar-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.radar-ring.r1 { width: 36vmax; height: 36vmax; }
+.radar-ring.r2 { width: 64vmax; height: 64vmax; }
+.radar-ring.r3 { width: 92vmax; height: 92vmax; }
+
+.radar-cross::before, .radar-cross::after {
+  content: "";
+  position: absolute;
+  background: rgba(255, 255, 255, 0.045);
+}
+.radar-cross::before { top: 0; bottom: 0; left: 50%; width: 1px; }
+.radar-cross::after { left: 0; right: 0; top: 50%; height: 1px; }
+
+.radar-sweep {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 120vmax;
+  height: 120vmax;
+  margin: -60vmax 0 0 -60vmax;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(var(--accent-rgb), 0.32), transparent 20%);
+  animation: radar-spin 9s linear infinite;
+}
+
+@keyframes radar-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-sweep { animation: none; }
+}
+
+/* ---------- Layout helpers ---------- */
+
+section { position: relative; padding: 96px 0; }
+section.tight { padding: 56px 0; }
+
+.grid {
+  display: grid;
+  gap: 20px;
+}
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+
+@media (max-width: 860px) {
+  .grid-3 { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 620px) {
+  .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  section { padding: 64px 0; }
+}
+
+.feature-card {
+  padding: 26px;
+}
+.feature-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.feature-icon svg { width: 22px; height: 22px; }
+.feature-card h3 { font-family: var(--font-ui); font-weight: 700; font-size: 16px; margin-bottom: 6px; }
+.feature-card p { color: var(--text-dim); font-size: 14px; margin: 0; }
+
+/* ---------- Phone mockup frame ---------- */
+
+.phone {
+  width: 260px;
+  aspect-ratio: 9 / 19.3;
+  border-radius: 42px;
+  padding: 8px;
+  background: linear-gradient(160deg, #2a2f38, #0d0f13);
+  box-shadow: 0 40px 80px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.phone-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 34px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.phone-notch {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 42%;
+  height: 22px;
+  background: #0d0f13;
+  border-radius: 0 0 14px 14px;
+  z-index: 5;
+}
+
+.showcase-row {
+  display: flex;
+  gap: 32px;
+  overflow-x: auto;
+  padding: 8px 4px 24px;
+  scroll-snap-type: x proximity;
+}
+.showcase-item { scroll-snap-align: center; text-align: center; }
+.showcase-item figcaption {
+  margin-top: 16px;
+  font-family: var(--font-telemetry);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--text-dim);
+  max-width: 260px;
+}
+.showcase-item figcaption strong { color: var(--text); display: block; margin-bottom: 4px; font-size: 12px; }
+
+/* ---------- Legal / privacy pages ---------- */
+
+.doc {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 64px 24px 120px;
+}
+.doc h1 { font-family: var(--font-display); font-weight: 900; font-size: 32px; margin-bottom: 8px; }
+.doc .updated { color: var(--text-faint); font-family: var(--font-telemetry); font-size: 11px; letter-spacing: 0.1em; margin-bottom: 40px; display: block; }
+.doc h2 { font-size: 18px; margin: 40px 0 12px; color: var(--spatial-cyan); }
+.doc p, .doc li { color: var(--text-dim); font-size: 15px; line-height: 1.75; }
+.doc ul { padding-left: 22px; }
+.doc strong { color: var(--text); }
+.doc a { color: var(--spatial-cyan); text-decoration: underline; text-decoration-color: rgba(73, 212, 255, 0.4); }
+.placeholder {
+  display: inline-block;
+  background: rgba(var(--tactical-amber-rgb), 0.18);
+  color: var(--tactical-amber);
+  border: 1px dashed rgba(var(--tactical-amber-rgb), 0.6);
+  border-radius: 6px;
+  padding: 1px 8px;
+  font-family: var(--font-telemetry);
+  font-size: 13px;
+}
+
+/* ---------- Footer ---------- */
+
+footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 40px 0;
+}
+.footer-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.footer-links {
+  display: flex;
+  gap: 24px;
+  font-family: var(--font-telemetry);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.footer-links a { color: var(--text-dim); text-decoration: none; }
+.footer-links a:hover { color: var(--text); }
+.footer-note { color: var(--text-faint); font-size: 12px; }

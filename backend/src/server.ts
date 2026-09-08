@@ -54,12 +54,48 @@ app.use(express.json());
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'hunting-game-backend' }));
 
-// Serves the sideloadable HuntingGame.ipa plus an AltStore/SideStore source
-// manifest, so the app can be added as a SideStore "source" (one-time add,
-// then install/update from there) instead of re-downloading a raw IPA every
-// build. Populated by ios/xtool/{docker-build.sh,xtool-build.sh} — that
-// directory doesn't exist until a build has run, and is gitignored (build
-// output, not source), so express.static just 404s until then.
+// Distribution has moved to TestFlight/App Store (see .github/workflows/testflight.yml) —
+// this whole '/dist' tree is legacy SideStore/xtool sideloading, kept only for whatever
+// raw IPA a personal dev build might still want (ios/xtool/docker-build.sh still writes
+// here). It must NOT drive the in-app "update available" banner any more: that banner's
+// version-compare and UI text are compiled into whatever's already shipped (including the
+// TestFlight build, whose CFBundleShortVersionString is pinned at "1.0.0" — see
+// project.yml's MARKETING_VERSION), while dist-static/source.json's SideStore-style
+// "1.0.N" numbering keeps climbing independently of that. Left unhandled, every
+// TestFlight/App Store install would permanently see "1.0.N" as newer than its own "1.0.0"
+// and be told, wrongly, to "Install it from the SideStore/AltStore app." The route below
+// intercepts this one path ahead of the static middleware and freezes its reported version
+// at "0.0.0" — the minimum possible, so it can never register as newer than any real
+// client on either channel — which suppresses that false nag without touching the already-
+// compiled app. A real "check the App Store/TestFlight for updates" flow needs its own
+// client-side support in a future build; this is the backend-only mitigation for now.
+app.get('/dist/source.json', (_req, res) => {
+  res.json({
+    name: 'Hunting Game',
+    identifier: 'dev.lejacob.huntinggame.source',
+    iconURL: 'https://api.lejacob.dev/dist/icon.png',
+    apps: [
+      {
+        name: 'Hunting Game',
+        bundleIdentifier: 'com.huntinggame.app',
+        developerName: 'lejacob.dev',
+        localizedDescription: 'GPS manhunt: hunters vs. runners with live radar, power-ups, and squad play.',
+        iconURL: 'https://api.lejacob.dev/dist/icon.png',
+        versions: [
+          {
+            version: '0.0.0',
+            date: new Date(0).toISOString(),
+            downloadURL: 'https://api.lejacob.dev/dist/HuntingGame.ipa',
+            size: 0,
+            minOSVersion: '16.2',
+            localizedDescription: 'Hunting Game now ships via TestFlight/App Store.',
+          },
+        ],
+      },
+    ],
+  });
+});
+
 app.use('/dist', express.static(path.join(__dirname, '..', 'dist-static')));
 
 app.use('/auth', authRouter);

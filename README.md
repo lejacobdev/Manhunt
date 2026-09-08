@@ -584,7 +584,51 @@ distribution paths don't share versioning.
 
 ---
 
-## 7. End-to-end smoke test
+## 7. Marketing website (lejacob.dev)
+
+`site/` is a small static site — home page, privacy policy, legal notice — served at
+the bare `lejacob.dev` domain (distinct from `api.lejacob.dev`, which is the backend).
+It exists mainly so App Store Connect's external TestFlight testing (which requires a
+privacy policy URL before it'll let you submit for Beta App Review) has somewhere real
+to point, and so a friend-add link has a proper download destination instead of
+mentioning SideStore.
+
+No build step — plain HTML/CSS, hand-ported from `ADATheme.swift`/`TacticalPalette.swift`
+so it uses the exact same colors, corner radii, and font pairing (SF Pro Rounded +
+SF Mono) as the app itself, plus a CSS recreation of `RadarSweepBackdrop`'s ring/sweep
+motif on the same 9-second rotation. The app-screen "previews" on the home page are
+hand-built from the real SwiftUI source's actual copy and layout, not device
+screenshots — there's no simulator/device available to capture real ones in every
+environment this repo gets worked on from; swap in real screenshots under
+`site/assets/` and update `index.html`'s showcase section whenever you have some.
+
+**Two things still need filling in before this is fully correct** — neither should be
+fabricated, so they're left as clearly marked placeholders:
+- `site/legal.html` — the operator's real postal address (required for a compliant
+  Legal Notice/Impressum).
+- `site/privacy.html` / `site/legal.html` — `privacy@lejacob.dev` and
+  `contact@lejacob.dev` are placeholder addresses; either set up real mail forwarding
+  for `@lejacob.dev` (e.g. via Cloudflare Email Routing, free) or swap in addresses that
+  already work.
+
+It shares the API vhost's Cloudflare Origin CA certificate (issued for both
+`lejacob.dev` and `*.lejacob.dev`, so nothing new to generate) but gets its **own**
+DocumentRoot, `/var/www/lejacob-dev` — deliberately not the shared `/var/www/html` that
+the old `lejacob.eu` personal-server domain and several of its subdomains already use,
+since pointing this vhost there would make publishing this site overwrite whatever
+those unrelated sites already serve.
+
+```bash
+sudo ./deploy/publish-site.sh
+```
+
+Idempotent, mirrors `site/` into `/var/www/lejacob-dev` and installs/reloads
+`deploy/apache/lejacob.dev.conf` if Apache is present — safe to re-run any time either
+changes. Verify from your own machine: `curl -I https://lejacob.dev`.
+
+---
+
+## 8. End-to-end smoke test
 
 1. Backend running locally or deployed, `APIClient`/`SocketService` pointed
    at it.
@@ -604,7 +648,7 @@ distribution paths don't share versioning.
 
 ---
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
