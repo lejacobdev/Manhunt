@@ -43,10 +43,8 @@ services:
       PORT: 4000
       OVERPASS_API_URL: https://overpass-api.de/api/interpreter
       CORS_ORIGIN: ${CORS_ORIGIN}
-      # Where GET /u/:username/:tag sends someone who taps "Don't have the app?" —
-      # a TestFlight public link for now; swap to the real App Store URL once the app
-      # is actually live there.
-      TESTFLIGHT_URL: ${TESTFLIGHT_URL}
+      # Where GET /u/:username/:tag sends someone who taps "Don't have the app?".
+      APP_STORE_URL: ${APP_STORE_URL}
       NODE_ENV: production
 
 volumes:
