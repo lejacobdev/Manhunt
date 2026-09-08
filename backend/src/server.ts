@@ -111,8 +111,9 @@ app.use('/push', pushRouter);
  * huntinggame:// scheme directly so that any camera app will actually offer to open it —
  * iOS Camera silently ignores unknown custom schemes. This page then bounces straight to
  * the app's own scheme, with a tap-through and an install link for anyone who lands here
- * without the app (it's sideloaded via SideStore, so there's no App Store page to fall
- * back to). Scanning from *inside* the app skips all of this and parses the tag directly.
+ * without the app — TestFlight for now (TESTFLIGHT_URL), swap to the real App Store URL
+ * once the app is live there. Scanning from *inside* the app skips all of this and parses
+ * the tag directly.
  */
 app.get('/u/:username/:tag', (req, res) => {
   const escape = (value: string) =>
@@ -120,6 +121,7 @@ app.get('/u/:username/:tag', (req, res) => {
   const username = escape(req.params.username.slice(0, 40));
   const tag = escape(req.params.tag.slice(0, 10));
   const deepLink = `huntinggame://add-friend?username=${encodeURIComponent(req.params.username)}&tag=${encodeURIComponent(req.params.tag)}`;
+  const downloadUrl = process.env.TESTFLIGHT_URL ?? 'https://lejacob.dev';
 
   res.type('html').send(`<!doctype html>
 <html lang="en"><head>
@@ -142,7 +144,7 @@ app.get('/u/:username/:tag', (req, res) => {
   <h1>Hunting Game</h1>
   <div class="tag">${username}#${tag}</div>
   <a class="primary" href="${deepLink}">Add as friend</a>
-  <a class="secondary" href="https://api.lejacob.dev/dist/source.json">Don't have the app?</a>
+  <a class="secondary" href="${downloadUrl}">Don't have the app?</a>
   <p>Opening Hunting Game&hellip; if nothing happens, tap "Add as friend".</p>
 </div>
 <script>location.replace(${JSON.stringify(deepLink)});</script>
