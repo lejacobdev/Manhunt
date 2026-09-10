@@ -6,6 +6,9 @@ struct ProfileView: View {
     @StateObject private var viewModel = ProfileViewModel(source: .me)
     @EnvironmentObject var authSession: AuthSession
     @State private var showQRSheet = false
+    @State private var showDeleteConfirm = false
+    @State private var isDeletingAccount = false
+    @State private var deleteError: String?
 
     /// No backdrop or NavigationStack of its own — LobbyView owns both, so its stationary
     /// backdrop simply shows through this page.
@@ -42,6 +45,20 @@ struct ProfileView: View {
                 .foregroundColor(.white.opacity(0.3))
                 .tracking(1.5)
                 .padding(.top, 4)
+
+                Button {
+                    showDeleteConfirm = true
+                } label: {
+                    if isDeletingAccount {
+                        ProgressView().tint(ADATheme.hunterRed)
+                    } else {
+                        Text("DELETE ACCOUNT")
+                    }
+                }
+                .font(ADATheme.telemetryFont(size: 11))
+                .foregroundColor(ADATheme.hunterRed.opacity(0.7))
+                .tracking(1.5)
+                .disabled(isDeletingAccount)
             }
             .padding(.vertical, 20)
             .adaptiveContentWidth()
@@ -52,6 +69,32 @@ struct ProfileView: View {
             if let user = viewModel.profile?.user {
                 FriendCodeSheet(username: user.username, userTag: user.userTag)
             }
+        }
+        .confirmationDialog("Delete your account?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete Account", role: .destructive) { Task { await deleteAccount() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your profile, friendships, and match history. It cannot be undone.")
+        }
+        .alert("Couldn't delete account", isPresented: Binding(
+            get: { deleteError != nil },
+            set: { if !$0 { deleteError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteError ?? "")
+        }
+    }
+
+    private func deleteAccount() async {
+        isDeletingAccount = true
+        defer { isDeletingAccount = false }
+        do {
+            try await APIClient.shared.deleteAccount()
+            await PushNotificationManager.shared.unregisterCurrentToken()
+            authSession.signOut()
+        } catch {
+            deleteError = error.localizedDescription
         }
     }
 }

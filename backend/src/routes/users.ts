@@ -279,6 +279,33 @@ usersRouter.get('/me/profile', async (req: AuthedRequest, res) => {
   return res.json(profile);
 });
 
+/**
+ * Permanently deletes the signed-in account — required by App Store Review guideline
+ * 5.1.1(v) for any app that supports account creation. Wipes device tokens, friendships
+ * (either direction), invites (either direction), and this account's own GamePlayer rows
+ * before the User row itself, since none of those relations cascade automatically (Prisma
+ * defaults to Restrict) and a raw user delete would fail against a foreign key the moment
+ * the account has so much as sent one friend request or played one match.
+ *
+ * Deliberately left untouched: GameSession rows this user hosted (hostId is a plain
+ * string, not a relation — a stale host reference on an old, likely-ended session is
+ * harmless) and other players' own rows in matches this account played. Pulling one
+ * player's row out of a shared match's roster is the normal shape of "someone deleted
+ * their account" everywhere else — it isn't something that should rewrite match history
+ * for everyone else who played that match.
+ */
+usersRouter.post('/me/delete', async (req: AuthedRequest, res) => {
+  const userId = req.user!.userId;
+  await prisma.$transaction([
+    prisma.deviceToken.deleteMany({ where: { userId } }),
+    prisma.friendship.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } }),
+    prisma.gameInvite.deleteMany({ where: { OR: [{ fromUserId: userId }, { toUserId: userId }] } }),
+    prisma.gamePlayer.deleteMany({ where: { userId } }),
+    prisma.user.delete({ where: { id: userId } }),
+  ]);
+  return res.status(204).send();
+});
+
 /** Anyone signed in can read anyone's profile — stats are the game's public scoreboard,
  *  and the QR add-friend flow shows a preview before you commit to sending a request. */
 usersRouter.get('/:id/profile', async (req: AuthedRequest, res) => {

@@ -275,6 +275,14 @@ final class APIClient {
         try await get("/users/\(userId)/profile")
     }
 
+    /// Permanently deletes the signed-in account server-side — friendships, invites,
+    /// device tokens, and this account's own match history rows are wiped in one
+    /// transaction. Only tears down the server side; the caller still has to sign out
+    /// locally afterward (clear the stored token/session) since this doesn't do that.
+    func deleteAccount() async throws {
+        try await delete("/users/me/delete")
+    }
+
     /// Top 100 by the chosen stat, plus the caller's own standing even if they fall outside
     /// that top 100.
     func leaderboard(sort: LeaderboardSort) async throws -> Leaderboard {
