@@ -51,7 +51,18 @@ struct MatchHistoryView: View {
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)
                                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    // allowsFullSwipe deliberately off: a full swipe commits
+                                    // List's own optimistic removal animation the instant the
+                                    // gesture ends, but `hide` is async — it still has a network
+                                    // round trip ahead of it before `entries` actually changes.
+                                    // When that mutation lands after List already animated the
+                                    // row's removal, its internal row count and the array's
+                                    // actual count disagree, which crashes with "invalid number
+                                    // of rows" (an internal exception, not a Swift error this
+                                    // `do/catch` could ever have caught). Requiring an explicit
+                                    // tap on the revealed button instead removes that race —
+                                    // the animation and the mutation both wait on the same tap.
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                         // Any row can be swiped away, including a still-open
                                         // lobby/active one (e.g. a stale test game you'll never
                                         // return to) — this only hides it from this list, it's
@@ -234,7 +245,12 @@ struct MatchHistoryView: View {
     private func hide(_ entry: HistoryEntry) async {
         do {
             try await APIClient.shared.hideHistoryEntry(playerId: entry.id)
-            entries.removeAll { $0.id == entry.id }
+            // An explicit transaction rather than a silent mutation — List needs to be told
+            // this row removal is happening, not discover it after the fact once the network
+            // call this was waiting on finally completes.
+            withAnimation(ADATheme.controlSpring) {
+                entries.removeAll { $0.id == entry.id }
+            }
         } catch {
             actionError = error.localizedDescription
         }
@@ -243,7 +259,9 @@ struct MatchHistoryView: View {
     private func clearHistory() async {
         do {
             try await APIClient.shared.clearHistory()
-            entries.removeAll { $0.session.status == .ended }
+            withAnimation(ADATheme.controlSpring) {
+                entries.removeAll { $0.session.status == .ended }
+            }
         } catch {
             actionError = error.localizedDescription
         }
