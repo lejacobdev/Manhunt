@@ -32,61 +32,68 @@ struct MatchHistoryView: View {
                         .padding()
                 } else {
                     List {
+                        // Each logical group gets its own Section rather than sharing one
+                        // implicit top-level section with the ForEach below. Mixing a plain
+                        // conditional view (this card, via `if let`) with a ForEach in the
+                        // *same* section is a well-known crash source for List's UIKit
+                        // backing (UICollectionViewListCoordinatorBase): the moment one
+                        // changes — here, a swipe-to-delete removing a ForEach row — its
+                        // diffing engine can lose track of the conditional sibling's own
+                        // position, and _performBatchUpdates aborts with an
+                        // NSInternalInconsistencyException ("invalid number of
+                        // rows/items"). That's a UIKit-level assertion failure, not a
+                        // thrown Swift error, so no do/catch here could ever have caught
+                        // it — confirmed against an actual device crash log naming exactly
+                        // that call stack. Separate Sections give each group its own
+                        // stable diffing boundary, which is what actually fixes it.
                         if let session = currentSession, let player = currentPlayer {
-                            currentSessionCard(session: session, player: player)
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            Section {
+                                currentSessionCard(session: session, player: player)
+                                    .listRowBackground(Color.clear)
+                                    .listRowSeparator(.hidden)
+                                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            }
                         }
 
-                        if entries.isEmpty && currentSession == nil {
-                            Text("No matches yet — your finished games will show up here.")
-                                .font(ADATheme.uiFont(size: 13, weight: .medium))
-                                .foregroundColor(.white.opacity(0.4))
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                        } else {
-                            ForEach(entries) { entry in
-                                row(for: entry)
+                        Section {
+                            if entries.isEmpty && currentSession == nil {
+                                Text("No matches yet — your finished games will show up here.")
+                                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.4))
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)
-                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                                    // allowsFullSwipe deliberately off: a full swipe commits
-                                    // List's own optimistic removal animation the instant the
-                                    // gesture ends, but `hide` is async — it still has a network
-                                    // round trip ahead of it before `entries` actually changes.
-                                    // When that mutation lands after List already animated the
-                                    // row's removal, its internal row count and the array's
-                                    // actual count disagree, which crashes with "invalid number
-                                    // of rows" (an internal exception, not a Swift error this
-                                    // `do/catch` could ever have caught). Requiring an explicit
-                                    // tap on the revealed button instead removes that race —
-                                    // the animation and the mutation both wait on the same tap.
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        // Any row can be swiped away, including a still-open
-                                        // lobby/active one (e.g. a stale test game you'll never
-                                        // return to) — this only hides it from this list, it's
-                                        // a separate row from (and doesn't touch) the current-
-                                        // game card above, which is what actually still lets you
-                                        // rejoin a genuinely open match via GET /active/mine.
-                                        Button(role: .destructive) {
-                                            Task { await hide(entry) }
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
+                            } else {
+                                ForEach(entries) { entry in
+                                    row(for: entry)
+                                        .listRowBackground(Color.clear)
+                                        .listRowSeparator(.hidden)
+                                        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                            // Any row can be swiped away, including a still-open
+                                            // lobby/active one (e.g. a stale test game you'll never
+                                            // return to) — this only hides it from this list, it's
+                                            // a separate row from (and doesn't touch) the current-
+                                            // game card above, which is what actually still lets you
+                                            // rejoin a genuinely open match via GET /active/mine.
+                                            Button(role: .destructive) {
+                                                Task { await hide(entry) }
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
                                         }
-                                    }
-                            }
+                                }
 
-                            if unreadableCount > 0 {
-                                Text(unreadableCount == 1
-                                     ? "1 older match couldn't be read and was skipped."
-                                     : "\(unreadableCount) older matches couldn't be read and were skipped.")
-                                    .font(ADATheme.telemetryFont(size: 10))
-                                    .foregroundColor(ADATheme.tacticalAmber.opacity(0.7))
-                                    .multilineTextAlignment(.center)
-                                    .frame(maxWidth: .infinity)
-                                    .listRowBackground(Color.clear)
-                                    .listRowSeparator(.hidden)
+                                if unreadableCount > 0 {
+                                    Text(unreadableCount == 1
+                                         ? "1 older match couldn't be read and was skipped."
+                                         : "\(unreadableCount) older matches couldn't be read and were skipped.")
+                                        .font(ADATheme.telemetryFont(size: 10))
+                                        .foregroundColor(ADATheme.tacticalAmber.opacity(0.7))
+                                        .multilineTextAlignment(.center)
+                                        .frame(maxWidth: .infinity)
+                                        .listRowBackground(Color.clear)
+                                        .listRowSeparator(.hidden)
+                                }
                             }
                         }
                     }
