@@ -92,6 +92,27 @@ jobs:
           mkdir -p "$HOME/private_keys"
           echo "$API_KEY_B64" | base64 --decode > "$HOME/private_keys/AuthKey_${KEY_ID}.p8"
 
+      # A fresh keychain with a password *we choose*, rather than guessing at the login
+      # keychain's — there's no fixed, documented default for that on GitHub's hosted
+      # macOS images (confirmed the hard way: "runner" isn't it, and it isn't publicly
+      # documented as anything else either, despite that being a fairly common assumption
+      # repeated in various CI writeups). Reusing P12_EXPORT_PASSWORD as this keychain's
+      # own unlock password too, since both are internal-only automation secrets with no
+      # reason to be different. Added to the search list (not replacing it) and made
+      # default so -allowProvisioningUpdates puts the new identity here, where the export
+      # step below already knows the password needed to unlock/export it.
+      - name: Create a temporary signing keychain
+        env:
+          KEYCHAIN_PASSWORD: ${{ secrets.P12_EXPORT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          EXISTING=$(security list-keychains -d user | sed 's/[" ]//g')
+          security list-keychains -d user -s "$KEYCHAIN" $EXISTING
+          security default-keychain -d user -s "$KEYCHAIN"
+
       # -allowProvisioningUpdates lets xcodebuild create/renew whatever Identifiers,
       # certificates, and profiles the 4 targets (app, widgets, watch app, watch widgets)
       # need via the API key, instead of registering each one by hand in the portal first —
@@ -146,13 +167,12 @@ jobs:
         # pipeline below it from running.
         continue-on-error: true
         env:
-          P12_PASSWORD: ${{ secrets.P12_EXPORT_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.P12_EXPORT_PASSWORD }}
         run: |
-          KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
-          security unlock-keychain -p runner "$KEYCHAIN"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k runner "$KEYCHAIN"
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
           security export -k "$KEYCHAIN" -t identities -f pkcs12 \
-            -P "$P12_PASSWORD" \
+            -P "$KEYCHAIN_PASSWORD" \
             -o "$RUNNER_TEMP/HuntingGame-signing.p12"
 
       - name: Upload signing certificate artifact
