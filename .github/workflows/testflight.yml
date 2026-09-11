@@ -119,6 +119,31 @@ jobs:
             -authenticationKeyIssuerID "$ISSUER_ID" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
+      # The Archive step above is what actually makes -allowProvisioningUpdates create the
+      # signing identity (an "Apple Distribution: ..." cert + its private key) and install
+      # it into this runner's login keychain — nothing before this point has it. That
+      # identity only ever exists on this one ephemeral machine and is gone the moment the
+      # job ends, so this exports it as a password-protected .p12 (the one exportable,
+      # importable form of a certificate+private-key pair) and hands it off as a build
+      # artifact below, before the runner disappears — the only way to get this certificate
+      # onto a real Mac's Keychain Access (or anywhere else) without ever having a Mac in
+      # the first place. P12_EXPORT_PASSWORD is a plain repo secret (not sensitive the way
+      # the key material itself is) needed again to import the file anywhere.
+      - name: Export signing certificate as .p12
+        env:
+          P12_PASSWORD: ${{ secrets.P12_EXPORT_PASSWORD }}
+        run: |
+          security export -t identities -f pkcs12 \
+            -P "$P12_PASSWORD" \
+            -o "$RUNNER_TEMP/HuntingGame-signing.p12"
+
+      - name: Upload signing certificate artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HuntingGame-signing-p12
+          path: ${{ runner.temp }}/HuntingGame-signing.p12
+          retention-days: 7
+
       # `destination: upload` makes -exportArchive push straight to App Store Connect as
       # part of the export step — no separate altool/notarytool/Transporter call needed.
       - name: Write export options
