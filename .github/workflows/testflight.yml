@@ -129,15 +129,34 @@ jobs:
       # onto a real Mac's Keychain Access (or anywhere else) without ever having a Mac in
       # the first place. P12_EXPORT_PASSWORD is a plain repo secret (not sensitive the way
       # the key material itself is) needed again to import the file anywhere.
+      # timeout-minutes here is deliberately short: the first attempt at this step hung
+      # indefinitely rather than failing — `security export` silently waiting on a
+      # keychain-access permission dialog that nothing can click on an unattended runner,
+      # a known issue for identities Xcode only just created. `runner` is GitHub's own
+      # documented fixed password for the login keychain on its hosted macOS images (fresh
+      # every boot, not a secret). Unlocking it and pre-granting the security/codesign
+      # tools non-interactive ACL access to the private key up front is what actually
+      # avoids that prompt; if it ever hangs again anyway, this fails fast in 3 minutes
+      # instead of silently eating the whole job's 45-minute budget.
       - name: Export signing certificate as .p12
+        id: export_p12
+        timeout-minutes: 3
+        # This is a side capability, not core to actually shipping the app — a failure or
+        # timeout here (however unlikely now) shouldn't block the real Archive/upload
+        # pipeline below it from running.
+        continue-on-error: true
         env:
           P12_PASSWORD: ${{ secrets.P12_EXPORT_PASSWORD }}
         run: |
-          security export -t identities -f pkcs12 \
+          KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
+          security unlock-keychain -p runner "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k runner "$KEYCHAIN"
+          security export -k "$KEYCHAIN" -t identities -f pkcs12 \
             -P "$P12_PASSWORD" \
             -o "$RUNNER_TEMP/HuntingGame-signing.p12"
 
       - name: Upload signing certificate artifact
+        if: steps.export_p12.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: HuntingGame-signing-p12
