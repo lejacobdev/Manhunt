@@ -96,6 +96,22 @@ model Friendship {
   @@index([receiverId, status])
 }
 
+// A user-filed report of another user (App Store guideline 1.2 requires apps with
+// user-generated content to let people flag objectionable content/behavior). No
+// `@relation` back to User on either side deliberately — a reported account can later be
+// deleted (see the account-deletion route) without that cascading into report rows or
+// blocking it via a foreign key; the report itself should outlive the account it was
+// filed against.
+model Report {
+  id             String   @id @default(uuid())
+  reporterId     String
+  reportedUserId String
+  reason         String
+  createdAt      DateTime @default(now())
+
+  @@index([reportedUserId])
+}
+
 model GameSession {
   id        String     @id @default(uuid())
   code      String     @unique
@@ -169,6 +185,11 @@ model GamePlayer {
   outAt        DateTime?
   hiddenFromHistory Boolean @default(false)
   joinedAt     DateTime   @default(now())
+  // When this player explicitly agreed to share their live location for this specific
+  // match — the "check in" App Store guideline 5.1.2(i) requires before a user's location
+  // is shown to others on a map, done once per match rather than per location update
+  // (which isn't technically meaningful for a live radar). Null until they consent.
+  locationSharingConsentedAt DateTime?
 
   session GameSession @relation(fields: [sessionId], references: [id])
   user    User        @relation(fields: [userId], references: [id])

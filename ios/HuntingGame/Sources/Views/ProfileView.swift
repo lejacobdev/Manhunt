@@ -32,6 +32,14 @@ struct ProfileView: View {
                     .padding(.horizontal)
                 }
 
+                NavigationLink {
+                    BlockedUsersView()
+                } label: {
+                    HStack { Image(systemName: "hand.raised.fill"); Text("BLOCKED USERS") }
+                }
+                .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+                .padding(.horizontal)
+
                 Button("SIGN OUT") {
                     Task {
                         // Unregister while the auth token is still valid to make the
@@ -106,6 +114,12 @@ struct PublicProfileView: View {
     let displayName: String
 
     @StateObject private var viewModel: ProfileViewModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var showReportAlert = false
+    @State private var reportReason = ""
+    @State private var showBlockConfirm = false
+    @State private var isSubmitting = false
+    @State private var actionError: String?
 
     init(userId: String, displayName: String) {
         self.userId = userId
@@ -128,7 +142,80 @@ struct PublicProfileView: View {
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbar { reportBlockToolbarContent }
         .task { await viewModel.load() }
+        .alert("Report \(displayName)", isPresented: $showReportAlert) {
+            TextField("What happened?", text: $reportReason)
+            Button("Submit", role: .destructive) { Task { await submitReport() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This sends a report to the Hunting Game team.")
+        }
+        .confirmationDialog("Block \(displayName)?", isPresented: $showBlockConfirm, titleVisibility: .visible) {
+            Button("Block User", role: .destructive) { Task { await block() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("They'll be removed from your friends list and won't be able to see you or contact you again.")
+        }
+        .alert("Something went wrong", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(actionError ?? "")
+        }
+        .disabled(isSubmitting)
+    }
+
+    // App Store guideline 1.2 (user-generated content) requires both a way to flag
+    // objectionable content and a way to block the account it came from — this menu is that
+    // mechanism, reachable from any player's profile. Pulled out of `body` into its own
+    // `@ToolbarContentBuilder` property rather than inlined, since the Swift type-checker
+    // struggled to resolve the long modifier chain in `body` with this nested `Menu` inline.
+    @ToolbarContentBuilder
+    private var reportBlockToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Menu {
+                Button {
+                    reportReason = ""
+                    showReportAlert = true
+                } label: {
+                    Label("Report User", systemImage: "flag.fill")
+                }
+                Button(role: .destructive) {
+                    showBlockConfirm = true
+                } label: {
+                    Label("Block User", systemImage: "hand.raised.fill")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .foregroundColor(.white)
+            }
+        }
+    }
+
+    private func submitReport() async {
+        let reason = reportReason.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !reason.isEmpty else { return }
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            try await APIClient.shared.reportUser(id: userId, reason: reason)
+        } catch {
+            actionError = error.localizedDescription
+        }
+    }
+
+    private func block() async {
+        isSubmitting = true
+        defer { isSubmitting = false }
+        do {
+            try await APIClient.shared.blockUser(id: userId)
+            dismiss()
+        } catch {
+            actionError = error.localizedDescription
+        }
     }
 }
 

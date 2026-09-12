@@ -122,6 +122,29 @@ final class APIClient {
         return resp.requests
     }
 
+    /// Removes any existing friendship in either direction and replaces it with a block —
+    /// the blocked account disappears from this account's friends list and search results
+    /// immediately, server-side (see friends.ts), not something the client filters itself.
+    func blockUser(id: String) async throws {
+        let _: EmptyResponse = try await post("/friends/\(id)/block", body: EmptyBody())
+    }
+
+    func unblockUser(id: String) async throws {
+        try await delete("/friends/\(id)/unblock")
+    }
+
+    func blockedUsers() async throws -> [AppUser] {
+        struct Response: Decodable { let blocked: [AppUser] }
+        let resp: Response = try await get("/friends/blocked")
+        return resp.blocked
+    }
+
+    struct ReportBody: Encodable { let reason: String }
+
+    func reportUser(id: String, reason: String) async throws {
+        let _: EmptyResponse = try await post("/friends/\(id)/report", body: ReportBody(reason: reason))
+    }
+
     // MARK: - Invites
 
     func sendGameInvite(toUserId: String, sessionCode: String) async throws {
@@ -187,6 +210,12 @@ final class APIClient {
         struct Response: Decodable { let player: GamePlayer; let session: GameSession }
         let resp: Response = try await post("/games/\(code)/join", body: Body(role: role.rawValue, squad: squad))
         return (resp.player, resp.session)
+    }
+
+    /// One explicit check-in per match (App Store guideline 5.1.2(i)) — call right before
+    /// starting live location updates for this game, never automatically.
+    func recordLocationSharingConsent(code: String) async throws {
+        try await delete("/games/\(code)/location-consent")
     }
 
     func startGame(code: String) async throws -> GameSession {

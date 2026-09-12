@@ -16,6 +16,7 @@ friendsRouter.get('/search', async (req: AuthedRequest, res) => {
   const q = String(req.query.q ?? '').trim();
   if (q.length < 2) return res.json({ results: [] });
 
+  const userId = req.user!.userId;
   let where;
   if (q.includes('#')) {
     const [username, userTag] = q.split('#');
@@ -24,8 +25,17 @@ friendsRouter.get('/search', async (req: AuthedRequest, res) => {
     where = { username: { startsWith: q, mode: 'insensitive' as const } };
   }
 
+  // A block should remove the other person from view in both directions — someone you
+  // blocked shouldn't turn up when you search, and (just as importantly) you shouldn't
+  // turn up when *they* search either.
+  const blocks = await prisma.friendship.findMany({
+    where: { status: 'BLOCKED', OR: [{ senderId: userId }, { receiverId: userId }] },
+    select: { senderId: true, receiverId: true },
+  });
+  const blockedIds = blocks.map((b) => (b.senderId === userId ? b.receiverId : b.senderId));
+
   const users = await prisma.user.findMany({
-    where: { ...where, id: { not: req.user!.userId } },
+    where: { ...where, id: { not: userId, notIn: blockedIds } },
     select: { id: true, username: true, userTag: true, avatarUrl: true },
     take: 20,
   });
@@ -102,6 +112,16 @@ friendsRouter.post('/requests/:id/decline', async (req: AuthedRequest, res) => {
   return res.status(204).send();
 });
 
+/**
+ * Blocking removes any existing friendship (whichever direction it ran) and replaces it
+ * with a BLOCKED row, which GET /friends' ACCEPTED-only query and /search's exclusion
+ * above both already respect — the blocked account disappears from the blocker's own
+ * view immediately, without needing a separate "hide" step anywhere. App Store guideline
+ * 1.2 requires blocking to also notify the developer, which for a project this size means
+ * a clearly-tagged server log rather than a dedicated moderation dashboard — grep/alert on
+ * "[BLOCK]" in production logs; see also POST /:userId/report just below for the same
+ * pattern applied to actual content reports.
+ */
 friendsRouter.post('/:userId/block', async (req: AuthedRequest, res) => {
   const senderId = req.user!.userId;
   const receiverId = req.params.userId;
@@ -113,17 +133,70 @@ friendsRouter.post('/:userId/block', async (req: AuthedRequest, res) => {
       ],
     },
   });
-  if (existing) {
-    const updated = await prisma.friendship.update({
-      where: { id: existing.id },
-      data: { status: 'BLOCKED', senderId, receiverId },
-    });
-    return res.json({ friendship: updated });
-  }
-  const created = await prisma.friendship.create({
-    data: { senderId, receiverId, status: 'BLOCKED' },
+  const result = existing
+    ? await prisma.friendship.update({
+        where: { id: existing.id },
+        data: { status: 'BLOCKED', senderId, receiverId },
+      })
+    : await prisma.friendship.create({ data: { senderId, receiverId, status: 'BLOCKED' } });
+
+  console.log(`[BLOCK] user ${senderId} blocked user ${receiverId} at ${new Date().toISOString()}`);
+  return res.status(existing ? 200 : 201).json({ friendship: result });
+});
+
+friendsRouter.post('/:userId/unblock', async (req: AuthedRequest, res) => {
+  const userId = req.user!.userId;
+  const otherId = req.params.userId;
+  const existing = await prisma.friendship.findFirst({
+    where: {
+      status: 'BLOCKED',
+      OR: [
+        { senderId: userId, receiverId: otherId },
+        { senderId: otherId, receiverId: userId },
+      ],
+    },
   });
-  return res.status(201).json({ friendship: created });
+  if (!existing) return res.status(404).json({ error: 'Not blocked.' });
+  await prisma.friendship.delete({ where: { id: existing.id } });
+  return res.status(204).send();
+});
+
+friendsRouter.get('/blocked', async (req: AuthedRequest, res) => {
+  const userId = req.user!.userId;
+  const blocks = await prisma.friendship.findMany({
+    where: { status: 'BLOCKED', OR: [{ senderId: userId }, { receiverId: userId }] },
+    include: { sender: { select: safeUserSelect }, receiver: { select: safeUserSelect } },
+  });
+  const blocked = blocks.map((b) => (b.senderId === userId ? b.receiver : b.sender));
+  return res.json({ blocked });
+});
+
+const reportSchema = z.object({ reason: z.string().min(1).max(500) });
+
+/**
+ * App Store guideline 1.2 requires apps with user-generated content to let people flag
+ * objectionable content/behavior, and — like blocking above — to notify the developer.
+ * Persisted (so reports survive past a single log line, and outlive the reported account
+ * if it's later deleted — see Report's schema comment) as well as logged, both under the
+ * same "[REPORT]"/"[BLOCK]" tags for easy grepping in production.
+ */
+friendsRouter.post('/:userId/report', async (req: AuthedRequest, res) => {
+  const parsed = reportSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
+
+  const reporterId = req.user!.userId;
+  const reportedUserId = req.params.userId;
+  if (reporterId === reportedUserId) {
+    return res.status(400).json({ error: 'Cannot report yourself.' });
+  }
+
+  const report = await prisma.report.create({
+    data: { reporterId, reportedUserId, reason: parsed.data.reason },
+  });
+  console.log(
+    `[REPORT] user ${reporterId} reported user ${reportedUserId} — "${parsed.data.reason}" (report ${report.id})`
+  );
+  return res.status(201).json({ report });
 });
 
 friendsRouter.get('/', async (req: AuthedRequest, res) => {

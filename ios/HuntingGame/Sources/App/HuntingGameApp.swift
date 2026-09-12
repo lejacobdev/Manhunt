@@ -18,10 +18,16 @@ struct RootView: View {
     @EnvironmentObject var authSession: AuthSession
     @StateObject private var presence = PresenceService.shared
     @Environment(\.scenePhase) private var scenePhase
+    // Gates both AuthView and the authenticated app — Apple requires agreement to terms
+    // before either registering or signing in (App Store guideline 1.2), not just before
+    // registering, so this sits ahead of the isAuthenticated branch entirely.
+    @AppStorage("hasAcceptedTerms") private var hasAcceptedTerms = false
 
     var body: some View {
         Group {
-            if authSession.isAuthenticated {
+            if !hasAcceptedTerms {
+                TermsGateView { hasAcceptedTerms = true }
+            } else if authSession.isAuthenticated {
                 LobbyView()
                     .environmentObject(presence)
             } else {

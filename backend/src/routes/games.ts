@@ -93,6 +93,29 @@ gamesRouter.post('/:code/join', async (req: AuthedRequest, res) => {
   return res.status(201).json({ player, session });
 });
 
+/**
+ * Records that this player explicitly agreed to share their live location for this one
+ * match — App Store guideline 5.1.2(i) requires a declinable check-in before a user's
+ * location is shown to others on a map, done once per match (not per GPS update, which
+ * isn't meaningful for a live radar) since that's what the client's consent screen asks
+ * for. The client calls this right before it starts location updates; it's a record of
+ * consent, not a gate the server itself enforces on socket traffic — the client simply
+ * never begins sending location updates without it.
+ */
+gamesRouter.post('/:code/location-consent', async (req: AuthedRequest, res) => {
+  const session = await gameService.getSessionByCode(req.params.code);
+  if (!session) return res.status(404).json({ error: 'Game not found.' });
+  const player = await prisma.gamePlayer.findUnique({
+    where: { sessionId_userId: { sessionId: session.id, userId: req.user!.userId } },
+  });
+  if (!player) return res.status(404).json({ error: 'You are not a member of this game.' });
+  await prisma.gamePlayer.update({
+    where: { id: player.id },
+    data: { locationSharingConsentedAt: new Date() },
+  });
+  return res.status(204).send();
+});
+
 const updateSettingsSchema = z.object({
   durationMinutes: z.number().min(5).max(240).optional(),
   // Redrawable any number of times before the match starts — each redraw re-scatters
