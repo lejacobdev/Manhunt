@@ -85,11 +85,14 @@ export const HUNTER_STARTING_HEARTS = 5;
 export const RUNNER_STARTING_HEARTS = 3;
 
 /** Containment ("storm") damage — leaving the outer play-area polygon *or* the shrinking
- *  zone inside it (either role) warns first, then drains a heart every tick while still
- *  outside. Both failure modes share one warning/tick budget so a player standing outside
- *  both only loses one heart per tick, not two. */
+ *  zone inside it costs either role a heart immediately, then another every tick for as
+ *  long as they stay out. Both failure modes share one tick budget, so standing outside
+ *  both only costs one heart per tick, not two.
+ *
+ *  The buffer is widened per-player by their reported GPS accuracy, which is what keeps a
+ *  noisy fix near the edge from costing a heart — there's deliberately no grace period on
+ *  top of that, since a delay before the first hit just reads as the drain not working. */
 export const BOUNDARY_BUFFER_METERS = 10;
-export const BOUNDARY_WARNING_GRACE_MS = 8_000;
 export const BOUNDARY_DAMAGE_TICK_MS = 8_000;
 
 /** Shrinking zone: contracts from the boundary's circumscribed radius to this over the

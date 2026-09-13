@@ -729,8 +729,16 @@ struct GameView: View {
                     "FREEING PRISONERS — HOLD \(viewModel.bailRemainingSeconds)s",
                     tint: ADATheme.runnerGreen
                 )
-            } else if viewModel.boundaryOutside {
-                bannerText("OUTSIDE THE ZONE — RETURN OR LOSE HEARTS", tint: ADATheme.tacticalAmber)
+            } else if viewModel.boundaryOutside && !viewModel.isCaught && !viewModel.isJailed && !viewModel.isOut {
+                // The caught/jailed/out guard is belt-and-braces against a stale warning:
+                // the server retracts it now, but a client already mid-match when this
+                // shipped would otherwise keep showing one with no damage behind it.
+                bannerText(
+                    viewModel.boundaryReason == "ZONE"
+                        ? "OUTSIDE THE SHRINKING ZONE — LOSING HEARTS"
+                        : "OUTSIDE THE PLAY AREA — LOSING HEARTS",
+                    tint: ADATheme.tacticalAmber
+                )
             }
 
             if let bailout = viewModel.lastBailout {

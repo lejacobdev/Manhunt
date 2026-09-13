@@ -34,7 +34,6 @@ import {
   AuthTokenPayload,
   BOUNDARY_BUFFER_METERS,
   BOUNDARY_DAMAGE_TICK_MS,
-  BOUNDARY_WARNING_GRACE_MS,
   CATCH_REQUEST_TIMEOUT_MS,
   CATCH_VERIFICATION_RADIUS_METERS,
   POWER_UP_COLLECTION_RADIUS_METERS,
@@ -451,6 +450,13 @@ io.on('connection', (socket: Socket) => {
 
       if (p.role === 'RUNNER' && gameSessionId) {
         if (p.isJailed) {
+          // Jail replaces play-area containment rather than stacking with it — a prisoner
+          // is *required* to be in the jail, so they can't also be punished for where the
+          // host happened to draw it. Clearing here matters because boundary_status is only
+          // sent on a transition: without it, a runner caught while outside the zone keeps
+          // a stuck "outside the zone" warning for the rest of the match, with no damage
+          // behind it, which reads as the jail counting as in-zone.
+          clearContainmentState(roomCode, p);
           // Two different jail clocks depending on whether they've got there yet: a
           // countdown to *reach* the jail, then a countdown to get *back* whenever they
           // wander out of it.
@@ -1174,6 +1180,18 @@ function currentZone(roomCode: string): ZoneState | undefined {
  * Both failure modes deliberately share one violation/tick budget: standing outside both
  * the polygon and the circle is still one heart per tick, not two.
  */
+/** Drops any in-flight play-area violation for this player and tells their client the
+ *  warning no longer applies. Used wherever containment stops being checked for someone
+ *  (jail, a catch, elimination) — the status event only fires on a transition, so without
+ *  this the last "you're outside" they were sent stands forever. */
+function clearContainmentState(roomCode: string, player: PlayerState) {
+  const violations = boundaryViolationSince.get(roomCode);
+  const ticks = boundaryLastDamageAt.get(roomCode);
+  const wasOutside = violations?.delete(player.id) ?? false;
+  ticks?.delete(player.id);
+  if (wasOutside) io.to(player.id).emit('boundary_status', { outside: false });
+}
+
 async function checkContainment(
   roomCode: string,
   gameSessionId: string,
@@ -1204,21 +1222,34 @@ async function checkContainment(
     return;
   }
 
+  // Which of the two shapes they're actually outside, so the warning can name it — both
+  // drain identically, but "outside the play area" and "outside the shrinking zone" are
+  // very different things to be told while you're running.
+  const outsideZoneBy = zone ? distanceOutsideZone(point, zone) : 0;
+  const reason = outsideZoneBy > distanceOutsidePolygonMeters(point, settings.boundsPolygon) ? 'ZONE' : 'BOUNDARY';
+
   const now = Date.now();
-  const since = violations.get(player.id);
-  if (!since) {
+  if (!violations.get(player.id)) {
     violations.set(player.id, now);
-    io.to(player.id).emit('boundary_status', { outside: true, warning: true });
-    return;
+    io.to(player.id).emit('boundary_status', { outside: true, warning: true, reason });
+    // Deliberately falls through to the damage below rather than returning: the first hit
+    // lands on the very first fix outside, and every BOUNDARY_DAMAGE_TICK_MS after. There
+    // used to be a grace period on top of the tick, which meant a full 8 seconds of nothing
+    // happening before the first heart went — long enough to read as the drain being
+    // broken. The accuracy-aware buffer above is what absorbs GPS noise; the grace was
+    // doing the same job twice, more slowly.
   }
-  if (now - since < BOUNDARY_WARNING_GRACE_MS) return;
-  const lastDamage = ticks.get(player.id) ?? since;
-  if (now - lastDamage < BOUNDARY_DAMAGE_TICK_MS) return;
+
+  const lastDamage = ticks.get(player.id);
+  if (lastDamage !== undefined && now - lastDamage < BOUNDARY_DAMAGE_TICK_MS) return;
   ticks.set(player.id, now);
 
   player.hearts = Math.max(0, player.hearts - 1);
+  // Emitted before the write, not after: the socket event is the only thing the player
+  // actually sees, and a database hiccup rejecting this handler mid-await would otherwise
+  // take the damage feedback down with it while the in-memory heart is already gone.
+  io.to(roomCode).emit('hearts_update', { playerId: player.id, hearts: player.hearts, cause: reason });
   await prisma.gamePlayer.update({ where: { id: player.id }, data: { hearts: player.hearts } });
-  io.to(roomCode).emit('hearts_update', { playerId: player.id, hearts: player.hearts, cause: 'BOUNDARY' });
 
   if (player.hearts <= 0) {
     violations.delete(player.id);
@@ -1304,6 +1335,11 @@ async function applyCatch(
   const settings = sessionSettingsCache.get(roomCode);
   const jail = !!settings?.jailEnabled && !!settings.jailPolygon;
   const caughtAt = new Date().toISOString();
+
+  // Containment stops applying the moment they're caught, and a caught non-jailed player
+  // stops sending location fixes at all — so this is the last chance to retract a warning
+  // they'd otherwise be left staring at.
+  clearContainmentState(roomCode, runner);
 
   runner.hearts = Math.max(0, runner.hearts - 1);
   io.to(roomCode).emit('hearts_update', { playerId: runner.id, hearts: runner.hearts, cause: 'CAUGHT' });

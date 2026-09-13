@@ -50,6 +50,8 @@ final class GameViewModel: ObservableObject {
     @Published var awaitingGambleCall: Bool = false
     @Published var boundaryOutside: Bool = false
     @Published var boundaryWarning: Bool = false
+    /// Which shape the player is outside — "ZONE" or "BOUNDARY" — so the warning names it.
+    @Published var boundaryReason: String = "BOUNDARY"
     @Published var jailOutside: Bool = false
     @Published var jailCountdownRemaining: Int?
     private var jailCountdownTimer: Timer?
@@ -452,6 +454,7 @@ final class GameViewModel: ObservableObject {
             .sink { [weak self] event in
                 self?.boundaryOutside = event.outside
                 self?.boundaryWarning = event.warning
+                self?.boundaryReason = event.reason
             }
             .store(in: &cancellables)
 

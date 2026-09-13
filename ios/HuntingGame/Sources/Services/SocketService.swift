@@ -61,7 +61,9 @@ final class SocketService: ObservableObject {
     let heartsUpdateSubject = PassthroughSubject<(playerId: String, hearts: Int, cause: String), Never>()
     let playerJailedSubject = PassthroughSubject<(runnerId: String, hunterId: String, arrivalDeadlineMs: Int?), Never>()
     let playerEliminatedSubject = PassthroughSubject<(playerId: String, role: String, reason: String), Never>()
-    let boundaryStatusSubject = PassthroughSubject<(outside: Bool, warning: Bool), Never>()
+    /// `reason` names which shape they're outside — "ZONE" for the shrinking circle,
+    /// "BOUNDARY" for the host's play area — so the warning can say which.
+    let boundaryStatusSubject = PassthroughSubject<(outside: Bool, warning: Bool, reason: String), Never>()
     let jailStatusSubject = PassthroughSubject<(outside: Bool, deadlineMs: Int?), Never>()
     /// Fires when a sentenced runner actually sets foot in the jail — their arrival
     /// countdown stops and the ordinary stay-inside rules take over from there.
@@ -455,7 +457,11 @@ final class SocketService: ObservableObject {
 
         socket.on("boundary_status") { [weak self] data, _ in
             guard let dict = data.first as? [String: Any], let outside = dict["outside"] as? Bool else { return }
-            self?.boundaryStatusSubject.send((outside, dict["warning"] as? Bool ?? false))
+            self?.boundaryStatusSubject.send((
+                outside,
+                dict["warning"] as? Bool ?? false,
+                dict["reason"] as? String ?? "BOUNDARY"
+            ))
         }
 
         socket.on("jail_status") { [weak self] data, _ in
