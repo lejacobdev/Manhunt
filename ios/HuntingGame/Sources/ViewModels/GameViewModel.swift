@@ -63,6 +63,12 @@ final class GameViewModel: ObservableObject {
     @Published var bailRemainingSeconds: Int = 0
     /// The most recent jailbreak, cleared a few seconds after it lands.
     @Published var lastBailout: BailoutEvent?
+    /// Bumped every time this player actually loses a heart, whatever took it — zone or
+    /// boundary damage, a catch, a jailbreak. Drives the full-screen damage flash. A
+    /// counter rather than a flag so two hits in quick succession each register instead of
+    /// collapsing into one.
+    @Published var heartLossPulse: Int = 0
+    @Published var lastHeartLossCause: String?
 
     private var cancellables = Set<AnyCancellable>()
     private var invisibilityTimer: Timer?
@@ -345,8 +351,15 @@ final class GameViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
                 guard let self, event.playerId == self.gamePlayerId else { return }
+                // Every cause gets the same treatment, not just boundary damage: losing a
+                // heart to a catch or to someone else's jailbreak is exactly as worth
+                // noticing, and the old cause check meant most of them passed silently.
+                let lostOne = event.hearts < self.hearts
                 self.hearts = event.hearts
-                if event.cause == "BOUNDARY" { HapticsEngine.shared.catchFailed() }
+                guard lostOne else { return }
+                self.lastHeartLossCause = event.cause
+                self.heartLossPulse += 1
+                HapticsEngine.shared.catchFailed()
             }
             .store(in: &cancellables)
 

@@ -18,6 +18,8 @@ struct GameView: View {
     @State private var recenterRequestToken = 0
     @State private var toastDismissWorkItem: DispatchWorkItem?
     @State private var showExitConfirm = false
+    /// Opacity of the red edge flash played on every heart lost — see `damageFlash`.
+    @State private var damageFlashOpacity: Double = 0
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
@@ -60,6 +62,7 @@ struct GameView: View {
 
             // Drawn after (so on top of) the dock/radar above — on the right, behind
             // the radar, it used to render underneath both and never actually show.
+            damageFlash
             recenterButton
             toastBanner
             containmentWarningBanner
@@ -126,6 +129,11 @@ struct GameView: View {
         .animation(ADATheme.controlSpring, value: viewModel.role)
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
+        .onChange(of: viewModel.heartLossPulse) { _ in
+            // Snap on, ease off — a symmetric fade reads as a soft glow rather than a hit.
+            withAnimation(.easeIn(duration: 0.07)) { damageFlashOpacity = 0.5 }
+            withAnimation(.easeOut(duration: 0.65).delay(0.07)) { damageFlashOpacity = 0 }
+        }
         .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { tick in
             now = tick
         }
@@ -146,6 +154,21 @@ struct GameView: View {
     }
 
     // MARK: - Chrome
+
+    /// Red vignette pulsed from the screen edges whenever this player loses a heart. The
+    /// hearts row itself is small and docked at the bottom, so on its own it's easy to miss
+    /// while you're actually looking at the map — which made zone damage in particular feel
+    /// like nothing was happening.
+    private var damageFlash: some View {
+        RadialGradient(
+            colors: [.clear, ADATheme.hunterRed.opacity(damageFlashOpacity)],
+            center: .center,
+            startRadius: 120,
+            endRadius: 560
+        )
+        .edgesIgnoringSafeArea(.all)
+        .allowsHitTesting(false)
+    }
 
     private var dimScrim: some View {
         Color.black.opacity(0.65)
