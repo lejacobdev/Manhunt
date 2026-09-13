@@ -34,6 +34,7 @@ import {
   AuthTokenPayload,
   BOUNDARY_BUFFER_METERS,
   BOUNDARY_DAMAGE_TICK_MS,
+  BOUNDARY_WARNING_GRACE_MS,
   CATCH_REQUEST_TIMEOUT_MS,
   CATCH_VERIFICATION_RADIUS_METERS,
   POWER_UP_COLLECTION_RADIUS_METERS,
@@ -1229,19 +1230,17 @@ async function checkContainment(
   const reason = outsideZoneBy > distanceOutsidePolygonMeters(point, settings.boundsPolygon) ? 'ZONE' : 'BOUNDARY';
 
   const now = Date.now();
-  if (!violations.get(player.id)) {
+  const since = violations.get(player.id);
+  if (!since) {
     violations.set(player.id, now);
     io.to(player.id).emit('boundary_status', { outside: true, warning: true, reason });
-    // Deliberately falls through to the damage below rather than returning: the first hit
-    // lands on the very first fix outside, and every BOUNDARY_DAMAGE_TICK_MS after. There
-    // used to be a grace period on top of the tick, which meant a full 8 seconds of nothing
-    // happening before the first heart went — long enough to read as the drain being
-    // broken. The accuracy-aware buffer above is what absorbs GPS noise; the grace was
-    // doing the same job twice, more slowly.
+    return;
   }
-
-  const lastDamage = ticks.get(player.id);
-  if (lastDamage !== undefined && now - lastDamage < BOUNDARY_DAMAGE_TICK_MS) return;
+  // The warning comes first and buys a window to turn around — nothing is lost until the
+  // grace expires, after which it's a heart every tick for as long as they stay out.
+  if (now - since < BOUNDARY_WARNING_GRACE_MS) return;
+  const lastDamage = ticks.get(player.id) ?? since;
+  if (now - lastDamage < BOUNDARY_DAMAGE_TICK_MS) return;
   ticks.set(player.id, now);
 
   player.hearts = Math.max(0, player.hearts - 1);
