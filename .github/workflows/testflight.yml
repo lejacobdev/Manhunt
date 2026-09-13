@@ -27,6 +27,12 @@ jobs:
     # update ever drops the pre-cache; it should just no-op here.
     runs-on: macos-26
     timeout-minutes: 45
+    # Mapped to job-level env so the import step can branch on whether the certificate
+    # secret has been set up yet — the `secrets` context isn't dependable in a step-level
+    # `if`, but `env` is. Before the secret exists this simply skips and the old
+    # mint-a-cert-per-run behaviour still gets a build out.
+    env:
+      SIGNING_CERTIFICATE_P12: ${{ secrets.SIGNING_CERTIFICATE_P12 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -99,8 +105,7 @@ jobs:
       # repeated in various CI writeups). Reusing P12_EXPORT_PASSWORD as this keychain's
       # own unlock password too, since both are internal-only automation secrets with no
       # reason to be different. Added to the search list (not replacing it) and made
-      # default so -allowProvisioningUpdates puts the new identity here, where the export
-      # step below already knows the password needed to unlock/export it.
+      # default so the identity imported below lands somewhere xcodebuild will look.
       - name: Create a temporary signing keychain
         env:
           KEYCHAIN_PASSWORD: ${{ secrets.P12_EXPORT_PASSWORD }}
@@ -112,6 +117,40 @@ jobs:
           EXISTING=$(security list-keychains -d user | sed 's/[" ]//g')
           security list-keychains -d user -s "$KEYCHAIN" $EXISTING
           security default-keychain -d user -s "$KEYCHAIN"
+
+      # One stable signing identity from a repo secret, rather than letting
+      # -allowProvisioningUpdates ask Apple for a brand-new certificate every run. That
+      # minting is what quietly exhausted the account's certificate quota: every run starts
+      # from an empty keychain, so Xcode found no usable identity and requested another one,
+      # each time, until the account hit its ceiling and builds stopped dead.
+      #
+      # The .p12 behind this secret was assembled off-box — a CSR generated with openssl on
+      # the project server, the .cer Apple issued against it, recombined into a .p12 — so no
+      # Mac and no keychain export was involved. That matters because the export route this
+      # replaces could never be made to work unattended: `security export` and
+      # `set-key-partition-list` both block on a keychain-access dialog nothing can click,
+      # which defeated three separate attempts (unlock login keychain, guess its password,
+      # dedicated temp keychain) before this approach sidestepped the problem entirely.
+      #
+      # -T grants codesign and security non-interactive access to the private key at import
+      # time; set-key-partition-list is what makes that grant stick on current macOS.
+      # Importing needs both — with only one, signing later raises the same unanswerable
+      # prompt. Deliberately NOT continue-on-error: if this breaks, the fallback would be
+      # silently minting another certificate and refilling the quota, which is precisely the
+      # failure this exists to prevent. Better to fail loudly and fix it.
+      - name: Import signing certificate
+        if: env.SIGNING_CERTIFICATE_P12 != ''
+        timeout-minutes: 2
+        env:
+          KEYCHAIN_PASSWORD: ${{ secrets.P12_EXPORT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          echo "$SIGNING_CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/import.p12"
+          security import "$RUNNER_TEMP/import.p12" -k "$KEYCHAIN" -P "$KEYCHAIN_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          rm -f "$RUNNER_TEMP/import.p12"
+          security find-identity -v -p codesigning "$KEYCHAIN"
 
       # -allowProvisioningUpdates lets xcodebuild create/renew whatever Identifiers,
       # certificates, and profiles the 4 targets (app, widgets, watch app, watch widgets)
@@ -139,49 +178,6 @@ jobs:
             -authenticationKeyID "$KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER_ID" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
-
-      # The Archive step above is what actually makes -allowProvisioningUpdates create the
-      # signing identity (an "Apple Distribution: ..." cert + its private key) and install
-      # it into this runner's login keychain — nothing before this point has it. That
-      # identity only ever exists on this one ephemeral machine and is gone the moment the
-      # job ends, so this exports it as a password-protected .p12 (the one exportable,
-      # importable form of a certificate+private-key pair) and hands it off as a build
-      # artifact below, before the runner disappears — the only way to get this certificate
-      # onto a real Mac's Keychain Access (or anywhere else) without ever having a Mac in
-      # the first place. P12_EXPORT_PASSWORD is a plain repo secret (not sensitive the way
-      # the key material itself is) needed again to import the file anywhere.
-      # timeout-minutes here is deliberately short: the first attempt at this step hung
-      # indefinitely rather than failing — `security export` silently waiting on a
-      # keychain-access permission dialog that nothing can click on an unattended runner,
-      # a known issue for identities Xcode only just created. `runner` is GitHub's own
-      # documented fixed password for the login keychain on its hosted macOS images (fresh
-      # every boot, not a secret). Unlocking it and pre-granting the security/codesign
-      # tools non-interactive ACL access to the private key up front is what actually
-      # avoids that prompt; if it ever hangs again anyway, this fails fast in 3 minutes
-      # instead of silently eating the whole job's 45-minute budget.
-      - name: Export signing certificate as .p12
-        id: export_p12
-        timeout-minutes: 3
-        # This is a side capability, not core to actually shipping the app — a failure or
-        # timeout here (however unlikely now) shouldn't block the real Archive/upload
-        # pipeline below it from running.
-        continue-on-error: true
-        env:
-          KEYCHAIN_PASSWORD: ${{ secrets.P12_EXPORT_PASSWORD }}
-        run: |
-          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
-          security export -k "$KEYCHAIN" -t identities -f pkcs12 \
-            -P "$KEYCHAIN_PASSWORD" \
-            -o "$RUNNER_TEMP/HuntingGame-signing.p12"
-
-      - name: Upload signing certificate artifact
-        if: steps.export_p12.outcome == 'success'
-        uses: actions/upload-artifact@v4
-        with:
-          name: HuntingGame-signing-p12
-          path: ${{ runner.temp }}/HuntingGame-signing.p12
-          retention-days: 7
 
       # `destination: upload` makes -exportArchive push straight to App Store Connect as
       # part of the export step — no separate altool/notarytool/Transporter call needed.
