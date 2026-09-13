@@ -22,11 +22,25 @@ struct RootView: View {
     // before either registering or signing in (App Store guideline 1.2), not just before
     // registering, so this sits ahead of the isAuthenticated branch entirely.
     @AppStorage("hasAcceptedTerms") private var hasAcceptedTerms = false
+    /// Whether the rules have been agreed to, and whether the first-launch rules screen has
+    /// been shown at all. Two flags, because declining is allowed here: the app still opens,
+    /// but hosting or joining re-asks (see LobbyView). Only `hasSeenRules` suppresses this
+    /// gate, so a decline doesn't trap the player on it forever.
+    @AppStorage("hasAcceptedRules") private var hasAcceptedRules = false
+    @AppStorage("hasSeenRules") private var hasSeenRules = false
 
     var body: some View {
         Group {
             if !hasAcceptedTerms {
                 TermsGateView { hasAcceptedTerms = true }
+            } else if !hasSeenRules {
+                RulesView(
+                    onAccept: {
+                        hasAcceptedRules = true
+                        hasSeenRules = true
+                    },
+                    onDecline: { hasSeenRules = true }
+                )
             } else if authSession.isAuthenticated {
                 LobbyView()
                     .environmentObject(presence)

@@ -33,6 +33,14 @@ struct ProfileView: View {
                 }
 
                 NavigationLink {
+                    RulesView()
+                } label: {
+                    HStack { Image(systemName: "list.bullet.rectangle"); Text("GAME RULES") }
+                }
+                .buttonStyle(GlassButtonStyle(tint: ADATheme.tacticalAmber))
+                .padding(.horizontal)
+
+                NavigationLink {
                     BlockedUsersView()
                 } label: {
                     HStack { Image(systemName: "hand.raised.fill"); Text("BLOCKED USERS") }

@@ -17,6 +17,17 @@ struct LobbyView: View {
     /// switch too (see the `onChange` below), so tapping a tab crossfades the color exactly
     /// the same way swiping to it would, instead of only the swipe gesture animating it.
     @State private var pageProgress: Double = 0
+    /// Playing with other people means agreeing to the rules first. Declining the
+    /// first-launch rules screen still lets the app open, so this re-asks at the point it
+    /// actually matters — and declining here aborts that attempt rather than letting an
+    /// unaccepted player into a match with others.
+    @AppStorage("hasAcceptedRules") private var hasAcceptedRules = false
+    @State private var pendingPlayAction: PlayAction?
+    /// An invite whose join was held back by the rules gate, resumed once they accept.
+    @State private var pendingInvite: GameInvite?
+    @State private var showRulesGate = false
+
+    private enum PlayAction { case host, join }
 
     private var interpolatedBackdropAccent: Color {
         let tabs = AppTab.allCases
@@ -106,7 +117,16 @@ struct LobbyView: View {
                     if !presence.incomingInvites.isEmpty {
                         InviteBannerView(
                             invites: presence.incomingInvites,
-                            onJoin: { joiningInvite = $0 },
+                            onJoin: { invite in
+                                // Accepting an invite is joining a game like any other, so
+                                // it goes through the same gate rather than round it.
+                                guard hasAcceptedRules else {
+                                    pendingInvite = invite
+                                    showRulesGate = true
+                                    return
+                                }
+                                joiningInvite = invite
+                            },
                             onDecline: { invite in
                                 Task { _ = try? await presence.respondToInvite(invite, accept: false) }
                             }
@@ -165,6 +185,47 @@ struct LobbyView: View {
             GameLobbyView(gamePlayer: launch.player, session: launch.session)
         }
         .onAppear { locationManager.requestAuthorizationAndStart() }
+        .sheet(isPresented: $showRulesGate) {
+            RulesView(
+                onAccept: {
+                    hasAcceptedRules = true
+                    showRulesGate = false
+                    if let action = pendingPlayAction { perform(action) }
+                    if let invite = pendingInvite { joiningInvite = invite }
+                    pendingPlayAction = nil
+                    pendingInvite = nil
+                },
+                onDecline: {
+                    showRulesGate = false
+                    pendingPlayAction = nil
+                    pendingInvite = nil
+                    viewModel.errorMessage = "You need to accept the game rules before you can host or join a match."
+                }
+            )
+            .preferredColorScheme(.dark)
+        }
+    }
+
+    /// Hosting and joining both funnel through here so neither can skip the rules gate.
+    private func startPlay(_ action: PlayAction) {
+        guard hasAcceptedRules else {
+            pendingPlayAction = action
+            showRulesGate = true
+            return
+        }
+        perform(action)
+    }
+
+    private func perform(_ action: PlayAction) {
+        Task {
+            switch action {
+            case .host: await viewModel.hostGame()
+            case .join: await viewModel.joinGame()
+            }
+            if let player = viewModel.activePlayer, let session = viewModel.activeSession {
+                launchedGame = (player, session)
+            }
+        }
     }
 
     /// Wordmark, section label and who you're signed in as, as one block — these were three
@@ -209,12 +270,7 @@ struct LobbyView: View {
             }
 
             Button {
-                Task {
-                    await viewModel.joinGame()
-                    if let player = viewModel.activePlayer, let session = viewModel.activeSession {
-                        launchedGame = (player, session)
-                    }
-                }
+                startPlay(.join)
             } label: {
                 HStack {
                     Image(systemName: "arrow.right.circle.fill")
@@ -248,12 +304,7 @@ struct LobbyView: View {
             }
 
             Button {
-                Task {
-                    await viewModel.hostGame()
-                    if let player = viewModel.activePlayer, let session = viewModel.activeSession {
-                        launchedGame = (player, session)
-                    }
-                }
+                startPlay(.host)
             } label: {
                 if viewModel.isLoading {
                     ProgressView().tint(.black)
