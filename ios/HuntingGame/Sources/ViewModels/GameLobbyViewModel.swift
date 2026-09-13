@@ -49,6 +49,15 @@ final class GameLobbyViewModel: ObservableObject {
     /// duration) has a working default and can be changed later, but there's no match
     /// without a play area to generate power-ups inside.
     var isReadyToStart: Bool { isBoundarySet }
+    /// Whether the current edits are in a state the server would accept: a play area that
+    /// exists (or is mid-redraw to something valid), and a jail area whenever jail is on.
+    /// One source of truth for both the SAVE button's enabled state and whether closing the
+    /// sheet commits — the two used to encode the same rule separately.
+    var canSaveSettings: Bool {
+        if (!isBoundarySet || isRedrawingBoundary) && boundaryPoints.count < 3 { return false }
+        if jailEnabled && jailPoints.count < 3 { return false }
+        return true
+    }
 
     init(session: GameSession, player: GamePlayer) {
         self.session = session
@@ -170,6 +179,9 @@ final class GameLobbyViewModel: ObservableObject {
 
     func saveSettings() async {
         guard isHost else { return }
+        // Cleared up front so a stale failure from a previous attempt can't be mistaken for
+        // this one failing — the sheet decides whether to stay open by reading this after.
+        errorMessage = nil
         let needsBoundary = !isBoundarySet || isRedrawingBoundary
         if needsBoundary && boundaryPoints.count < 3 {
             errorMessage = "Draw the play area (at least 3 points) before saving."

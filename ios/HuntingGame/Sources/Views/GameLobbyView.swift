@@ -486,10 +486,7 @@ private struct LobbySetupSheet: View {
                         }
                     }
                     .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan, isLoading: viewModel.isSavingSettings))
-                    .disabled(
-                        ((!viewModel.isBoundarySet || viewModel.isRedrawingBoundary) && viewModel.boundaryPoints.count < 3)
-                            || (viewModel.jailEnabled && viewModel.jailPoints.count < 3)
-                    )
+                    .disabled(!viewModel.canSaveSettings)
                     .padding(.horizontal)
 
                     Spacer(minLength: 20)
@@ -505,11 +502,28 @@ private struct LobbySetupSheet: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") { dismiss() }
-                        .foregroundColor(ADATheme.spatialCyan)
+                    Button("Done") {
+                        Task { await saveAndDismiss() }
+                    }
+                    .foregroundColor(ADATheme.spatialCyan)
                 }
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    /// Closing the sheet commits the host's edits rather than dropping them — SAVE SETTINGS
+    /// is a shortcut now, not the only way out with your changes intact.
+    ///
+    /// Two deliberate exits without saving: settings that aren't in a saveable state at all
+    /// (no play area drawn yet, say) close normally instead of trapping the host behind an
+    /// error about work they hadn't started, and a save that genuinely fails keeps the sheet
+    /// open so the message is visible and the edits are still there to retry.
+    private func saveAndDismiss() async {
+        if viewModel.canSaveSettings {
+            await viewModel.saveSettings()
+            guard viewModel.errorMessage == nil else { return }
+        }
+        dismiss()
     }
 }
