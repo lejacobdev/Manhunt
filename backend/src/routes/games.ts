@@ -30,6 +30,8 @@ const createSessionSchema = z
     squad: z.string().max(40).optional(),
     jailEnabled: z.boolean().optional(),
     jailPolygon: z.array(pointSchema).optional(),
+    jailArrivalSeconds: z.number().min(30).max(600).optional(),
+    bailOutSeconds: z.number().min(5).max(300).optional(),
     gamblingEnabled: z.boolean().optional(),
     // BETA: the accuracy/motion/speed/teleport checks are new enough that a false
     // positive can look exactly like a frozen radar, so hosts get an off switch.
@@ -60,6 +62,8 @@ gamesRouter.post('/', async (req: AuthedRequest, res) => {
     mode: parsed.data.mode,
     jailEnabled: parsed.data.jailEnabled,
     jailPolygon: parsed.data.jailPolygon,
+    jailArrivalSeconds: parsed.data.jailArrivalSeconds,
+    bailOutSeconds: parsed.data.bailOutSeconds,
     gamblingEnabled: parsed.data.gamblingEnabled,
     antiCheatEnabled: parsed.data.antiCheatEnabled,
   });
@@ -126,6 +130,8 @@ const updateSettingsSchema = z.object({
   boundsPolygon: z.array(pointSchema).optional(),
   jailEnabled: z.boolean().optional(),
   jailPolygon: z.array(pointSchema).optional(),
+  jailArrivalSeconds: z.number().min(30).max(600).optional(),
+  bailOutSeconds: z.number().min(5).max(300).optional(),
   gamblingEnabled: z.boolean().optional(),
   antiCheatEnabled: z.boolean().optional(),
 });

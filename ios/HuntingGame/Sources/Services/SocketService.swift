@@ -59,10 +59,17 @@ final class SocketService: ObservableObject {
     /// Fires on the runner's own client when a duel ended without a winner (the hunter left).
     let gambleCancelledSubject = PassthroughSubject<String, Never>()
     let heartsUpdateSubject = PassthroughSubject<(playerId: String, hearts: Int, cause: String), Never>()
-    let playerJailedSubject = PassthroughSubject<(runnerId: String, hunterId: String), Never>()
+    let playerJailedSubject = PassthroughSubject<(runnerId: String, hunterId: String, arrivalDeadlineMs: Int?), Never>()
     let playerEliminatedSubject = PassthroughSubject<(playerId: String, role: String, reason: String), Never>()
     let boundaryStatusSubject = PassthroughSubject<(outside: Bool, warning: Bool), Never>()
     let jailStatusSubject = PassthroughSubject<(outside: Bool, deadlineMs: Int?), Never>()
+    /// Fires when a sentenced runner actually sets foot in the jail — their arrival
+    /// countdown stops and the ordinary stay-inside rules take over from there.
+    let jailArrivedSubject = PassthroughSubject<String, Never>()
+    /// How long this player has been holding the jail, and how long it takes to spring it.
+    let bailProgressSubject = PassthroughSubject<(active: Bool, elapsedMs: Int, requiredMs: Int), Never>()
+    /// A jailbreak landed: everyone inside walks free, and it cost hearts on both sides.
+    let bailoutSubject = PassthroughSubject<(bailerId: String, bailerUsername: String, freedPlayerIds: [String]), Never>()
 
     private var manager: SocketManager?
     private var socket: SocketIOClient?
@@ -401,10 +408,37 @@ final class SocketService: ObservableObject {
             guard let self, let dict = data.first as? [String: Any],
                   let runnerId = dict["runnerId"] as? String,
                   let hunterId = dict["hunterId"] as? String else { return }
-            self.playerJailedSubject.send((runnerId, hunterId))
+            self.playerJailedSubject.send((runnerId, hunterId, dict["arrivalDeadlineMs"] as? Int))
             if let index = self.players.firstIndex(where: { $0.id == runnerId }) {
                 self.players[index].isCaught = true
                 self.players[index].isJailed = true
+            }
+        }
+
+        socket.on("jail_arrived") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any], let runnerId = dict["runnerId"] as? String else { return }
+            self?.jailArrivedSubject.send(runnerId)
+        }
+
+        socket.on("bail_progress") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any], let active = dict["active"] as? Bool else { return }
+            self?.bailProgressSubject.send((
+                active,
+                dict["elapsedMs"] as? Int ?? 0,
+                dict["requiredMs"] as? Int ?? 0
+            ))
+        }
+
+        socket.on("jail_bailout") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any],
+                  let bailerId = dict["bailerId"] as? String,
+                  let bailerUsername = dict["bailerUsername"] as? String else { return }
+            let freed = dict["freedPlayerIds"] as? [String] ?? []
+            self.bailoutSubject.send((bailerId, bailerUsername, freed))
+            for id in freed {
+                guard let index = self.players.firstIndex(where: { $0.id == id }) else { continue }
+                self.players[index].isCaught = false
+                self.players[index].isJailed = false
             }
         }
 

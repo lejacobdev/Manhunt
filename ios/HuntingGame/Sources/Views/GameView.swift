@@ -593,6 +593,9 @@ struct GameView: View {
         case "GAMBLE": return "You gambled and lost your last heart."
         case "BOUNDARY": return "You ran out of hearts outside the play area."
         case "JAIL_BREACH": return "You didn't make it back to the jail zone in time."
+        case "JAIL_NO_SHOW": return "You never made it to the jail after being caught."
+        case "BAILOUT": return "That jailbreak cost you your last heart."
+        case "CAUGHT": return "You were caught with your last heart on the line."
         default: return "You've been eliminated."
         }
     }
@@ -680,7 +683,14 @@ struct GameView: View {
     /// back inside, no local timer of its own beyond the jail countdown display.
     private var containmentWarningBanner: some View {
         VStack {
-            if viewModel.jailOutside {
+            if let arrival = viewModel.jailArrivalRemaining {
+                // Sentenced but not there yet — the clock is to *reach* the jail, and
+                // running it out is a disqualification for never showing up.
+                bannerText(
+                    "GET TO THE JAIL — \(arrival / 60):\(String(format: "%02d", arrival % 60))",
+                    tint: ADATheme.hunterRed
+                )
+            } else if viewModel.jailOutside {
                 Text("LEAVE THE JAIL ZONE — RETURN IN \(viewModel.jailCountdownRemaining ?? 10)s")
                     .font(ADATheme.telemetryFont(size: 12))
                     .foregroundColor(.white)
@@ -691,22 +701,44 @@ struct GameView: View {
                     .padding(.top, 130)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .allowsHitTesting(false)
+            } else if viewModel.bailActive {
+                bannerText(
+                    "FREEING PRISONERS — HOLD \(viewModel.bailRemainingSeconds)s",
+                    tint: ADATheme.runnerGreen
+                )
             } else if viewModel.boundaryOutside {
-                Text("OUTSIDE THE ZONE — RETURN OR LOSE HEARTS")
-                    .font(ADATheme.telemetryFont(size: 12))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.tacticalAmber)
-                    .padding(.horizontal, 24)
-                    .padding(.top, 130)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .allowsHitTesting(false)
+                bannerText("OUTSIDE THE ZONE — RETURN OR LOSE HEARTS", tint: ADATheme.tacticalAmber)
+            }
+
+            if let bailout = viewModel.lastBailout {
+                bannerText(
+                    "JAILBREAK — \(bailout.bailerUsername.uppercased()) FREED \(bailout.freedCount)",
+                    tint: ADATheme.runnerGreen
+                )
             }
             Spacer()
         }
         .animation(ADATheme.controlSpring, value: viewModel.jailOutside)
         .animation(ADATheme.controlSpring, value: viewModel.boundaryOutside)
+        .animation(ADATheme.controlSpring, value: viewModel.jailArrivalRemaining)
+        .animation(ADATheme.controlSpring, value: viewModel.bailActive)
+        .animation(ADATheme.controlSpring, value: viewModel.lastBailout)
+    }
+
+    /// Shared chrome for the stacked containment/jail banners — same glass pill, same
+    /// placement under the top bar, only the copy and tint differ.
+    private func bannerText(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(ADATheme.telemetryFont(size: 12))
+            .foregroundColor(.white)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: tint)
+            .padding(.horizontal, 24)
+            .padding(.top, 130)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .allowsHitTesting(false)
     }
 
     private var catchCodeSheet: some View {

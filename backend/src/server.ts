@@ -38,6 +38,8 @@ import {
   CATCH_REQUEST_TIMEOUT_MS,
   CATCH_VERIFICATION_RADIUS_METERS,
   POWER_UP_COLLECTION_RADIUS_METERS,
+  DEFAULT_BAIL_OUT_SECONDS,
+  DEFAULT_JAIL_ARRIVAL_SECONDS,
   GameMode,
   JAIL_BUFFER_METERS,
   JAIL_VIOLATION_COUNTDOWN_MS,
@@ -174,6 +176,15 @@ const boundaryLastDamageAt: Map<string, Map<string, number>> = new Map();
 // roomCode -> gamePlayerId -> epoch ms of when a jailed runner was first detected outside
 // the jail polygon — a 10s countdown from this moment, not a slow drain like the boundary.
 const jailViolationSince: Map<string, Map<string, number>> = new Map();
+// roomCode -> gamePlayerId -> epoch ms by which a sentenced runner must have set foot in
+// the jail polygon. Cleared the moment they arrive; blowing past it is a disqualification
+// for never turning up, which is a different failure from breaking out once inside.
+const jailArrivalDeadline: Map<string, Map<string, number>> = new Map();
+// roomCode -> gamePlayerId -> epoch ms since a *free* runner has been standing inside the
+// jail polygon without leaving it. Reaching the host's configured dwell time springs every
+// prisoner at once. Continuous, not cumulative: stepping out resets the clock, so a
+// jailbreak means actually holding the spot rather than drifting past it repeatedly.
+const bailDwellSince: Map<string, Map<string, number>> = new Map();
 // roomCode -> runnerId -> the one pending catch request targeting them (a runner can only
 // be asked about one catch at a time; a hunter, however, may have requests out to several
 // runners at once, hence requestId to disambiguate which one a later deny-confirm is about).
@@ -318,6 +329,10 @@ io.on('connection', (socket: Socket) => {
         arrestCode: gamePlayer.arrestCode,
         isCaught: gamePlayer.isCaught,
         isJailed: gamePlayer.isJailed,
+        // Anyone reconnecting mid-sentence is treated as already at the jail rather than
+        // handed a fresh arrival countdown they never saw start — the alternative punishes
+        // a dropped connection with a disqualification.
+        hasReachedJail: gamePlayer.isJailed,
         isOut: gamePlayer.isOut,
         hearts: gamePlayer.hearts,
         inventory: (gamePlayer.inventory as PowerUpType[]) ?? [],
@@ -436,9 +451,19 @@ io.on('connection', (socket: Socket) => {
 
       if (p.role === 'RUNNER' && gameSessionId) {
         if (p.isJailed) {
-          await checkJailContainment(roomCode, gameSessionId, p, session);
-        } else if (!p.isCaught && !p.isOut && mode !== 'INFECTION') {
-          await checkContainment(roomCode, gameSessionId, p, session, mode);
+          // Two different jail clocks depending on whether they've got there yet: a
+          // countdown to *reach* the jail, then a countdown to get *back* whenever they
+          // wander out of it.
+          if (p.hasReachedJail) {
+            await checkJailContainment(roomCode, gameSessionId, p, session);
+          } else {
+            await checkJailArrival(roomCode, gameSessionId, p, session);
+          }
+        } else if (!p.isCaught && !p.isOut) {
+          if (mode !== 'INFECTION') {
+            await checkContainment(roomCode, gameSessionId, p, session, mode);
+          }
+          await checkBailProgress(roomCode, gameSessionId, p, session, mode);
         }
       } else if (p.role === 'HUNTER' && gameSessionId && mode !== 'INFECTION' && !p.isOut) {
         await checkContainment(roomCode, gameSessionId, p, session, mode);
@@ -684,16 +709,7 @@ io.on('connection', (socket: Socket) => {
           return;
         }
 
-        const jail = !!settings?.jailEnabled;
-        runner.isCaught = true;
-        runner.isJailed = jail;
-        await gameService.recordCatchAccepted(gameSessionId, hunter.id, runner.id, jail);
-        if (jail) {
-          io.to(roomCode).emit('player_jailed', { runnerId: runner.id, hunterId: hunter.id, timestamp: new Date().toISOString() });
-        } else {
-          io.to(roomCode).emit('player_caught', { runnerId: runner.id, hunterId: hunter.id, timestamp: new Date().toISOString() });
-        }
-        await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+        await applyCatch(roomCode, gameSessionId, session, hunter, runner, mode);
         return;
       }
 
@@ -993,6 +1009,8 @@ function cleanupSocket(socket: Socket) {
       boundaryViolationSince.delete(roomCode);
       boundaryLastDamageAt.delete(roomCode);
       jailViolationSince.delete(roomCode);
+      jailArrivalDeadline.delete(roomCode);
+      bailDwellSince.delete(roomCode);
       pendingCatchRequests.delete(roomCode);
       activeGambles.delete(roomCode);
     }
@@ -1026,6 +1044,8 @@ function cleanupSocket(socket: Socket) {
   boundaryViolationSince.get(roomCode)?.delete(gamePlayerId);
   boundaryLastDamageAt.get(roomCode)?.delete(gamePlayerId);
   jailViolationSince.get(roomCode)?.delete(gamePlayerId);
+  jailArrivalDeadline.get(roomCode)?.delete(gamePlayerId);
+  bailDwellSince.get(roomCode)?.delete(gamePlayerId);
   lastFix.delete(gamePlayerId);
 }
 
@@ -1264,6 +1284,234 @@ async function checkJailContainment(
 }
 
 /**
+ * The single place a catch is applied, so the request/respond popup and the gamble-timeout
+ * fallback can't drift apart on the rules.
+ *
+ * Every catch costs the runner a heart. With jail mode on that's what bounds the
+ * catch/bail-out cycle — a runner can be broken out and re-caught only as many times as
+ * they have hearts left, and one who runs out is finished regardless of any rescue.
+ * Without jail mode the heart still goes, but being caught already ends their match, so it
+ * only really shows up in the post-match stats.
+ */
+async function applyCatch(
+  roomCode: string,
+  gameSessionId: string,
+  session: Map<string, PlayerState>,
+  hunter: PlayerState,
+  runner: PlayerState,
+  mode: GameMode
+) {
+  const settings = sessionSettingsCache.get(roomCode);
+  const jail = !!settings?.jailEnabled && !!settings.jailPolygon;
+  const caughtAt = new Date().toISOString();
+
+  runner.hearts = Math.max(0, runner.hearts - 1);
+  io.to(roomCode).emit('hearts_update', { playerId: runner.id, hearts: runner.hearts, cause: 'CAUGHT' });
+
+  // Out of hearts is out of the match: no jail, and no rescue to wait for.
+  if (runner.hearts <= 0) {
+    runner.isCaught = true;
+    runner.isJailed = false;
+    runner.isOut = true;
+    await gameService.recordCatchAccepted(gameSessionId, hunter.id, runner.id, false, runner.hearts);
+    await gameService.recordPlayerOut(gameSessionId, runner.id, 'CAUGHT');
+    io.to(roomCode).emit('player_caught', { runnerId: runner.id, hunterId: hunter.id, timestamp: caughtAt });
+    io.to(roomCode).emit('player_eliminated', {
+      playerId: runner.id,
+      role: runner.role,
+      reason: 'CAUGHT',
+      timestamp: caughtAt,
+    });
+    await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+    return;
+  }
+
+  runner.isCaught = true;
+  runner.isJailed = jail;
+  runner.hasReachedJail = false;
+  await gameService.recordCatchAccepted(gameSessionId, hunter.id, runner.id, jail, runner.hearts);
+
+  if (!jail) {
+    io.to(roomCode).emit('player_caught', { runnerId: runner.id, hunterId: hunter.id, timestamp: caughtAt });
+    await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+    return;
+  }
+
+  // Sentenced but not yet imprisoned — they walk to the jail themselves, on a clock.
+  const arrivalMs = (settings?.jailArrivalSeconds ?? DEFAULT_JAIL_ARRIVAL_SECONDS) * 1000;
+  const deadlines = jailArrivalDeadline.get(roomCode) ?? new Map<string, number>();
+  jailArrivalDeadline.set(roomCode, deadlines);
+  deadlines.set(runner.id, Date.now() + arrivalMs);
+
+  io.to(roomCode).emit('player_jailed', {
+    runnerId: runner.id,
+    hunterId: hunter.id,
+    arrivalDeadlineMs: arrivalMs,
+    timestamp: caughtAt,
+  });
+  // A jailed runner counts as resolved for the win check, which is correct even with
+  // bail-outs in play: if every runner is locked up there's nobody left free to spring
+  // them, so the hunters really have won.
+  await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+}
+
+/** A sentenced runner has a fixed window to actually reach the jail. Missing it is a
+ *  disqualification for never showing up — a different failure from JAIL_BREACH, which is
+ *  walking out again after arriving. */
+async function checkJailArrival(
+  roomCode: string,
+  gameSessionId: string,
+  runner: PlayerState,
+  session: Map<string, PlayerState>
+) {
+  const settings = sessionSettingsCache.get(roomCode);
+  if (!settings?.jailEnabled || !settings.jailPolygon) return;
+
+  const deadlines = jailArrivalDeadline.get(roomCode);
+  const deadline = deadlines?.get(runner.id);
+  // No deadline on record — jail was switched on mid-sentence, or this is a reconnect.
+  // Nothing fair to enforce, so treat them as having served their way in already.
+  if (!deadline) {
+    runner.hasReachedJail = true;
+    return;
+  }
+
+  const outsideBy = distanceOutsidePolygonMeters({ lat: runner.lat, lng: runner.lng }, settings.jailPolygon);
+  if (outsideBy <= Math.max(JAIL_BUFFER_METERS, runner.accuracy)) {
+    deadlines!.delete(runner.id);
+    runner.hasReachedJail = true;
+    io.to(roomCode).emit('jail_arrived', { runnerId: runner.id, timestamp: new Date().toISOString() });
+    return;
+  }
+
+  if (Date.now() < deadline) return;
+
+  deadlines!.delete(runner.id);
+  runner.isJailed = false;
+  runner.isOut = true;
+  await gameService.recordPlayerOut(gameSessionId, runner.id, 'JAIL_NO_SHOW');
+  io.to(roomCode).emit('player_eliminated', {
+    playerId: runner.id,
+    role: 'RUNNER',
+    reason: 'JAIL_NO_SHOW',
+    timestamp: new Date().toISOString(),
+  });
+  await checkStandardWinCondition(roomCode, gameSessionId, session, sessionModes.get(roomCode) ?? 'STANDARD');
+}
+
+/** A free runner standing inside the jail long enough springs everyone in it. Continuous,
+ *  not cumulative — stepping outside resets the clock, so it costs a real, exposed stay
+ *  right where the hunters know to look. */
+async function checkBailProgress(
+  roomCode: string,
+  gameSessionId: string,
+  runner: PlayerState,
+  session: Map<string, PlayerState>,
+  mode: GameMode
+) {
+  const settings = sessionSettingsCache.get(roomCode);
+  if (!settings?.jailEnabled || !settings.jailPolygon) return;
+
+  const dwell = bailDwellSince.get(roomCode) ?? new Map<string, number>();
+  bailDwellSince.set(roomCode, dwell);
+
+  const outsideBy = distanceOutsidePolygonMeters({ lat: runner.lat, lng: runner.lng }, settings.jailPolygon);
+  const inside = outsideBy <= Math.max(JAIL_BUFFER_METERS, runner.accuracy);
+  // Only counts when there's someone to let out. Otherwise a runner could park in an empty
+  // jail and drain every hunter's hearts for nothing.
+  const hasPrisoner = Array.from(session.values()).some((x) => x.isJailed && x.hasReachedJail);
+  const requiredMs = (settings.bailOutSeconds ?? DEFAULT_BAIL_OUT_SECONDS) * 1000;
+
+  if (!inside || !hasPrisoner) {
+    if (dwell.delete(runner.id)) {
+      io.to(runner.id).emit('bail_progress', { active: false, elapsedMs: 0, requiredMs });
+    }
+    return;
+  }
+
+  const now = Date.now();
+  const since = dwell.get(runner.id);
+  if (!since) {
+    dwell.set(runner.id, now);
+    io.to(runner.id).emit('bail_progress', { active: true, elapsedMs: 0, requiredMs });
+    return;
+  }
+
+  const elapsed = now - since;
+  if (elapsed < requiredMs) {
+    io.to(runner.id).emit('bail_progress', { active: true, elapsedMs: elapsed, requiredMs });
+    return;
+  }
+
+  await performBailOut(roomCode, gameSessionId, session, runner, mode);
+}
+
+/** The jailbreak itself: every prisoner walks, the runner who held the jail pays a heart
+ *  for it, and so does every hunter still in the match. */
+async function performBailOut(
+  roomCode: string,
+  gameSessionId: string,
+  session: Map<string, PlayerState>,
+  bailer: PlayerState,
+  mode: GameMode
+) {
+  // Cleared for everyone, not just the bailer: the jail is empty now, so nobody else
+  // standing in it should roll straight into a second jailbreak on the next fix.
+  bailDwellSince.get(roomCode)?.clear();
+
+  const arrivals = jailArrivalDeadline.get(roomCode);
+  const violations = jailViolationSince.get(roomCode);
+  const freed = Array.from(session.values()).filter((x) => x.isJailed);
+  for (const prisoner of freed) {
+    prisoner.isJailed = false;
+    prisoner.isCaught = false;
+    prisoner.hasReachedJail = false;
+    arrivals?.delete(prisoner.id);
+    violations?.delete(prisoner.id);
+  }
+
+  const hunters = Array.from(session.values()).filter((x) => x.role === 'HUNTER' && !x.isOut);
+  const eliminated: PlayerState[] = [];
+
+  bailer.hearts = Math.max(0, bailer.hearts - 1);
+  if (bailer.hearts <= 0) eliminated.push(bailer);
+  for (const hunter of hunters) {
+    hunter.hearts = Math.max(0, hunter.hearts - 1);
+    if (hunter.hearts <= 0) eliminated.push(hunter);
+  }
+
+  const heartUpdates = [bailer, ...hunters].map((p) => ({ playerId: p.id, hearts: p.hearts }));
+  await gameService.recordBailOut(
+    gameSessionId,
+    bailer.id,
+    freed.map((f) => f.id),
+    heartUpdates
+  );
+
+  const timestamp = new Date().toISOString();
+  io.to(roomCode).emit('jail_bailout', {
+    bailerId: bailer.id,
+    bailerUsername: bailer.username,
+    freedPlayerIds: freed.map((f) => f.id),
+    timestamp,
+  });
+  for (const p of [bailer, ...hunters]) {
+    io.to(roomCode).emit('hearts_update', { playerId: p.id, hearts: p.hearts, cause: 'BAILOUT' });
+  }
+
+  for (const p of eliminated) {
+    p.isOut = true;
+    await gameService.recordPlayerOut(gameSessionId, p.id, 'BAILOUT');
+    io.to(roomCode).emit('player_eliminated', { playerId: p.id, role: p.role, reason: 'BAILOUT', timestamp });
+  }
+
+  if (eliminated.some((p) => p.role === 'HUNTER')) {
+    await checkHunterEliminationWinCondition(roomCode, gameSessionId, session, mode);
+  }
+  await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+}
+
+/**
  * One round of a gamble duel. A gamble is no longer a single flip for a single heart:
  * rounds repeat until one side is out of hearts, and unlike the earlier version there is
  * no heal-back for the hunter — both sides put real, persistent hearts on the line, so a
@@ -1471,16 +1719,7 @@ setInterval(async () => {
       if (!session || !runner || !hunter || runner.isOut) continue;
       const gameSessionId = await resolveSessionId(roomCode);
       if (!gameSessionId) continue;
-      const jail = !!sessionSettingsCache.get(roomCode)?.jailEnabled;
-      runner.isCaught = true;
-      runner.isJailed = jail;
-      await gameService.recordCatchAccepted(gameSessionId, hunter.id, runner.id, jail);
-      io.to(roomCode).emit(jail ? 'player_jailed' : 'player_caught', {
-        runnerId: runner.id,
-        hunterId: hunter.id,
-        timestamp: new Date().toISOString(),
-      });
-      await checkStandardWinCondition(roomCode, gameSessionId, session, sessionModes.get(roomCode) ?? 'STANDARD');
+      await applyCatch(roomCode, gameSessionId, session, hunter, runner, sessionModes.get(roomCode) ?? 'STANDARD');
     }
   }
 

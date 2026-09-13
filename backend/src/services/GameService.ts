@@ -2,7 +2,15 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { generateArrestCode, generateGameCode } from '../utils/arrestCode';
 import { overpassSpawner } from './OverpassSpawner';
-import { GameMode, HUNTER_STARTING_HEARTS, Point2D, PowerUpType, RUNNER_STARTING_HEARTS } from '../types';
+import {
+  DEFAULT_BAIL_OUT_SECONDS,
+  DEFAULT_JAIL_ARRIVAL_SECONDS,
+  GameMode,
+  HUNTER_STARTING_HEARTS,
+  Point2D,
+  PowerUpType,
+  RUNNER_STARTING_HEARTS,
+} from '../types';
 
 export interface CreateSessionInput {
   hostId: string;
@@ -14,6 +22,8 @@ export interface CreateSessionInput {
   mode?: GameMode;
   jailEnabled?: boolean;
   jailPolygon?: Point2D[];
+  jailArrivalSeconds?: number;
+  bailOutSeconds?: number;
   gamblingEnabled?: boolean;
   antiCheatEnabled?: boolean;
 }
@@ -32,6 +42,10 @@ export interface GameSettings {
   boundsPolygon: Point2D[];
   jailEnabled?: boolean;
   jailPolygon?: Point2D[];
+  /** Seconds a caught runner has to reach the jail polygon before being disqualified. */
+  jailArrivalSeconds?: number;
+  /** Seconds a free runner must stand inside the jail to break every prisoner out. */
+  bailOutSeconds?: number;
   gamblingEnabled?: boolean;
   /** Absent means disabled — off by default. Still BETA: the accuracy/motion/speed/
    *  teleport checks are new enough to produce false positives, so it's opt-in. */
@@ -54,6 +68,8 @@ export class GameService {
       boundsPolygon: input.boundsPolygon,
       jailEnabled: input.jailEnabled ?? false,
       jailPolygon: input.jailEnabled ? input.jailPolygon : undefined,
+      jailArrivalSeconds: input.jailArrivalSeconds ?? DEFAULT_JAIL_ARRIVAL_SECONDS,
+      bailOutSeconds: input.bailOutSeconds ?? DEFAULT_BAIL_OUT_SECONDS,
       gamblingEnabled: input.gamblingEnabled ?? false,
       antiCheatEnabled: input.antiCheatEnabled ?? false,
     };
@@ -174,13 +190,52 @@ export class GameService {
 
   /** A runner accepted a catch request — jailed (confined, still in the match) if jail mode
    *  is on for this session, otherwise resolved exactly like the old code-entry catch. */
-  public async recordCatchAccepted(sessionId: string, hunterPlayerId: string, runnerPlayerId: string, jailed: boolean) {
+  public async recordCatchAccepted(
+    sessionId: string,
+    hunterPlayerId: string,
+    runnerPlayerId: string,
+    jailed: boolean,
+    /** Post-catch heart count. Every catch costs the runner one, so with jail mode on a
+     *  runner can be broken out and re-caught only so many times before they're done. */
+    hearts?: number
+  ) {
     await prisma.gamePlayer.update({
       where: { id: runnerPlayerId },
-      data: { isCaught: true, caughtAt: new Date(), isJailed: jailed },
+      data: {
+        isCaught: true,
+        caughtAt: new Date(),
+        isJailed: jailed,
+        ...(hearts === undefined ? {} : { hearts }),
+      },
     });
     return prisma.gameEvent.create({
       data: { sessionId, type: 'CATCH', payload: { hunterPlayerId, runnerPlayerId, jailed, timestamp: new Date().toISOString() } },
+    });
+  }
+
+  /** A jailbreak: every prisoner walks free, the runner who stood in the jail long enough
+   *  to pull it off pays a heart, and so does every hunter still in the match. */
+  public async recordBailOut(
+    sessionId: string,
+    bailerPlayerId: string,
+    freedPlayerIds: string[],
+    heartUpdates: { playerId: string; hearts: number }[]
+  ) {
+    await prisma.$transaction([
+      prisma.gamePlayer.updateMany({
+        where: { id: { in: freedPlayerIds } },
+        data: { isCaught: false, isJailed: false, caughtAt: null },
+      }),
+      ...heartUpdates.map((update) =>
+        prisma.gamePlayer.update({ where: { id: update.playerId }, data: { hearts: update.hearts } })
+      ),
+    ]);
+    return prisma.gameEvent.create({
+      data: {
+        sessionId,
+        type: 'JAIL_BAILOUT',
+        payload: { bailerPlayerId, freedPlayerIds, timestamp: new Date().toISOString() },
+      },
     });
   }
 
@@ -211,7 +266,11 @@ export class GameService {
   /** Full elimination — either role, via containment/storm damage, losing a gamble duel, or
    *  breaking jail. Distinct from `isCaught`: a jailed runner is caught but not out; this is
    *  the terminal "now a spectator" state. */
-  public async recordPlayerOut(sessionId: string, playerId: string, reason: 'GAMBLE' | 'BOUNDARY' | 'JAIL_BREACH') {
+  public async recordPlayerOut(
+    sessionId: string,
+    playerId: string,
+    reason: 'GAMBLE' | 'BOUNDARY' | 'JAIL_BREACH' | 'JAIL_NO_SHOW' | 'BAILOUT' | 'CAUGHT'
+  ) {
     await prisma.gamePlayer.update({
       where: { id: playerId },
       data: { isOut: true, outAt: new Date() },

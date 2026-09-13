@@ -103,12 +103,24 @@ struct Coordinate: Codable, Equatable {
 
 /// Mirrors backend GameService.GameSettings — the immutable configuration
 /// chosen when a session was created.
+/// A jailbreak that just happened, for the short-lived HUD banner announcing it.
+struct BailoutEvent: Equatable {
+    let bailerId: String
+    let bailerUsername: String
+    let freedCount: Int
+}
+
 struct GameSettings: Codable, Equatable {
     let durationMinutes: Int
     let boundsPolygon: [Coordinate]
     /// Optional/absent on sessions created before this feature shipped.
     let jailEnabled: Bool?
     let jailPolygon: [Coordinate]?
+    /// Seconds a caught runner has to reach the jail before being disqualified, and seconds
+    /// a free runner must hold the jail to break everyone out. Absent on sessions created
+    /// before jail bail-outs shipped — the server falls back to its own defaults.
+    let jailArrivalSeconds: Int?
+    let bailOutSeconds: Int?
     let gamblingEnabled: Bool?
     /// Absent decodes as disabled — off by default. Labeled BETA in the UI: the
     /// accuracy/motion/speed/teleport checks are new enough that a false-positive

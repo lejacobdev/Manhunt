@@ -32,6 +32,10 @@ final class GameLobbyViewModel: ObservableObject {
     @Published var boundaryPoints: [Coordinate]
     @Published var jailEnabled: Bool
     @Published var jailPoints: [Coordinate]
+    /// Seconds a caught runner gets to reach the jail, and seconds a free runner must hold
+    /// the jail to break everyone out. Doubles because they drive Sliders.
+    @Published var jailArrivalSeconds: Double
+    @Published var bailOutSeconds: Double
     @Published var gamblingEnabled: Bool
     /// BETA — see GameSettings.antiCheatEnabled. Off by default; a host opts in.
     @Published var antiCheatEnabled: Bool
@@ -67,6 +71,8 @@ final class GameLobbyViewModel: ObservableObject {
         self.boundaryPoints = session.settings.boundsPolygon
         self.jailEnabled = session.settings.jailEnabled ?? false
         self.jailPoints = session.settings.jailPolygon ?? []
+        self.jailArrivalSeconds = Double(session.settings.jailArrivalSeconds ?? 120)
+        self.bailOutSeconds = Double(session.settings.bailOutSeconds ?? 30)
         self.gamblingEnabled = session.settings.gamblingEnabled ?? false
         self.antiCheatEnabled = session.settings.antiCheatEnabled ?? false
         bindSocket()
@@ -112,6 +118,8 @@ final class GameLobbyViewModel: ObservableObject {
                 self.boundaryPoints = settings.boundsPolygon
                 self.jailEnabled = settings.jailEnabled ?? false
                 self.jailPoints = settings.jailPolygon ?? []
+                self.jailArrivalSeconds = Double(settings.jailArrivalSeconds ?? 120)
+                self.bailOutSeconds = Double(settings.bailOutSeconds ?? 30)
                 self.gamblingEnabled = settings.gamblingEnabled ?? false
                 self.antiCheatEnabled = settings.antiCheatEnabled ?? false
             }
@@ -204,6 +212,8 @@ final class GameLobbyViewModel: ObservableObject {
                 mode: selectedMode,
                 jailEnabled: jailEnabled,
                 jailPolygon: jailEnabled ? jailPoints : nil,
+                jailArrivalSeconds: Int(jailArrivalSeconds),
+                bailOutSeconds: Int(bailOutSeconds),
                 gamblingEnabled: gamblingEnabled,
                 antiCheatEnabled: antiCheatEnabled
             )

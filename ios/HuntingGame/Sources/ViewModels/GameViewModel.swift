@@ -53,6 +53,16 @@ final class GameViewModel: ObservableObject {
     @Published var jailOutside: Bool = false
     @Published var jailCountdownRemaining: Int?
     private var jailCountdownTimer: Timer?
+    /// Seconds left for a freshly-sentenced runner to physically reach the jail. Non-nil
+    /// only between being caught and arriving; running it out is a disqualification.
+    @Published var jailArrivalRemaining: Int?
+    private var jailArrivalTimer: Timer?
+    /// This runner's progress toward springing the jail while standing inside it.
+    @Published var bailActive: Bool = false
+    @Published var bailProgress: Double = 0
+    @Published var bailRemainingSeconds: Int = 0
+    /// The most recent jailbreak, cleared a few seconds after it lands.
+    @Published var lastBailout: BailoutEvent?
 
     private var cancellables = Set<AnyCancellable>()
     private var invisibilityTimer: Timer?
@@ -132,6 +142,7 @@ final class GameViewModel: ObservableObject {
         invisibilityTimer?.invalidate()
         watchSyncTimer?.invalidate()
         jailCountdownTimer?.invalidate()
+        jailArrivalTimer?.invalidate()
         watchConnectivity.onAction = nil
         watchConnectivity.sendIdle()
         PhoneWidgetAppGroup.writeSnapshot(.idle)
@@ -345,8 +356,67 @@ final class GameViewModel: ObservableObject {
                 guard let self, event.runnerId == self.gamePlayerId else { return }
                 self.isCaught = true
                 self.isJailed = true
+                // Being sentenced isn't the same as being locked up — they still have to
+                // walk there, against this clock.
+                if let deadlineMs = event.arrivalDeadlineMs {
+                    self.startJailArrivalCountdown(milliseconds: deadlineMs)
+                }
                 HapticsEngine.shared.catchFailed()
                 self.pushWatchSnapshot()
+            }
+            .store(in: &cancellables)
+
+        socket.jailArrivedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] runnerId in
+                guard let self, runnerId == self.gamePlayerId else { return }
+                self.jailArrivalTimer?.invalidate()
+                self.jailArrivalRemaining = nil
+            }
+            .store(in: &cancellables)
+
+        socket.bailProgressSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                guard let self else { return }
+                self.bailActive = event.active
+                guard event.active, event.requiredMs > 0 else {
+                    self.bailProgress = 0
+                    self.bailRemainingSeconds = 0
+                    return
+                }
+                self.bailProgress = min(1, Double(event.elapsedMs) / Double(event.requiredMs))
+                self.bailRemainingSeconds = max(0, (event.requiredMs - event.elapsedMs + 999) / 1000)
+            }
+            .store(in: &cancellables)
+
+        socket.bailoutSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                guard let self else { return }
+                self.bailActive = false
+                self.bailProgress = 0
+                // Whoever pulled it off, if this player was inside they're out now.
+                if event.freedPlayerIds.contains(self.gamePlayerId) {
+                    self.isCaught = false
+                    self.isJailed = false
+                    self.jailOutside = false
+                    self.jailCountdownTimer?.invalidate()
+                    self.jailCountdownRemaining = nil
+                    self.jailArrivalTimer?.invalidate()
+                    self.jailArrivalRemaining = nil
+                    self.pushWatchSnapshot()
+                }
+                self.lastBailout = BailoutEvent(
+                    bailerId: event.bailerId,
+                    bailerUsername: event.bailerUsername,
+                    freedCount: event.freedPlayerIds.count
+                )
+                HapticsEngine.shared.powerUpActivated()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+                    guard let self, self.lastBailout?.bailerId == event.bailerId else { return }
+                    self.lastBailout = nil
+                }
             }
             .store(in: &cancellables)
 
@@ -397,6 +467,25 @@ final class GameViewModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+    }
+
+    /// Ticks the "get to the jail" countdown locally from the single deadline the server
+    /// sends at sentencing, rather than having it re-broadcast every second.
+    private func startJailArrivalCountdown(milliseconds: Int) {
+        jailArrivalTimer?.invalidate()
+        var remaining = max(0, milliseconds / 1000)
+        jailArrivalRemaining = remaining
+        jailArrivalTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
+            Task { @MainActor in
+                remaining -= 1
+                if remaining <= 0 {
+                    timer.invalidate()
+                    self?.jailArrivalRemaining = nil
+                } else {
+                    self?.jailArrivalRemaining = remaining
+                }
+            }
+        }
     }
 
     // MARK: - Power-ups

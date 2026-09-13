@@ -35,6 +35,11 @@ export interface PlayerState {
   arrestCode: string;
   isCaught: boolean;
   isJailed: boolean;
+  /** Jail mode only: false while a sentenced runner is still walking to the jail polygon,
+   *  true once they've actually set foot in it. The two states are enforced differently —
+   *  before arrival there's a countdown to *get there*, after it a countdown to get *back*
+   *  whenever they stray — so they can't share one flag. */
+  hasReachedJail: boolean;
   isOut: boolean;
   hearts: number;
   inventory: PowerUpType[];
@@ -102,6 +107,13 @@ export const ADRENALINE_BONUS_HEARTS = 2;
  *  countdown; failing to return within it is full elimination, not just re-jailing. */
 export const JAIL_BUFFER_METERS = 10;
 export const JAIL_VIOLATION_COUNTDOWN_MS = 10_000;
+
+/** Jail mode, host-configurable per match (see GameSettings) — these are the fallbacks for
+ *  a session that doesn't specify them. `ARRIVAL` is how long a freshly-caught runner has
+ *  to physically reach the jail before they're disqualified for never showing up; `BAIL`
+ *  is how long a *free* runner has to stand inside it to break everyone out. */
+export const DEFAULT_JAIL_ARRIVAL_SECONDS = 120;
+export const DEFAULT_BAIL_OUT_SECONDS = 30;
 
 /** A catch request a runner never answers (backgrounded app, etc.) auto-expires so it
  *  can't permanently block the hunter from requesting again. */

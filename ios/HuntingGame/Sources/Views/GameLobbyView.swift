@@ -236,7 +236,12 @@ struct GameLobbyView: View {
                     tint: viewModel.isBoundarySet ? ADATheme.runnerGreen : ADATheme.tacticalAmber
                 )
                 settingsRow(icon: "clock.fill", text: "\(Int(viewModel.durationMinutes)) minute match")
-                settingsRow(icon: "lock.fill", text: viewModel.jailEnabled ? "Jail mode enabled" : "Jail mode off")
+                settingsRow(
+                    icon: "lock.fill",
+                    text: viewModel.jailEnabled
+                        ? "Jail mode · \(Int(viewModel.jailArrivalSeconds))s to reach it · \(Int(viewModel.bailOutSeconds))s to bail out"
+                        : "Jail mode off"
+                )
                 // GAMBLING — see the commented-out toggle in LobbySetupSheet below.
                 // settingsRow(icon: "circle.grid.2x2.fill", text: viewModel.gamblingEnabled ? "Gambling enabled" : "Gambling off")
                 settingsRow(
@@ -442,6 +447,34 @@ private struct LobbySetupSheet: View {
                                 .foregroundColor(.white.opacity(0.4))
                         }
                         .padding(.horizontal)
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("TIME TO REACH JAIL: \(Int(viewModel.jailArrivalSeconds / 60))M \(Int(viewModel.jailArrivalSeconds) % 60)S")
+                                Slider(value: $viewModel.jailArrivalSeconds, in: 30...600, step: 15)
+                                    .tint(ADATheme.hunterRed)
+                                Text("How long a caught runner has to walk to the jail before they're disqualified.")
+                                    .font(ADATheme.uiFont(size: 11, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.4))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("BAIL-OUT HOLD: \(Int(viewModel.bailOutSeconds))S")
+                                Slider(value: $viewModel.bailOutSeconds, in: 5...300, step: 5)
+                                    .tint(ADATheme.runnerGreen)
+                                Text("How long a free runner must stand in the jail to release everyone in it. Costs them a heart, and every hunter one too.")
+                                    .font(ADATheme.uiFont(size: 11, weight: .medium))
+                                    .foregroundColor(.white.opacity(0.4))
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .font(ADATheme.telemetryFont(size: 12))
+                        .foregroundColor(.white.opacity(0.7))
+                        .padding(16)
+                        .glassCard(cornerRadius: ADATheme.cardCornerRadius)
+                        .padding(.horizontal)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                     }
 
                     // GAMBLING — disabled for now, kept here so it can be switched back on
