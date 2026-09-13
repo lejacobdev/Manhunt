@@ -242,11 +242,6 @@ struct LobbyView: View {
             }
             .pickerStyle(.segmented)
 
-            Text("Everyone joins as a runner — the host assigns hunters from the lobby once everyone's in.")
-                .font(ADATheme.telemetryFont(size: 10))
-                .foregroundColor(.white.opacity(0.35))
-                .multilineTextAlignment(.center)
-
             if viewModel.hostMode == .squad {
                 ADATextField(placeholder: "Squad name", text: $viewModel.hostSquadName)
                     .transition(.scale.combined(with: .opacity))

@@ -18,6 +18,13 @@ struct SwipeablePager<Content: View>: View {
     @ViewBuilder let content: (AppTab) -> Content
 
     @State private var dragTranslation: CGFloat = 0
+    /// Latched once per drag, on its first meaningful movement, and held until release.
+    /// Re-deciding the axis on every update (what this used to do) is what made an imperfect
+    /// swipe unreliable: a diagonal drag stuttered, because any single frame where vertical
+    /// movement happened to lead froze the page mid-slide, and a release whose *total*
+    /// translation leaned vertical was thrown away outright no matter how far across the
+    /// screen the finger had actually travelled.
+    @State private var isHorizontalDrag: Bool?
 
     private var currentIndex: Int { tabs.firstIndex(of: selection) ?? 0 }
 
@@ -37,38 +44,58 @@ struct SwipeablePager<Content: View>: View {
     }
 
     private func dragGesture(width: CGFloat) -> some Gesture {
-        DragGesture(minimumDistance: 12)
+        DragGesture(minimumDistance: 10)
             .onChanged { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                if isHorizontalDrag == nil {
+                    let dx = abs(value.translation.width)
+                    let dy = abs(value.translation.height)
+                    guard max(dx, dy) > 6 else { return }
+                    // Biased toward paging: a drag has to be clearly *vertical* to be handed
+                    // back to the page's own ScrollView, so a sloppy diagonal still pages
+                    // instead of doing nothing at all.
+                    isHorizontalDrag = dx > dy * 0.6
+                }
+                guard isHorizontalDrag == true else { return }
+
                 dragTranslation = value.translation.width
                 let progress = Double(currentIndex) - Double(value.translation.width / width)
                 onProgressChange(min(max(progress, 0), Double(tabs.count - 1)))
             }
             .onEnded { value in
-                guard abs(value.translation.width) > abs(value.translation.height) else {
+                defer { isHorizontalDrag = nil }
+                guard isHorizontalDrag == true else {
                     withAnimation(ADATheme.controlSpring) { dragTranslation = 0 }
                     onProgressChange(Double(currentIndex))
                     return
                 }
-                // A fast flick commits even short of the halfway mark — predictedEndTranslation
-                // already accounts for velocity, so this reads as "where would it have ended up
-                // if released to coast," not just "how far has it moved so far."
-                let predicted = value.predictedEndTranslation.width
-                let threshold = width * 0.3
+                // Direction comes from actual travel — predictedEndTranslation can flip sign
+                // on a jittery release — while *how far it counts as having gone* takes the
+                // larger of the two, so a short-but-fast flick commits on velocity alone just
+                // as a slow deliberate drag commits on distance.
+                let travelled = value.translation.width
+                let distance = max(abs(travelled), abs(value.predictedEndTranslation.width))
+                let threshold = width * 0.22
+
                 var newIndex = currentIndex
-                if predicted < -threshold, currentIndex < tabs.count - 1 {
-                    newIndex += 1
-                } else if predicted > threshold, currentIndex > 0 {
-                    newIndex -= 1
+                if distance > threshold {
+                    if travelled < 0, currentIndex < tabs.count - 1 {
+                        newIndex += 1
+                    } else if travelled > 0, currentIndex > 0 {
+                        newIndex -= 1
+                    }
                 }
-                // Deliberately no onProgressChange call here (unlike the revert branch
-                // above) — this changes `selection`, and the parent already mirrors any
-                // selection change (tap-driven or this) into pageProgress via its own
-                // onChange, so calling it again here would just fire two redundant,
-                // slightly-competing animations at the same target value.
+
                 withAnimation(ADATheme.controlSpring) {
                     selection = tabs[newIndex]
                     dragTranslation = 0
+                    // When the page doesn't actually change, `selection` doesn't either, so
+                    // the parent's onChange never fires and its pageProgress would stay stuck
+                    // at whatever fraction the drag reached — leaving the backdrop tint
+                    // frozen mid-crossfade. Settling it explicitly is only needed here; the
+                    // committing case is already covered by that onChange.
+                    if newIndex == currentIndex {
+                        onProgressChange(Double(currentIndex))
+                    }
                 }
             }
     }

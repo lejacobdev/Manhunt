@@ -237,7 +237,8 @@ struct GameLobbyView: View {
                 )
                 settingsRow(icon: "clock.fill", text: "\(Int(viewModel.durationMinutes)) minute match")
                 settingsRow(icon: "lock.fill", text: viewModel.jailEnabled ? "Jail mode enabled" : "Jail mode off")
-                settingsRow(icon: "circle.grid.2x2.fill", text: viewModel.gamblingEnabled ? "Gambling enabled" : "Gambling off")
+                // GAMBLING — see the commented-out toggle in LobbySetupSheet below.
+                // settingsRow(icon: "circle.grid.2x2.fill", text: viewModel.gamblingEnabled ? "Gambling enabled" : "Gambling off")
                 settingsRow(
                     icon: "checkerboard.shield",
                     text: "Anti-cheat (BETA) \(viewModel.antiCheatEnabled ? "on" : "off")",
@@ -305,12 +306,45 @@ struct GameLobbyView: View {
 private struct LobbySetupSheet: View {
     @ObservedObject var viewModel: GameLobbyViewModel
     @ObservedObject var locationManager: LocationManager
+    @ObservedObject private var socket = SocketService.shared
     @Environment(\.dismiss) private var dismiss
+
+    private var playersMissingSquad: Bool {
+        socket.players.contains { ($0.squad ?? "").isEmpty }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("GAME MODE")
+                            .font(ADATheme.telemetryFont(size: 12))
+                            .foregroundColor(.white.opacity(0.7))
+
+                        Picker("Mode", selection: $viewModel.selectedMode.animation(ADATheme.controlSpring)) {
+                            ForEach(GameMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+
+                        // A squad is only ever chosen at join time, so switching an
+                        // already-populated lobby to SQUAD leaves whoever's here without
+                        // one — and squad mode only lets you tag *other* squads, so they'd
+                        // be unable to catch anyone at all. Worth saying out loud rather
+                        // than letting the host discover it mid-match.
+                        if viewModel.selectedMode == .squad && playersMissingSquad {
+                            Text("Players already in this lobby didn't pick a squad when they joined, and squad mode only lets you tag other squads — they'll need to rejoin before they can catch anyone.")
+                                .font(ADATheme.uiFont(size: 11, weight: .medium))
+                                .foregroundColor(ADATheme.tacticalAmber.opacity(0.9))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(16)
+                    .glassCard(cornerRadius: ADATheme.cardCornerRadius)
+                    .padding(.horizontal)
+
                     VStack(alignment: .leading, spacing: 6) {
                         Text("DURATION: \(Int(viewModel.durationMinutes)) MIN")
                         Slider(value: $viewModel.durationMinutes, in: 10...180, step: 5)
@@ -410,13 +444,19 @@ private struct LobbySetupSheet: View {
                         .padding(.horizontal)
                     }
 
-                    ToggleRow(
-                        title: "GAMBLING",
-                        subtitle: "A runner can risk a heart on a coin flip instead of accepting a catch.",
-                        isOn: $viewModel.gamblingEnabled,
-                        tint: ADATheme.tacticalAmber
-                    )
-                    .padding(.horizontal)
+                    // GAMBLING — disabled for now, kept here so it can be switched back on
+                    // without rebuilding it. Everything behind this toggle (the coin-flip
+                    // duel on the server, CoinFlipView, the GAMBLE buttons in GameView's
+                    // catch popup) is still in place; with the toggle gone `gamblingEnabled`
+                    // simply stays false, so no match can turn it on.
+                    //
+                    // ToggleRow(
+                    //     title: "GAMBLING",
+                    //     subtitle: "A runner can risk a heart on a coin flip instead of accepting a catch.",
+                    //     isOn: $viewModel.gamblingEnabled,
+                    //     tint: ADATheme.tacticalAmber
+                    // )
+                    // .padding(.horizontal)
 
                     ToggleRow(
                         title: "ANTI-CHEAT (BETA)",

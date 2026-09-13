@@ -97,18 +97,24 @@ struct GameView: View {
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
             }
 
-            if viewModel.isCoinFlipping || viewModel.lastGambleOutcome != nil || viewModel.awaitingGambleCall {
-                dimScrim
-                CoinFlipView(
-                    myChoice: viewModel.gambleChoicePending,
-                    outcome: viewModel.lastGambleOutcome,
-                    isSelf: viewModel.gamePlayerId,
-                    awaitingCall: viewModel.awaitingGambleCall,
-                    onCall: viewModel.callGamble,
-                    onContinue: viewModel.dismissGambleResult
-                )
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
-            }
+            // GAMBLING — disabled for now, kept here in full so it can be switched back on
+            // without rebuilding it. The backend duel logic, SocketService events and
+            // GameViewModel state it depends on are all still in place and untouched; only
+            // the entry points (this overlay, the GAMBLE buttons in catchRequestPopup, and
+            // the host's GAMBLING toggle in GameLobbyView) are commented out.
+            //
+            // if viewModel.isCoinFlipping || viewModel.lastGambleOutcome != nil || viewModel.awaitingGambleCall {
+            //     dimScrim
+            //     CoinFlipView(
+            //         myChoice: viewModel.gambleChoicePending,
+            //         outcome: viewModel.lastGambleOutcome,
+            //         isSelf: viewModel.gamePlayerId,
+            //         awaitingCall: viewModel.awaitingGambleCall,
+            //         onCall: viewModel.callGamble,
+            //         onContinue: viewModel.dismissGambleResult
+            //     )
+            //     .transition(.scale(scale: 0.85).combined(with: .opacity))
+            // }
         }
         .animation(ADATheme.ambientSpring, value: viewModel.isCaught)
         .animation(ADATheme.ambientSpring, value: viewModel.isOut)
@@ -600,11 +606,12 @@ struct GameView: View {
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
 
-            if viewModel.sessionSettings.gamblingEnabled == true {
-                Text("Gambling risks a heart, but never sends you to jail.")
-                    .font(ADATheme.uiFont(size: 11, weight: .medium))
-                    .foregroundColor(.white.opacity(0.45))
-            }
+            // GAMBLING — see the commented-out CoinFlipView overlay above.
+            // if viewModel.sessionSettings.gamblingEnabled == true {
+            //     Text("Gambling risks a heart, but never sends you to jail.")
+            //         .font(ADATheme.uiFont(size: 11, weight: .medium))
+            //         .foregroundColor(.white.opacity(0.45))
+            // }
 
             VStack(spacing: 10) {
                 Button {
@@ -617,23 +624,24 @@ struct GameView: View {
                 }
                 .buttonStyle(GlowButtonStyle(tint: ADATheme.hunterRed))
 
-                if viewModel.sessionSettings.gamblingEnabled == true {
-                    HStack(spacing: 10) {
-                        Button {
-                            viewModel.gambleCatch(choice: .heads)
-                        } label: {
-                            HStack { Image(systemName: "circle.fill"); Text("GAMBLE: HEADS") }
-                        }
-                        .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
-
-                        Button {
-                            viewModel.gambleCatch(choice: .tails)
-                        } label: {
-                            HStack { Image(systemName: "circle"); Text("GAMBLE: TAILS") }
-                        }
-                        .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
-                    }
-                }
+                // GAMBLING — see the commented-out CoinFlipView overlay above.
+                // if viewModel.sessionSettings.gamblingEnabled == true {
+                //     HStack(spacing: 10) {
+                //         Button {
+                //             viewModel.gambleCatch(choice: .heads)
+                //         } label: {
+                //             HStack { Image(systemName: "circle.fill"); Text("GAMBLE: HEADS") }
+                //         }
+                //         .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
+                //
+                //         Button {
+                //             viewModel.gambleCatch(choice: .tails)
+                //         } label: {
+                //             HStack { Image(systemName: "circle"); Text("GAMBLE: TAILS") }
+                //         }
+                //         .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
+                //     }
+                // }
 
                 Button("NO, THAT WASN'T A CATCH") {
                     viewModel.denyCatch()

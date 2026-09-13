@@ -13,6 +13,12 @@ final class PresenceService: ObservableObject {
 
     @Published var onlineFriendIds: Set<String> = []
     @Published var incomingInvites: [GameInvite] = []
+    /// Bumped whenever the friend graph changes underneath this device — someone sent this
+    /// user a request, or accepted one of theirs. `FriendsView` watches it and reloads, so
+    /// both the requests section and the friends list stay live without a pull-to-refresh.
+    /// A counter rather than the event payload itself: the list is re-fetched either way,
+    /// and that keeps one source of truth instead of patching rows from two directions.
+    @Published var friendsRevision: Int = 0
 
     private var manager: SocketManager?
     private var socket: SocketIOClient?
@@ -87,6 +93,16 @@ final class PresenceService: ObservableObject {
         socket.on("friend_offline") { [weak self] data, _ in
             guard let dict = data.first as? [String: Any], let id = dict["userId"] as? String else { return }
             self?.onlineFriendIds.remove(id)
+        }
+
+        socket.on("friend_request") { [weak self] _, _ in
+            self?.friendsRevision += 1
+            HapticsEngine.shared.lightTap()
+        }
+
+        socket.on("friend_request_accepted") { [weak self] _, _ in
+            self?.friendsRevision += 1
+            HapticsEngine.shared.lightTap()
         }
 
         socket.on("game_invite") { [weak self] data, _ in

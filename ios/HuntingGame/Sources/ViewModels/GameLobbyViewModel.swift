@@ -22,6 +22,10 @@ final class GameLobbyViewModel: ObservableObject {
     // host last saved — a non-host's copies are overwritten live by settings_updated too,
     // so their read-only summary always reflects the current values.
     @Published var durationMinutes: Double
+    /// The host's in-progress mode choice. Unlike the other settings here, mode is a column
+    /// on the session row rather than part of the settings blob, so it travels separately
+    /// (see `saveSettings` and the `mode_updated` socket event).
+    @Published var selectedMode: GameMode
     /// The play area being drawn, before it's saved. Once `session.settings.boundsPolygon`
     /// has 3+ points the area is locked in server-side, so this stops being editable —
     /// see `isBoundarySet`.
@@ -50,6 +54,7 @@ final class GameLobbyViewModel: ObservableObject {
         self.session = session
         self.player = player
         self.durationMinutes = Double(session.settings.durationMinutes)
+        self.selectedMode = session.mode
         self.boundaryPoints = session.settings.boundsPolygon
         self.jailEnabled = session.settings.jailEnabled ?? false
         self.jailPoints = session.settings.jailPolygon ?? []
@@ -103,6 +108,20 @@ final class GameLobbyViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        socket.$latestMode
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] mode in
+                guard let self else { return }
+                self.applyMode(mode)
+                // Same reasoning as the settings sink above: a non-host's picker is
+                // display-only and should track the host, while the host's own copy is their
+                // in-progress edit and mustn't be clobbered by the echo of their own save.
+                guard !self.isHost else { return }
+                self.selectedMode = mode
+            }
+            .store(in: &cancellables)
+
         socket.$matchStartedAt
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
@@ -131,6 +150,14 @@ final class GameLobbyViewModel: ObservableObject {
                 )
             }
             .store(in: &cancellables)
+    }
+
+    private func applyMode(_ mode: GameMode) {
+        session = GameSession(
+            id: session.id, code: session.code, status: session.status, mode: mode,
+            hostId: session.hostId, startedAt: session.startedAt, endedAt: session.endedAt,
+            settings: session.settings
+        )
     }
 
     private func applySettings(_ settings: GameSettings) {
@@ -162,12 +189,15 @@ final class GameLobbyViewModel: ObservableObject {
                 // redrawing it — resending the already-saved points otherwise would trigger
                 // a needless re-scatter of power-ups server-side.
                 boundsPolygon: needsBoundary ? boundaryPoints : nil,
+                mode: selectedMode,
                 jailEnabled: jailEnabled,
                 jailPolygon: jailEnabled ? jailPoints : nil,
                 gamblingEnabled: gamblingEnabled,
                 antiCheatEnabled: antiCheatEnabled
             )
-            applySettings(updated.settings)
+            // The whole row, not just its settings — this response also carries the mode,
+            // which lives outside the settings blob.
+            session = updated
             isRedrawingBoundary = false
         } catch {
             errorMessage = error.localizedDescription

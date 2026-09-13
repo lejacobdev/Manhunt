@@ -155,8 +155,10 @@ export const io = new Server(httpServer, { cors: { origin: process.env.CORS_ORIG
 
 // roomCode -> (gamePlayerId -> PlayerState)
 const activeSessions: Map<string, Map<string, PlayerState>> = new Map();
-// roomCode -> game mode, cached at join to avoid a DB hit per tick
-const sessionModes: Map<string, GameMode> = new Map();
+// roomCode -> game mode, cached at join to avoid a DB hit per tick. Exported because the
+// host can now change the mode from the lobby (PATCH /games/:code/settings), which has to
+// live-patch this cache the same way sessionSettingsCache below is patched.
+export const sessionModes: Map<string, GameMode> = new Map();
 // roomCode -> immutable session settings (duration, radar interval, boundary)
 export const sessionSettingsCache: Map<string, GameSettings> = new Map();
 // roomCode -> match start time (epoch ms) — set at join if already started, or live-patched by the
@@ -567,10 +569,6 @@ io.on('connection', (socket: Socket) => {
     const mode = sessionModes.get(roomCode) ?? 'STANDARD';
 
     if (!hunter) return;
-    if (mode === 'INFECTION') {
-      socket.emit('catch_failed', { reason: 'This match uses the code-entry catch flow.' });
-      return;
-    }
 
     if (mode === 'SQUAD') {
       if (!hunter.squad || !runner?.squad || hunter.squad === runner.squad) {
@@ -670,6 +668,22 @@ io.on('connection', (socket: Socket) => {
       const mode = sessionModes.get(roomCode) ?? 'STANDARD';
 
       if (decision === 'accept') {
+        // INFECTION resolves a catch by turning the runner into a hunter rather than by
+        // taking them out, exactly as the code-entry attempt_catch above still does for the
+        // Watch — the request/respond popup is just a different way of agreeing a catch
+        // happened, so it has to end in the same place the code flow does.
+        if (mode === 'INFECTION') {
+          runner.role = 'HUNTER';
+          runner.isCaught = false;
+          await gameService.convertRunnerToHunter(gameSessionId, runner.id);
+          io.to(roomCode).emit('player_infected', {
+            runnerId: runner.id,
+            hunterId: hunter.id,
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+
         const jail = !!settings?.jailEnabled;
         runner.isCaught = true;
         runner.isJailed = jail;

@@ -8,7 +8,7 @@ import { zodErrorMessage } from '../utils/validation';
 // Circular import (server.ts imports this router) — safe because `io` and
 // the caches are only read inside route handlers, which run long after both
 // modules have finished loading, never at module top level.
-import { io, sessionSettingsCache, sessionStartedAtCache } from '../server';
+import { io, sessionModes, sessionSettingsCache, sessionStartedAtCache } from '../server';
 
 export const gamesRouter = Router();
 gamesRouter.use(requireAuth);
@@ -118,6 +118,9 @@ gamesRouter.post('/:code/location-consent', async (req: AuthedRequest, res) => {
 
 const updateSettingsSchema = z.object({
   durationMinutes: z.number().min(5).max(240).optional(),
+  // Changeable from the lobby like everything else here, so a host who picked the wrong one
+  // at host time doesn't have to tear the game down and make everyone rejoin.
+  mode: z.enum(['STANDARD', 'INFECTION', 'SQUAD']).optional(),
   // Redrawable any number of times before the match starts — each redraw re-scatters
   // power-ups inside the new shape (see the handler below and GameService.layOutSpawns).
   boundsPolygon: z.array(pointSchema).optional(),
@@ -150,7 +153,10 @@ gamesRouter.patch('/:code/settings', async (req: AuthedRequest, res) => {
     return res.status(400).json({ error: 'Draw a play-area boundary with at least 3 points.' });
   }
 
-  const merged: GameSettings = { ...current, ...parsed.data };
+  // `mode` is a column on the session row, not part of the settings JSON — pulled out here
+  // so the spread below doesn't smuggle it into the stored settings blob.
+  const { mode: requestedMode, ...settingsPatch } = parsed.data;
+  const merged: GameSettings = { ...current, ...settingsPatch };
   // Turning jail on needs an area to hold people in — either one drawn in this request or
   // one already stored from a previous save.
   if (merged.jailEnabled && (merged.jailPolygon?.length ?? 0) < 3) {
@@ -165,9 +171,21 @@ gamesRouter.patch('/:code/settings', async (req: AuthedRequest, res) => {
     await gameService.layOutSpawns(session.id, merged.boundsPolygon, merged.durationMinutes);
   }
 
+  // Applied before the settings write below so the session row that write returns already
+  // carries the new mode. The socket layer reads the mode from its own per-room cache on
+  // every tick rather than from the DB, so that has to be patched here too.
+  const modeChanged = !!requestedMode && requestedMode !== session.mode;
+  if (modeChanged) {
+    await prisma.gameSession.update({ where: { id: session.id }, data: { mode: requestedMode } });
+    sessionModes.set(session.code, requestedMode);
+  }
+
   const updated = await gameService.updateSessionSettings(session.id, merged);
   sessionSettingsCache.set(session.code, merged);
   io.to(session.code).emit('settings_updated', merged);
+  // Separate from settings_updated because mode isn't part of the settings payload — every
+  // member's lobby needs it to relabel itself, and GameView reads mode to pick its rules.
+  if (modeChanged) io.to(session.code).emit('mode_updated', { mode: requestedMode });
   return res.json({ session: updated });
 });
 

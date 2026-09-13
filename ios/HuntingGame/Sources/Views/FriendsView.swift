@@ -111,6 +111,12 @@ struct FriendsView: View {
             }
         }
         .task { await viewModel.loadAll() }
+        // A request arriving, or one of this user's being accepted, arrives over the
+        // presence socket while this screen is open — refetch so it shows up here without
+        // a manual pull-to-refresh.
+        .onChange(of: presence.friendsRevision) { _ in
+            Task { await viewModel.loadAll() }
+        }
     }
 
     /// Stands in for a real navigation bar (see the `body` comment for why) — QR scan and,
@@ -200,44 +206,54 @@ struct FriendsView: View {
                     .foregroundColor(.white.opacity(0.35))
             } else {
                 ForEach(viewModel.friends) { friend in
-                    HStack(spacing: 10) {
-                        // Only the identity half is the link, so the INVITE button beside
-                        // it stays independently tappable instead of being swallowed by
-                        // the row-wide navigation gesture.
-                        NavigationLink {
-                            PublicProfileView(userId: friend.id, displayName: friend.tagLabel)
-                        } label: {
-                            HStack(spacing: 10) {
-                                Circle()
-                                    .fill(isOnline(friend) ? ADATheme.runnerGreen : .white.opacity(0.2))
-                                    .frame(width: 8, height: 8)
-                                    .shadow(color: isOnline(friend) ? ADATheme.runnerGreen : .clear, radius: 4)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(friend.tagLabel)
-                                        .font(ADATheme.uiFont(size: 13))
-                                        .foregroundColor(.white)
-                                    Text(isOnline(friend) ? "ONLINE" : "OFFLINE")
-                                        .font(ADATheme.telemetryFont(size: 9))
-                                        .foregroundColor(isOnline(friend) ? ADATheme.runnerGreen : .white.opacity(0.3))
-                                }
-                                Spacer()
+                    // The whole banner is the link — card, padding and all — rather than
+                    // just the identity half, so tapping anywhere on the row opens the
+                    // profile. Where an INVITE button is also needed it's overlaid *outside*
+                    // the link rather than nested inside it (a button inside a
+                    // NavigationLink's label doesn't reliably get its own taps), with
+                    // matching blank space reserved in the row so the two never overlap.
+                    let showsInvite = inviteSessionCode != nil && isOnline(friend)
+
+                    NavigationLink {
+                        PublicProfileView(userId: friend.id, displayName: friend.tagLabel)
+                    } label: {
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(isOnline(friend) ? ADATheme.runnerGreen : .white.opacity(0.2))
+                                .frame(width: 8, height: 8)
+                                .shadow(color: isOnline(friend) ? ADATheme.runnerGreen : .clear, radius: 4)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(friend.tagLabel)
+                                    .font(ADATheme.uiFont(size: 13))
+                                    .foregroundColor(.white)
+                                Text(isOnline(friend) ? "ONLINE" : "OFFLINE")
+                                    .font(ADATheme.telemetryFont(size: 9))
+                                    .foregroundColor(isOnline(friend) ? ADATheme.runnerGreen : .white.opacity(0.3))
+                            }
+                            Spacer()
+                            if showsInvite {
+                                Color.clear.frame(width: 86, height: 28)
+                            } else {
                                 Image(systemName: "chevron.right")
                                     .font(.system(size: 11, weight: .semibold))
                                     .foregroundColor(.white.opacity(0.25))
                             }
                         }
-                        .buttonStyle(.plain)
-
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 14)
+                        .glassCard(cornerRadius: ADATheme.controlCornerRadius)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .overlay(alignment: .trailing) {
                         if let sessionCode = inviteSessionCode, isOnline(friend) {
                             Button("INVITE") {
                                 Task { await viewModel.invite(friend, toSessionCode: sessionCode) }
                             }
                             .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                            .padding(.trailing, 14)
                         }
                     }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 14)
-                    .glassCard(cornerRadius: ADATheme.controlCornerRadius)
                 }
             }
         }

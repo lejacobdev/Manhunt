@@ -60,9 +60,9 @@ invitesRouter.post('/', async (req: AuthedRequest, res) => {
     include: { fromUser: true },
   });
 
-  // Best-effort live socket push — if the friend isn't connected right now, the durable
-  // row is still there for GET /invites/incoming the next time they open the app, and the
-  // APNs push below reaches them even while the app itself isn't running at all.
+  // Best-effort live socket delivery, so the invite banner appears immediately for someone
+  // already looking at the app. If they aren't connected the durable row above is still
+  // there for GET /invites/incoming next time they open it.
   if (isUserOnline(toUserId)) {
     io.to(`user:${toUserId}`).emit('game_invite', {
       id: invite.id,
@@ -72,13 +72,17 @@ invitesRouter.post('/', async (req: AuthedRequest, res) => {
       fromUsername: invite.fromUser.username,
       createdAt: invite.createdAt,
     });
-  } else {
-    void pushService.notify(toUserId, {
-      title: 'Game Invite',
-      body: `${invite.fromUser.username} invited you to a ${session.mode.toLowerCase()} match.`,
-      data: { type: 'game_invite', inviteId: invite.id, sessionCode: session.code },
-    });
   }
+
+  // Notify regardless of that socket, rather than only when they look offline: "online"
+  // here just means a socket is open, which it still is while the app sits backgrounded in
+  // someone's pocket — so gating the push on it meant an invite arrived with no
+  // notification at all unless they happened to be staring at the lobby screen.
+  void pushService.notify(toUserId, {
+    title: 'Game Invite',
+    body: `${invite.fromUser.username} invited you to a ${session.mode.toLowerCase()} match.`,
+    data: { type: 'game_invite', inviteId: invite.id, sessionCode: session.code },
+  });
 
   return res.status(201).json({ invite });
 });

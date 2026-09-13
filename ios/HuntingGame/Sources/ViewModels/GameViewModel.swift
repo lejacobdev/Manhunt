@@ -448,17 +448,14 @@ final class GameViewModel: ObservableObject {
 
     // MARK: - Catch flow
 
-    /// INFECTION mode keeps the old code-entry sheet; every other mode uses the new
-    /// real-time request the runner answers on their own device.
+    /// Every mode — STANDARD, SQUAD and INFECTION alike — now uses the real-time request the
+    /// runner answers on their own device. The old arrest-code entry it replaced is still
+    /// wired up server-side (`attempt_catch`) because the Watch app has no way to show the
+    /// request popup and still catches by code.
     func beginCatch(on runnerId: String) {
         HapticsEngine.shared.lightTap()
-        if mode == .infection {
-            catchTargetId = runnerId
-            catchCodeEntry = ""
-        } else {
-            pendingCatchRequestRunnerId = runnerId
-            socket.requestCatch(runnerId: runnerId)
-        }
+        pendingCatchRequestRunnerId = runnerId
+        socket.requestCatch(runnerId: runnerId)
     }
 
     func confirmCatch() {
@@ -485,28 +482,32 @@ final class GameViewModel: ObservableObject {
         incomingCatchRequest = nil
     }
 
-    /// Opens a gamble duel: from here the coin keeps being tossed round after round until
-    /// either the runner or the hunter is out of hearts.
-    func gambleCatch(choice: GambleChoice) {
-        guard let request = incomingCatchRequest else { return }
-        HapticsEngine.shared.lightTap()
-        gambleChoicePending = choice
-        isCoinFlipping = true
-        awaitingGambleCall = false
-        socket.respondToCatch(hunterId: request.hunterId, decision: "gamble", gambleChoice: choice.rawValue)
-        incomingCatchRequest = nil
-    }
-
-    /// The runner's call for the next round of a duel already in progress.
-    func callGamble(choice: GambleChoice) {
-        guard awaitingGambleCall else { return }
-        HapticsEngine.shared.lightTap()
-        gambleChoicePending = choice
-        isCoinFlipping = true
-        awaitingGambleCall = false
-        lastGambleOutcome = nil
-        socket.callGamble(choice: choice.rawValue)
-    }
+    // GAMBLING — disabled for now, kept here in full so it can be switched back on without
+    // rebuilding it. The published state above, the socket bindings, and the server-side
+    // duel are all still in place; only these entry points and their UI are commented out.
+    //
+    // /// Opens a gamble duel: from here the coin keeps being tossed round after round until
+    // /// either the runner or the hunter is out of hearts.
+    // func gambleCatch(choice: GambleChoice) {
+    //     guard let request = incomingCatchRequest else { return }
+    //     HapticsEngine.shared.lightTap()
+    //     gambleChoicePending = choice
+    //     isCoinFlipping = true
+    //     awaitingGambleCall = false
+    //     socket.respondToCatch(hunterId: request.hunterId, decision: "gamble", gambleChoice: choice.rawValue)
+    //     incomingCatchRequest = nil
+    // }
+    //
+    // /// The runner's call for the next round of a duel already in progress.
+    // func callGamble(choice: GambleChoice) {
+    //     guard awaitingGambleCall else { return }
+    //     HapticsEngine.shared.lightTap()
+    //     gambleChoicePending = choice
+    //     isCoinFlipping = true
+    //     awaitingGambleCall = false
+    //     lastGambleOutcome = nil
+    //     socket.callGamble(choice: choice.rawValue)
+    // }
 
     func denyCatch() {
         guard let request = incomingCatchRequest else { return }
@@ -522,13 +523,15 @@ final class GameViewModel: ObservableObject {
         pendingCatchRequestRunnerId = nil
     }
 
-    /// Only closes the coin view once the duel has actually produced a loser — mid-duel the
-    /// runner has to keep calling, so there's deliberately no way out of it here.
-    func dismissGambleResult() {
-        guard !awaitingGambleCall else { return }
-        lastGambleOutcome = nil
-        isCoinFlipping = false
-    }
+    // GAMBLING — disabled, see gambleCatch/callGamble above.
+    //
+    // /// Only closes the coin view once the duel has actually produced a loser — mid-duel the
+    // /// runner has to keep calling, so there's deliberately no way out of it here.
+    // func dismissGambleResult() {
+    //     guard !awaitingGambleCall else { return }
+    //     lastGambleOutcome = nil
+    //     isCoinFlipping = false
+    // }
 
     // MARK: - Squad mode
 

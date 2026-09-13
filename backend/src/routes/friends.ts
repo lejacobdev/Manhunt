@@ -5,7 +5,7 @@ import { AuthedRequest, requireAuth } from '../middleware/auth';
 import { zodErrorMessage } from '../utils/validation';
 // Circular import (server.ts imports this router) — safe because `isUserOnline` is
 // only read inside route handlers, which run long after both modules finish loading.
-import { isUserOnline } from '../server';
+import { io, isUserOnline } from '../server';
 import { pushService } from '../services/PushService';
 
 export const friendsRouter = Router();
@@ -80,6 +80,15 @@ friendsRouter.post('/requests', async (req: AuthedRequest, res) => {
       data: { type: 'friend_request', friendshipId: friendship.id },
     });
   }
+  // Live delivery alongside the push, so the request appears on the recipient's Friends tab
+  // while they're looking at it instead of only after a manual pull-to-refresh. The row
+  // above is the durable copy GET /friends/requests/incoming returns if they were away.
+  io.to(`user:${receiverId}`).emit('friend_request', {
+    friendshipId: friendship.id,
+    fromUserId: senderId,
+    fromUsername: sender ? `${sender.username}#${sender.userTag}` : null,
+    createdAt: friendship.createdAt,
+  });
   return res.status(201).json({ friendship });
 });
 
@@ -99,6 +108,13 @@ friendsRouter.post('/requests/:id/accept', async (req: AuthedRequest, res) => {
     title: 'Friend Request Accepted',
     body: `${friendship.receiver.username}#${friendship.receiver.userTag} accepted your friend request.`,
     data: { type: 'friend_accepted', friendshipId: friendship.id },
+  });
+  // Live counterpart to the push — the sender's friends list gains a person the moment
+  // this lands, rather than the next time they happen to reopen the tab.
+  io.to(`user:${friendship.senderId}`).emit('friend_request_accepted', {
+    friendshipId: friendship.id,
+    byUserId: friendship.receiverId,
+    byUsername: `${friendship.receiver.username}#${friendship.receiver.userTag}`,
   });
   return res.json({ friendship: updated });
 });
