@@ -239,6 +239,24 @@ jobs:
             -authenticationKeyIssuerID "$ISSUER_ID" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
+      # What the archive itself is signed with, before export re-signs it. This is the gap
+      # that kept this undiagnosable: the exported app was missing both aps-environment and
+      # application-groups, the App ID grants both, and no stale profile existed to blame —
+      # so the question is whether they survive archiving at all, and nothing so far has
+      # looked.
+      - name: Report archived signing
+        if: always()
+        continue-on-error: true
+        working-directory: ios/HuntingGame
+        run: |
+          APP=$(find build/HuntingGame.xcarchive/Products/Applications -maxdepth 1 -name "*.app" | head -1)
+          echo "--- entitlements signed into the ARCHIVED app ---"
+          codesign -d --entitlements :- "$APP" 2>/dev/null || true
+          echo
+          echo "--- CODE_SIGN_ENTITLEMENTS as built ---"
+          xcodebuild -project HuntingGame.xcodeproj -scheme HuntingGame -configuration Release \
+            -showBuildSettings 2>/dev/null | grep -iE "CODE_SIGN_ENTITLEMENTS|CODE_SIGN_STYLE|PROVISIONING" | head
+
       # Export writes an IPA to disk and a separate step uploads it. Doing both in one
       # -exportArchive call (destination: upload) is fewer moving parts but leaves nothing
       # behind to inspect, which made a push-entitlement problem impossible to diagnose:
