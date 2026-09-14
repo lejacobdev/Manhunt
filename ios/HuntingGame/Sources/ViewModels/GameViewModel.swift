@@ -118,7 +118,9 @@ final class GameViewModel: ObservableObject {
     func start() {
         UIDevice.current.isBatteryMonitoringEnabled = true
         HapticsEngine.shared.prepareEngine()
-        locationManager.requestAuthorizationAndStart()
+        // Deliberately NOT starting location here: nothing is shared until the player
+        // checks in for this match (see startLocationSharing, called from GameView's
+        // consent screen). Everything else about the match can spin up meanwhile.
         socket.connect(roomCode: roomCode, gamePlayerId: gamePlayerId)
         LiveActivityManager.shared.start(gameCode: roomCode, role: role)
 
@@ -133,6 +135,12 @@ final class GameViewModel: ObservableObject {
         if role == .hunter || role == .runner {
             Task { [weak self] in await self?.loadPowerUpSpawns() }
         }
+    }
+
+    /// Begins sharing position with the rest of the match. Only ever called from the
+    /// per-match check-in screen, never automatically — that separation is the whole point.
+    func startLocationSharing() {
+        locationManager.requestAuthorizationAndStart()
     }
 
     private func loadPowerUpSpawns() async {

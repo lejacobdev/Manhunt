@@ -20,6 +20,13 @@ struct GameView: View {
     @State private var showExitConfirm = false
     /// Opacity of the red edge flash played on every heart lost — see `damageFlash`.
     @State private var damageFlashOpacity: Double = 0
+    // The per-match check-in (App Store guideline 5.1.2(i)). It lives here rather than in
+    // the lobby because this is the point position actually starts being shared with other
+    // players — asking on lobby entry meant consenting long before anything was shared, and
+    // left location running through the whole waiting room for no reason.
+    @State private var showLocationConsent = true
+    @State private var isRecordingConsent = false
+    @State private var consentError: String?
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
@@ -129,6 +136,18 @@ struct GameView: View {
         .animation(ADATheme.controlSpring, value: viewModel.role)
         .onAppear { viewModel.start() }
         .onDisappear { viewModel.stop() }
+        .fullScreenCover(isPresented: $showLocationConsent) {
+            LocationConsentView(
+                isSubmitting: isRecordingConsent,
+                errorMessage: consentError,
+                onAccept: { Task { await consentAndShareLocation() } },
+                onDecline: {
+                    showLocationConsent = false
+                    dismiss()
+                }
+            )
+            .preferredColorScheme(.dark)
+        }
         .onChange(of: viewModel.heartLossPulse) { _ in
             // Snap on, ease off — a symmetric fade reads as a soft glow rather than a hit.
             withAnimation(.easeIn(duration: 0.07)) { damageFlashOpacity = 0.5 }
@@ -150,6 +169,18 @@ struct GameView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("You can rejoin from Mission Control while this match is still running.")
+        }
+    }
+
+    private func consentAndShareLocation() async {
+        isRecordingConsent = true
+        defer { isRecordingConsent = false }
+        do {
+            try await APIClient.shared.recordLocationSharingConsent(code: viewModel.roomCode)
+            showLocationConsent = false
+            viewModel.startLocationSharing()
+        } catch {
+            consentError = error.localizedDescription
         }
     }
 

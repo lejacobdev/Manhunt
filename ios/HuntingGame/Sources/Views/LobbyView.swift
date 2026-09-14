@@ -3,7 +3,6 @@ import CoreLocation
 
 struct LobbyView: View {
     @StateObject private var viewModel = LobbyViewModel()
-    @StateObject private var locationManager = LocationManager()
     @EnvironmentObject var authSession: AuthSession
     @EnvironmentObject var presence: PresenceService
     @ObservedObject private var deepLinkRouter = DeepLinkRouter.shared
@@ -184,7 +183,6 @@ struct LobbyView: View {
             // and entering a fresh lobby both funnel through the same entry point.
             GameLobbyView(gamePlayer: launch.player, session: launch.session)
         }
-        .onAppear { locationManager.requestAuthorizationAndStart() }
         .sheet(isPresented: $showRulesGate) {
             RulesView(
                 onAccept: {

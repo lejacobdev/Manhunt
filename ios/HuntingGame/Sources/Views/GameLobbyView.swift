@@ -17,12 +17,6 @@ struct GameLobbyView: View {
     @State private var showExitConfirm = false
     @State private var showFriends = false
     @State private var showSettings = false
-    // Location sharing is never started automatically (App Store guideline 5.1.2(i)) —
-    // this gates `locationManager.requestAuthorizationAndStart()` behind one explicit
-    // check-in per match, asked again every time a fresh lobby is entered.
-    @State private var showLocationConsent = true
-    @State private var isRecordingConsent = false
-    @State private var consentError: String?
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameLobbyViewModel(session: session, player: gamePlayer))
@@ -35,34 +29,13 @@ struct GameLobbyView: View {
             } else {
                 waitingRoom
                     .onAppear { viewModel.start() }
-                    .onDisappear { viewModel.stop() }
-                    .fullScreenCover(isPresented: $showLocationConsent) {
-                        LocationConsentView(
-                            isSubmitting: isRecordingConsent,
-                            errorMessage: consentError,
-                            onAccept: { Task { await consentAndStartLocation() } },
-                            onDecline: {
-                                showLocationConsent = false
-                                dismiss()
-                            }
-                        )
-                        .preferredColorScheme(.dark)
+                    .onDisappear {
+                        viewModel.stop()
+                        locationManager.stop()
                     }
             }
         }
         .preferredColorScheme(.dark)
-    }
-
-    private func consentAndStartLocation() async {
-        isRecordingConsent = true
-        defer { isRecordingConsent = false }
-        do {
-            try await APIClient.shared.recordLocationSharingConsent(code: viewModel.session.code)
-            showLocationConsent = false
-            locationManager.requestAuthorizationAndStart()
-        } catch {
-            consentError = error.localizedDescription
-        }
     }
 
     private var waitingRoom: some View {
@@ -122,6 +95,17 @@ struct GameLobbyView: View {
             }
             .sheet(isPresented: $showSettings) {
                 LobbySetupSheet(viewModel: viewModel, locationManager: locationManager)
+            }
+            // The play-area map is the only thing in the lobby that needs a position, and it
+            // needs only this device's own — nothing is broadcast to anyone from here. So
+            // location runs for exactly as long as that sheet is open and stops the moment
+            // it closes, rather than for the whole time someone sits in a lobby.
+            .onChange(of: showSettings) { isOpen in
+                if isOpen {
+                    locationManager.requestAuthorizationAndStart()
+                } else {
+                    locationManager.stop()
+                }
             }
         }
     }
