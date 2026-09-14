@@ -12,6 +12,7 @@ import { friendsRouter } from './routes/friends';
 import { gamesRouter } from './routes/games';
 import { powerUpsRouter } from './routes/powerups';
 import { invitesRouter } from './routes/invites';
+import { adminRouter } from './routes/admin';
 import { usersRouter } from './routes/users';
 import { pushRouter } from './routes/push';
 import { prisma } from './lib/prisma';
@@ -105,6 +106,7 @@ app.use('/friends', friendsRouter);
 app.use('/games', gamesRouter);
 app.use('/powerups', powerUpsRouter);
 app.use('/invites', invitesRouter);
+app.use('/admin', adminRouter);
 app.use('/users', usersRouter);
 app.use('/push', pushRouter);
 
@@ -260,13 +262,24 @@ io.use((socket, next) => {
     (socket.handshake.query?.token as string | undefined) ??
     (authHeader?.startsWith('Bearer ') ? authHeader.slice('Bearer '.length) : undefined);
   if (!token) return next(new Error('Missing auth token.'));
+  let decoded: AuthTokenPayload;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as AuthTokenPayload;
-    socket.data.user = decoded;
-    next();
+    decoded = jwt.verify(token, JWT_SECRET) as AuthTokenPayload;
   } catch {
-    next(new Error('Invalid or expired token.'));
+    return next(new Error('Invalid or expired token.'));
   }
+
+  // Tokens last a month, so a ban that only blocked sign-in would leave anyone already
+  // holding one playing on for weeks. Checked here because the socket is where gameplay
+  // actually happens — cutting it off is what a ban has to mean.
+  prisma.user
+    .findUnique({ where: { id: decoded.userId }, select: { isBanned: true } })
+    .then((user) => {
+      if (user?.isBanned) return next(new Error('This account has been suspended.'));
+      socket.data.user = decoded;
+      next();
+    })
+    .catch(() => next(new Error('Could not verify this account.')));
 });
 
 io.on('connection', (socket: Socket) => {

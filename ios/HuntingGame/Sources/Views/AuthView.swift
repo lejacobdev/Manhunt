@@ -23,6 +23,15 @@ struct AuthView: View {
         .onAppear {
             withAnimation(.easeOut(duration: 0.5)) { hasAppeared = true }
         }
+        // Explains a sign-out that otherwise looks like the app breaking for no reason.
+        .alert("Account suspended", isPresented: Binding(
+            get: { PresenceService.shared.banMessage != nil },
+            set: { if !$0 { PresenceService.shared.banMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(PresenceService.shared.banMessage ?? "")
+        }
     }
 
     /// Vertically centered when it fits the screen, scrolling normally once the error

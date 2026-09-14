@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin — Hunting Game</title>
+<meta name="robots" content="noindex,nofollow">
+<link rel="icon" href="/assets/favicon-32.png" sizes="32x32">
+<meta name="theme-color" content="#090b10">
+<style>
+:root{
+  --bg:#090b10; --panel:#11151d; --panel2:#161b25; --line:#232a36;
+  --text:#e7ecf3; --dim:#8b97a8; --faint:#5b6676;
+  --cyan:#3ddad7; --green:#4ade80; --red:#f2555a; --amber:#f5b642; --purple:#a78bfa;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+a{color:var(--cyan)}
+button{font:inherit;cursor:pointer;border:none;border-radius:8px;padding:8px 14px;
+  background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+button:hover{border-color:var(--faint)}
+button.primary{background:var(--cyan);color:#03201f;border-color:transparent;font-weight:600}
+button.danger{background:transparent;color:var(--red);border-color:#43232a}
+button.danger:hover{background:#1d1113}
+button.ghost{background:transparent}
+button:disabled{opacity:.45;cursor:not-allowed}
+input,select,textarea{font:inherit;background:var(--panel2);color:var(--text);
+  border:1px solid var(--line);border-radius:8px;padding:9px 11px;width:100%}
+textarea{resize:vertical;min-height:74px}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}
+
+/* layout */
+.shell{display:flex;min-height:100vh}
+.side{width:216px;flex:0 0 216px;background:var(--panel);border-right:1px solid var(--line);
+  padding:18px 12px;display:flex;flex-direction:column;gap:4px}
+.brand{font-weight:700;letter-spacing:.14em;font-size:12px;color:var(--cyan);
+  padding:6px 10px 16px;text-transform:uppercase}
+.nav{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:8px;
+  color:var(--dim);cursor:pointer;border:1px solid transparent}
+.nav:hover{background:var(--panel2);color:var(--text)}
+.nav.on{background:var(--panel2);color:var(--text);border-color:var(--line)}
+.nav .badge{margin-left:auto;background:var(--red);color:#fff;border-radius:999px;
+  padding:1px 7px;font-size:11px;font-weight:700}
+.main{flex:1;padding:24px 28px;max-width:1400px;overflow-x:hidden}
+h1{font-size:19px;margin:0 0 2px}
+.sub{color:var(--faint);font-size:13px;margin-bottom:20px}
+
+/* cards */
+.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));margin-bottom:22px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.card .k{color:var(--faint);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+.card .v{font-size:26px;font-weight:700;margin-top:5px}
+.card .v.cyan{color:var(--cyan)} .card .v.red{color:var(--red)}
+.card .v.green{color:var(--green)} .card .v.amber{color:var(--amber)}
+
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  padding:16px 18px;margin-bottom:16px}
+.panel h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin:0 0 14px}
+
+/* table */
+table{width:100%;border-collapse:collapse}
+th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line)}
+td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr.click:hover{background:var(--panel2);cursor:pointer}
+
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;
+  border:1px solid var(--line);color:var(--dim)}
+.pill.open{color:var(--amber);border-color:#463a1c}
+.pill.resolved{color:var(--green);border-color:#1e4030}
+.pill.dismissed{color:var(--faint)}
+.pill.banned{color:var(--red);border-color:#43232a}
+.pill.admin{color:var(--purple);border-color:#3b3364}
+.pill.live{color:var(--green);border-color:#1e4030}
+.pill.on{color:var(--green);border-color:#1e4030}
+
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.row.end{justify-content:flex-end}
+.tabs{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+.tab{padding:6px 13px;border-radius:999px;border:1px solid var(--line);
+  color:var(--dim);cursor:pointer;font-size:13px}
+.tab.on{background:var(--panel2);color:var(--text);border-color:var(--faint)}
+.muted{color:var(--faint)}
+.empty{color:var(--faint);padding:26px;text-align:center}
+
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(3,5,9,.72);display:flex;
+  align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;z-index:50}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+  padding:22px;width:100%;max-width:760px}
+.modal h3{margin:0 0 4px;font-size:17px}
+.field{margin:12px 0}
+.field label{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--faint);margin-bottom:6px}
+
+/* login */
+.login{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.login .box{width:100%;max-width:360px}
+.err{color:var(--red);font-size:13px;margin-top:10px}
+
+/* chart */
+.chart{display:flex;align-items:flex-end;gap:2px;height:90px}
+.chart div{flex:1;background:var(--cyan);opacity:.75;border-radius:2px 2px 0 0;min-height:1px}
+.chart div:hover{opacity:1}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--dim)}
+@media(max-width:820px){
+  .shell{flex-direction:column}
+  .side{width:auto;flex:none;flex-direction:row;overflow-x:auto;border-right:none;
+    border-bottom:1px solid var(--line);padding:10px}
+  .brand{display:none}
+  .main{padding:16px}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+const API = "https://api.lejacob.dev";
+let TOKEN = localStorage.getItem("hg_admin_token") || "";
+let ME = null;
+let VIEW = "dashboard";
+let STATE = {};
+
+// Every value rendered below passes through here. Usernames, report text and ban reasons
+// are all attacker-controlled, and an admin panel that injects them raw is a stored-XSS
+// hole aimed squarely at the one account that can ban people.
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const fmt = (d) => d ? new Date(d).toLocaleString(undefined,
+  { dateStyle:"medium", timeStyle:"short" }) : "—";
+const day = (d) => d ? new Date(d).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : "—";
+const name = (u) => u ? esc(u.username + "#" + u.userTag) : '<span class="muted">deleted account</span>';
+
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    ...opts,
+    headers: { "Content-Type":"application/json", Authorization:"Bearer " + TOKEN, ...(opts.headers||{}) }
+  });
+  if (res.status === 401 || res.status === 404 && path.startsWith("/admin")) {
+    if (res.status === 401) { logout(); throw new Error("Session expired."); }
+  }
+  if (res.status === 204) return null;
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || ("Request failed (" + res.status + ")"));
+  return body;
+}
+
+function logout() {
+  TOKEN = ""; ME = null;
+  localStorage.removeItem("hg_admin_token");
+  renderLogin();
+}
+
+/* ------------------------------------------------------------------ login */
+
+function renderLogin(error) {
+  document.getElementById("app").innerHTML = `
+    <div class="login"><div class="box">
+      <div class="brand" style="display:block;text-align:center;font-size:13px">Hunting Game — Admin</div>
+      <div class="panel">
+        <div class="field"><label>Username</label><input id="u" autocomplete="username"></div>
+        <div class="field"><label>Tag</label><input id="t" inputmode="numeric" placeholder="0000"></div>
+        <div class="field"><label>Password</label><input id="p" type="password" autocomplete="current-password"></div>
+        <button class="primary" style="width:100%;margin-top:6px" onclick="doLogin()">Sign in</button>
+        ${error ? `<div class="err">${esc(error)}</div>` : ""}
+      </div>
+      <div class="muted" style="text-align:center;font-size:12px">Admin accounts only.</div>
+    </div></div>`;
+  document.getElementById("p").addEventListener("keydown", e => { if (e.key === "Enter") doLogin(); });
+}
+
+async function doLogin() {
+  const username = document.getElementById("u").value.trim();
+  const userTag = document.getElementById("t").value.trim();
+  const password = document.getElementById("p").value;
+  try {
+    const res = await fetch(API + "/auth/login", {
+      method:"POST", headers:{ "Content-Type":"application/json" },
+      body: JSON.stringify({ username, userTag, password })
+    });
+    const body = await res.json();
+    if (!res.ok) return renderLogin(body.error || "Sign-in failed.");
+    TOKEN = body.token;
+    // Confirm the account is actually an admin before storing anything — a normal player
+    // signing in here should be told no, not handed a broken-looking dashboard.
+    try { await api("/admin/me"); }
+    catch { TOKEN = ""; return renderLogin("That account doesn't have admin access."); }
+    localStorage.setItem("hg_admin_token", TOKEN);
+    boot();
+  } catch (e) { renderLogin(e.message); }
+}
+
+/* ------------------------------------------------------------------ shell */
+
+const NAV = [
+  ["dashboard","Dashboard","▦"], ["reports","Reports","⚑"], ["users","Users","☺"],
+  ["sessions","Matches","◎"], ["broadcast","Broadcast","✦"], ["audit","Audit log","☰"]
+];
+
+function shell(inner) {
+  const open = STATE.stats?.openReports || 0;
+  document.getElementById("app").innerHTML = `
+    <div class="shell">
+      <div class="side">
+        <div class="brand">Hunting Game</div>
+        ${NAV.map(([id,label,icon]) => `
+          <div class="nav ${VIEW===id?"on":""}" onclick="go('${id}')">
+            <span style="width:16px;text-align:center">${icon}</span>${label}
+            ${id==="reports"&&open?`<span class="badge">${open}</span>`:""}
+          </div>`).join("")}
+        <div style="margin-top:auto;padding-top:14px">
+          <div class="muted" style="font-size:11px;padding:0 11px 8px">
+            ${ME ? name(ME) : ""}</div>
+          <div class="nav" onclick="logout()"><span style="width:16px;text-align:center">⏻</span>Sign out</div>
+        </div>
+      </div>
+      <div class="main" id="main">${inner}</div>
+    </div>`;
+}
+
+function go(view) { VIEW = view; render(); }
+const loading = `<div class="empty">Loading…</div>`;
+
+async function boot() {
+  try { ME = (await api("/admin/me")).user; } catch { return logout(); }
+  // Pulled before the first paint so the sidebar's open-reports badge is right immediately.
+  try { STATE.stats = await api("/admin/stats"); } catch {}
+  render();
+}
+
+async function render() {
+  shell(loading);
+  try {
+    if (VIEW === "dashboard") await viewDashboard();
+    else if (VIEW === "reports") await viewReports();
+    else if (VIEW === "users") await viewUsers();
+    else if (VIEW === "sessions") await viewSessions();
+    else if (VIEW === "broadcast") viewBroadcast();
+    else if (VIEW === "audit") await viewAudit();
+  } catch (e) {
+    document.getElementById("main").innerHTML =
+      `<h1>Something went wrong</h1><div class="err">${esc(e.message)}</div>`;
+  }
+}
+const paint = (html) => { document.getElementById("main").innerHTML = html; };
+
+/* ------------------------------------------------------------------ dashboard */
+
+function bars(data, color) {
+  const vals = Object.values(data), max = Math.max(1, ...vals);
+  return `<div class="chart">${Object.entries(data).map(([d,v]) =>
+    `<div style="height:${(v/max)*100}%;background:${color}" title="${esc(d)}: ${v}"></div>`).join("")}</div>`;
+}
+function split(obj, color) {
+  const total = Object.values(obj).reduce((a,b)=>a+b,0) || 1;
+  return Object.entries(obj).sort((a,b)=>b[1]-a[1]).map(([k,v]) => `
+    <div style="margin-bottom:8px">
+      <div class="row" style="justify-content:space-between;font-size:12px">
+        <span>${esc(k.replace(/_/g," "))}</span><span class="muted">${v}</span></div>
+      <div style="height:5px;background:var(--panel2);border-radius:3px;margin-top:3px">
+        <div style="height:100%;width:${(v/total)*100}%;background:${color};border-radius:3px"></div></div>
+    </div>`).join("") || '<div class="muted">No data yet.</div>';
+}
+
+async function viewDashboard() {
+  const [s, a] = await Promise.all([api("/admin/stats"), api("/admin/analytics")]);
+  STATE.stats = s;
+  paint(`
+    <h1>Dashboard</h1><div class="sub">Live state of the game and its community.</div>
+    <div class="grid">
+      ${card("Players", s.users, "")}${card("Online now", s.online, "green")}
+      ${card("New today", s.newUsersDay, "cyan")}${card("New this week", s.newUsersWeek, "cyan")}
+      ${card("Open reports", s.openReports, s.openReports ? "red" : "")}
+      ${card("Live matches", s.liveSessions, "green")}${card("Lobbies", s.lobbySessions, "")}
+      ${card("Matches this week", s.sessionsWeek, "")}
+      ${card("Banned", s.banned, s.banned ? "amber" : "")}
+      ${card("Blocks", s.blocks, "")}${card("Reports this week", s.reportsWeek, "")}
+    </div>
+    <div class="panel"><h2>Signups · last 30 days</h2>${bars(a.signups,"var(--cyan)")}</div>
+    <div class="panel"><h2>Matches · last 30 days</h2>${bars(a.matches,"var(--green)")}</div>
+    <div class="panel"><h2>Reports · last 30 days</h2>${bars(a.reports,"var(--red)")}</div>
+    <div class="row" style="align-items:stretch;gap:16px">
+      <div class="panel" style="flex:1;min-width:260px"><h2>Modes played</h2>${split(a.modeSplit,"var(--cyan)")}</div>
+      <div class="panel" style="flex:1;min-width:260px"><h2>Report categories</h2>${split(a.categorySplit,"var(--red)")}</div>
+    </div>`);
+}
+const card = (k,v,cls) => `<div class="card"><div class="k">${k}</div><div class="v ${cls}">${v}</div></div>`;
+
+/* ------------------------------------------------------------------ reports */
+
+async function viewReports(status = STATE.reportStatus || "OPEN") {
+  STATE.reportStatus = status;
+  const { reports } = await api("/admin/reports?status=" + status);
+  const tabs = ["OPEN","RESOLVED","DISMISSED","ALL"].map(s =>
+    `<div class="tab ${s===status?"on":""}" onclick="viewReports('${s}')">${s[0]+s.slice(1).toLowerCase()}</div>`).join("");
+  paint(`
+    <h1>Reports</h1><div class="sub">Player reports, newest first. Replying notifies whoever filed it.</div>
+    <div class="tabs">${tabs}</div>
+    ${reports.length ? reports.map(reportCard).join("") : '<div class="panel"><div class="empty">Nothing here.</div></div>'}`);
+}
+
+function reportCard(r) {
+  const repeat = r.totalAgainstReported > 1
+    ? `<span class="pill banned">${r.totalAgainstReported} reports against them</span>` : "";
+  return `
+  <div class="panel">
+    <div class="row" style="justify-content:space-between;margin-bottom:10px">
+      <div class="row">
+        <span class="pill">${esc(r.category.replace(/_/g," "))}</span>
+        <span class="pill ${r.status.toLowerCase()}">${r.status}</span>
+        ${repeat}
+      </div>
+      <span class="muted mono">${fmt(r.createdAt)}</span>
+    </div>
+    <div style="margin-bottom:8px">
+      <span class="muted">Reported</span> ${name(r.reported)}
+      ${r.reported ? `<button class="ghost" style="padding:3px 9px;font-size:12px"
+        onclick="openUser('${r.reported.id}')">open</button>` : ""}
+      <span class="muted" style="margin-left:12px">by</span> ${name(r.reporter)}
+    </div>
+    ${r.reason ? `<div class="panel" style="background:var(--panel2);margin:10px 0">${esc(r.reason)}</div>` : ""}
+    ${r.adminResponse ? `<div style="margin:10px 0"><span class="muted">Your reply · ${fmt(r.respondedAt)}</span>
+      <div class="panel" style="background:var(--panel2);margin-top:6px;border-color:#1e4030">${esc(r.adminResponse)}</div></div>` : ""}
+    <div class="field"><label>Reply to the reporter</label>
+      <textarea id="reply-${r.id}" placeholder="Thanks for flagging this — we've looked into it and…"></textarea></div>
+    <div class="row end">
+      <button class="danger" onclick="setReport('${r.id}','DISMISSED')">Dismiss</button>
+      <button onclick="setReport('${r.id}','RESOLVED')">Mark resolved</button>
+      ${r.reported ? `<button class="danger" onclick="banFromReport('${r.reported.id}','${esc(r.category)}')">Ban reported user</button>` : ""}
+      <button class="primary" onclick="replyReport('${r.id}')">Send reply</button>
+    </div>
+  </div>`;
+}
+
+async function replyReport(id) {
+  const message = document.getElementById("reply-" + id).value.trim();
+  if (!message) return alert("Write a reply first.");
+  await api(`/admin/reports/${id}/respond`, { method:"POST", body: JSON.stringify({ message }) });
+  viewReports();
+}
+async function setReport(id, status) {
+  await api(`/admin/reports/${id}/status`, { method:"POST", body: JSON.stringify({ status }) });
+  viewReports();
+}
+async function banFromReport(userId, category) {
+  const reason = prompt("Ban reason (shown to the user when they try to sign in):",
+    "Reported for " + category.replace(/_/g," ").toLowerCase());
+  if (reason === null) return;
+  await api(`/admin/users/${userId}/ban`, { method:"POST", body: JSON.stringify({ reason }) });
+  viewReports();
+}
+
+/* ------------------------------------------------------------------ users */
+
+async function viewUsers(q = STATE.userQuery || "") {
+  STATE.userQuery = q;
+  const { users } = await api("/admin/users?q=" + encodeURIComponent(q));
+  paint(`
+    <h1>Users</h1><div class="sub">${users.length} shown. Search by username, or username#tag for an exact match.</div>
+    <div class="panel">
+      <div class="row">
+        <input id="uq" placeholder="Search username…" value="${esc(q)}" style="flex:1;min-width:200px">
+        <button class="primary" onclick="viewUsers(document.getElementById('uq').value)">Search</button>
+        <button onclick="viewUsers('')">Clear</button>
+      </div>
+    </div>
+    <div class="panel" style="padding:4px 8px">
+      <table><thead><tr><th>Player</th><th>Status</th><th>Matches</th><th>Reports</th><th>Joined</th></tr></thead>
+      <tbody>${users.map(u => `
+        <tr class="click" onclick="openUser('${u.id}')">
+          <td>${name(u)}</td>
+          <td>${u.isBanned?'<span class="pill banned">banned</span>':""}
+              ${u.isAdmin?'<span class="pill admin">admin</span>':""}
+              ${u.isOnline?'<span class="pill on">online</span>':""}</td>
+          <td>${u.matchesPlayed}</td>
+          <td>${u.reportsAgainst ? `<span class="pill banned">${u.reportsAgainst}</span>` : '<span class="muted">0</span>'}</td>
+          <td class="muted mono">${day(u.createdAt)}</td>
+        </tr>`).join("") || '<tr><td colspan="5" class="empty">No matches.</td></tr>'}
+      </tbody></table>
+    </div>`);
+  document.getElementById("uq").addEventListener("keydown", e => {
+    if (e.key === "Enter") viewUsers(e.target.value);
+  });
+}
+
+async function openUser(id) {
+  const d = await api("/admin/users/" + id);
+  const u = d.user;
+  const listReports = (rs) => rs.length ? rs.map(r => `
+      <div style="padding:8px 0;border-bottom:1px solid var(--line)">
+        <span class="pill">${esc(r.category.replace(/_/g," "))}</span>
+        <span class="pill ${r.status.toLowerCase()}">${r.status}</span>
+        <span class="muted mono" style="float:right">${day(r.createdAt)}</span>
+        ${r.reason ? `<div style="margin-top:6px">${esc(r.reason)}</div>` : ""}
+      </div>`).join("") : '<div class="muted">None.</div>';
+
+  document.body.insertAdjacentHTML("beforeend", `
+  <div class="scrim" id="scrim" onclick="if(event.target.id==='scrim')closeModal()">
+    <div class="modal">
+      <div class="row" style="justify-content:space-between">
+        <div><h3>${name(u)}</h3>
+          <div class="muted mono">${esc(u.id)}</div></div>
+        <button class="ghost" onclick="closeModal()">Close</button>
+      </div>
+      <div class="row" style="margin:12px 0">
+        ${u.isBanned?`<span class="pill banned">banned${u.banReason?": "+esc(u.banReason):""}</span>`:""}
+        ${u.isAdmin?'<span class="pill admin">admin</span>':""}
+        ${u.isOnline?'<span class="pill on">online</span>':'<span class="pill">offline</span>'}
+        <span class="pill">${d.deviceTokens} device${d.deviceTokens===1?"":"s"}</span>
+        <span class="pill">joined ${day(u.createdAt)}</span>
+      </div>
+
+      <div class="row" style="gap:8px;margin-bottom:16px">
+        ${u.isBanned
+          ? `<button onclick="act('${u.id}','unban')">Unban</button>`
+          : `<button class="danger" onclick="banUser('${u.id}')">Ban</button>`}
+        <button onclick="renameUser('${u.id}','${esc(u.username)}')">Rename</button>
+        <button onclick="messageUser('${u.id}')">Send message</button>
+        <button onclick="toggleAdmin('${u.id}',${!u.isAdmin})">${u.isAdmin?"Revoke admin":"Make admin"}</button>
+        <button class="danger" onclick="deleteUser('${u.id}')">Delete account</button>
+      </div>
+
+      <div class="panel"><h2>Reports against them (${d.reportsAgainst.length})</h2>${listReports(d.reportsAgainst)}</div>
+      <div class="panel"><h2>Reports they filed (${d.reportsFiled.length})</h2>${listReports(d.reportsFiled)}</div>
+      <div class="panel"><h2>Friends (${d.friends.length})</h2>
+        ${d.friends.map(f=>`<span class="pill" style="margin:2px">${name(f)}</span>`).join("") || '<div class="muted">None.</div>'}</div>
+      <div class="panel"><h2>Blocks (${d.blocked.length})</h2>
+        ${d.blocked.map(b=>`<span class="pill" style="margin:2px">${name(b.user)} ${b.blockedByThisUser?"(blocked by them)":"(blocked them)"}</span>`).join("") || '<div class="muted">None.</div>'}</div>
+      <div class="panel"><h2>Recent matches (${d.matches.length})</h2>
+        <table><tbody>${d.matches.map(m=>`<tr>
+          <td class="mono">${esc(m.code)}</td><td>${esc(m.mode)}</td><td>${esc(m.role)}</td>
+          <td>${m.isOut?"out":m.isCaught?"caught":"active"}</td>
+          <td class="muted mono">${day(m.joinedAt)}</td></tr>`).join("") || '<tr><td class="muted">None.</td></tr>'}
+        </tbody></table></div>
+      <div class="panel"><h2>Moderation history</h2>
+        ${d.adminHistory.map(a=>`<div style="padding:6px 0;border-bottom:1px solid var(--line)">
+          <span class="pill">${esc(a.action)}</span> by ${esc(a.adminName)}
+          <span class="muted mono" style="float:right">${fmt(a.createdAt)}</span>
+          ${a.detail?`<div class="muted" style="margin-top:4px">${esc(a.detail)}</div>`:""}</div>`).join("")
+          || '<div class="muted">Nothing recorded.</div>'}</div>
+    </div>
+  </div>`);
+}
+const closeModal = () => document.getElementById("scrim")?.remove();
+
+async function act(id, action, body) {
+  await api(`/admin/users/${id}/${action}`, { method:"POST", body: JSON.stringify(body||{}) });
+  closeModal(); openUser(id);
+}
+async function banUser(id) {
+  const reason = prompt("Ban reason (shown to them at sign-in):", "");
+  if (reason === null) return;
+  await act(id, "ban", { reason });
+}
+async function renameUser(id, current) {
+  const username = prompt("New username (letters, numbers, underscore):", current);
+  if (!username) return;
+  await act(id, "rename", { username });
+}
+async function messageUser(id) {
+  const title = prompt("Notification title:", "A message from the Hunting Game team");
+  if (!title) return;
+  const body = prompt("Message:", "");
+  if (!body) return;
+  await act(id, "message", { title, body });
+  alert("Sent.");
+}
+async function toggleAdmin(id, isAdmin) {
+  if (!confirm(isAdmin ? "Grant admin access to this account?" : "Revoke admin access?")) return;
+  await act(id, "admin", { isAdmin });
+}
+async function deleteUser(id) {
+  if (!confirm("Permanently delete this account? Their reports stay for moderation history. This cannot be undone.")) return;
+  await api("/admin/users/" + id, { method:"DELETE" });
+  closeModal(); viewUsers();
+}
+
+/* ------------------------------------------------------------------ sessions */
+
+async function viewSessions(status = STATE.sessionStatus || "ACTIVE") {
+  STATE.sessionStatus = status;
+  const { sessions } = await api("/admin/sessions?status=" + status);
+  const tabs = ["ACTIVE","LOBBY","ENDED","ALL"].map(s =>
+    `<div class="tab ${s===status?"on":""}" onclick="viewSessions('${s}')">${s[0]+s.slice(1).toLowerCase()}</div>`).join("");
+  paint(`
+    <h1>Matches</h1><div class="sub">Every session, with its roster. Ending a live match tells every player immediately.</div>
+    <div class="tabs">${tabs}</div>
+    ${sessions.length ? sessions.map(s => `
+      <div class="panel">
+        <div class="row" style="justify-content:space-between;margin-bottom:10px">
+          <div class="row">
+            <span class="mono" style="font-size:15px;font-weight:700">${esc(s.code)}</span>
+            <span class="pill">${esc(s.mode)}</span>
+            <span class="pill ${s.status==="ACTIVE"?"live":""}">${esc(s.status)}</span>
+            <span class="pill">${s.playerCount} player${s.playerCount===1?"":"s"}</span>
+          </div>
+          <div class="row">
+            <span class="muted mono">${fmt(s.startedAt || s.createdAt)}</span>
+            ${s.status!=="ENDED"?`<button class="danger" onclick="endSession('${s.id}')">Force end</button>`:""}
+          </div>
+        </div>
+        <table><tbody>${s.players.map(p=>`<tr>
+          <td>${name(p.user)}</td><td><span class="pill">${esc(p.role)}</span></td>
+          <td>${"♥".repeat(Math.max(0,p.hearts))}</td>
+          <td>${p.isOut?'<span class="pill banned">out</span>':p.isJailed?'<span class="pill open">jailed</span>':p.isCaught?'<span class="pill">caught</span>':'<span class="pill on">in play</span>'}</td>
+          <td><button class="ghost" style="padding:3px 9px;font-size:12px" onclick="openUser('${p.user.id}')">open</button></td>
+        </tr>`).join("")}</tbody></table>
+      </div>`).join("") : '<div class="panel"><div class="empty">No matches in this state.</div></div>'}`);
+}
+async function endSession(id) {
+  if (!confirm("Force this match to end for everyone in it?")) return;
+  await api(`/admin/sessions/${id}/end`, { method:"POST" });
+  viewSessions();
+}
+
+/* ------------------------------------------------------------------ broadcast */
+
+function viewBroadcast() {
+  paint(`
+    <h1>Broadcast</h1><div class="sub">Sends a push notification to every player who has notifications on. Banned accounts are excluded.</div>
+    <div class="panel" style="max-width:560px">
+      <div class="field"><label>Title</label><input id="bt" maxlength="60" placeholder="Hunting Game"></div>
+      <div class="field"><label>Message</label><textarea id="bb" maxlength="300" placeholder="Server maintenance tonight at 22:00 UTC — matches will be interrupted."></textarea></div>
+      <div class="field"><label><input type="checkbox" id="bo" style="width:auto;margin-right:8px">Only players online right now</label></div>
+      <button class="primary" onclick="sendBroadcast()">Send to everyone</button>
+      <div id="bres" class="muted" style="margin-top:12px"></div>
+    </div>`);
+}
+async function sendBroadcast() {
+  const title = document.getElementById("bt").value.trim();
+  const body = document.getElementById("bb").value.trim();
+  const onlineOnly = document.getElementById("bo").checked;
+  if (!title || !body) return alert("Title and message are both required.");
+  if (!confirm(`Send this to ${onlineOnly ? "everyone online" : "every player"}? This can't be recalled.`)) return;
+  const res = await api("/admin/broadcast", { method:"POST", body: JSON.stringify({ title, body, onlineOnly }) });
+  document.getElementById("bres").textContent = `Sent to ${res.sent} player${res.sent===1?"":"s"}.`;
+}
+
+/* ------------------------------------------------------------------ audit */
+
+async function viewAudit() {
+  const { actions } = await api("/admin/audit");
+  paint(`
+    <h1>Audit log</h1><div class="sub">Every action taken from this panel, permanently recorded.</div>
+    <div class="panel" style="padding:4px 8px">
+      <table><thead><tr><th>When</th><th>Admin</th><th>Action</th><th>Target</th><th>Detail</th></tr></thead>
+      <tbody>${actions.map(a=>`<tr>
+        <td class="muted mono">${fmt(a.createdAt)}</td>
+        <td>${esc(a.adminName)}</td>
+        <td><span class="pill">${esc(a.action)}</span></td>
+        <td class="mono muted">${esc(a.targetType)} ${esc(a.targetId).slice(0,8)}</td>
+        <td>${esc(a.detail || "")}</td></tr>`).join("")
+        || '<tr><td colspan="5" class="empty">Nothing yet.</td></tr>'}
+      </tbody></table>
+    </div>`);
+}
+
+/* ------------------------------------------------------------------ start */
+
+if (TOKEN) boot(); else renderLogin();
+</script>
+</body>
+</html>

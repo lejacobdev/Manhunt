@@ -93,6 +93,16 @@ struct LobbyView: View {
         .sheet(item: $deepLinkRouter.pendingFriend) { handle in
             AddFriendSheet(mode: .handle(handle))
         }
+        // A moderator's reply to a report this player filed, or a direct message from the
+        // team. Mounted at the tab root so it lands whichever tab they're looking at.
+        .alert("From the Hunting Game team", isPresented: Binding(
+            get: { presence.adminMessage != nil },
+            set: { if !$0 { presence.adminMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(presence.adminMessage ?? "")
+        }
     }
 
     /// No backdrop or NavigationStack of its own — LobbyView owns both, so the stationary

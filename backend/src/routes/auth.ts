@@ -60,6 +60,16 @@ authRouter.post('/login', async (req, res) => {
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return res.status(401).json({ error: 'Invalid credentials.' });
 
+  // Checked after the password, not before: answering differently for a banned account
+  // before credentials are proven would let anyone probe which accounts are banned.
+  if (user.isBanned) {
+    return res.status(403).json({
+      error: user.banReason
+        ? `This account has been suspended: ${user.banReason}`
+        : 'This account has been suspended.',
+    });
+  }
+
   const token = signToken({ userId: user.id, username: user.username });
   return res.json({
     token,

@@ -44,6 +44,13 @@ enum FriendStatus {
 /// What a report is actually about. Structured rather than free text so reports can be
 /// triaged and counted by kind — "3 cheating reports against this account this week" is
 /// actionable in a way that three paragraphs of prose isn't.
+/// Where a report is in the moderation queue.
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
 enum ReportCategory {
   CHEATING
   INAPPROPRIATE_USERNAME
@@ -67,6 +74,16 @@ model User {
   userTag      String
   passwordHash String
   avatarUrl    String?
+  /// Grants access to the admin panel. Checked against the database on every admin
+  /// request rather than read from the JWT, so revoking it takes effect immediately
+  /// instead of whenever that user's month-long token happens to expire.
+  isAdmin      Boolean  @default(false)
+  /// A banned account can't sign in and can't open a game socket. Existing REST tokens
+  /// keep working until they expire — gameplay is the thing worth cutting off, and that
+  /// all runs over the socket.
+  isBanned     Boolean  @default(false)
+  bannedAt     DateTime?
+  banReason    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -121,6 +138,14 @@ model Report {
   reporterId     String
   reportedUserId String
   category       ReportCategory @default(OTHER)
+  status         ReportStatus   @default(OPEN)
+  /// What we wrote back to the reporter. Delivered as a push notification and kept here
+  /// so the conversation survives the notification being swiped away.
+  adminResponse  String?
+  respondedAt    DateTime?
+  /// The admin's user id. Not a relation, for the same reason the reporter isn't — an
+  /// admin account being deleted shouldn't take the moderation history with it.
+  handledBy      String?
   /// Optional free-text detail on top of the category — required only for OTHER, where the
   /// category alone says nothing. Reports filed before categories existed kept their prose
   /// here and were backfilled to OTHER.
@@ -129,6 +154,25 @@ model Report {
 
   @@index([reportedUserId])
   @@index([category])
+  @@index([status])
+}
+
+/// Every consequential thing an admin does, kept permanently. Moderation without a record
+/// of who did what is just unaccountable power over other people's accounts — and when
+/// something is disputed later, "which admin banned this person, when, and why" needs an
+/// answer. Not relations, so deleting either the admin or the target leaves the trail.
+model AdminAction {
+  id         String   @id @default(uuid())
+  adminId    String
+  adminName  String
+  action     String
+  targetType String
+  targetId   String
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([targetId])
 }
 
 model GameSession {

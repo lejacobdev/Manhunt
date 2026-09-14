@@ -19,6 +19,13 @@ final class PresenceService: ObservableObject {
     /// A counter rather than the event payload itself: the list is re-fetched either way,
     /// and that keeps one source of truth instead of patching rows from two directions.
     @Published var friendsRevision: Int = 0
+    /// A moderator's reply to something this user reported, or a direct message from the
+    /// team. Surfaced as an alert in the lobby — a push alone is too easy to miss or swipe
+    /// away, and a reply nobody reads is the same as not replying.
+    @Published var adminMessage: String?
+    /// Set when the server says this account is suspended, so the UI can explain why the
+    /// app just signed them out instead of appearing to fail at random.
+    @Published var banMessage: String?
 
     private var manager: SocketManager?
     private var socket: SocketIOClient?
@@ -51,6 +58,7 @@ final class PresenceService: ObservableObject {
         socket = nil
         onlineFriendIds = []
         incomingInvites = []
+        adminMessage = nil
     }
 
     /// REST fallback that seeds `incomingInvites` on launch/reconnect, covering invites
@@ -93,6 +101,22 @@ final class PresenceService: ObservableObject {
         socket.on("friend_offline") { [weak self] data, _ in
             guard let dict = data.first as? [String: Any], let id = dict["userId"] as? String else { return }
             self?.onlineFriendIds.remove(id)
+        }
+
+        socket.on("report_response") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any],
+                  let message = dict["message"] as? String else { return }
+            self?.adminMessage = message
+            HapticsEngine.shared.lightTap()
+        }
+
+        socket.on("account_banned") { [weak self] data, _ in
+            let reason = (data.first as? [String: Any])?["reason"] as? String
+            self?.banMessage = reason.map { "This account has been suspended: \($0)" }
+                ?? "This account has been suspended."
+            // Signed out rather than left sitting in a half-working app: the socket is
+            // already being closed server-side, so nothing would work from here anyway.
+            AuthSession.shared.signOut()
         }
 
         socket.on("friend_request") { [weak self] _, _ in
