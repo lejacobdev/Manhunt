@@ -212,6 +212,31 @@ jobs:
             -authenticationKeyID "$KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER_ID"
 
+      # What the *exported* app is actually signed with, which is the only thing that
+      # matters and is not what the archive shows: the archive carries a development
+      # profile, and -exportArchive re-signs it for the App Store afterwards. Reading the
+      # archive instead sent an earlier push investigation down a dead end. Never fails the
+      # build — it exists to answer questions, not to gate anything.
+      - name: Report exported signing
+        if: always()
+        continue-on-error: true
+        working-directory: ios/HuntingGame
+        run: |
+          echo "--- export dir ---"
+          ls -la build/export || true
+          IPA=$(find build/export -name "*.ipa" | head -1)
+          if [ -z "$IPA" ]; then
+            echo "No IPA written locally (destination: upload streams it straight to Apple)."
+            exit 0
+          fi
+          rm -rf /tmp/ipa && mkdir -p /tmp/ipa && unzip -q "$IPA" -d /tmp/ipa
+          APP=$(find /tmp/ipa/Payload -maxdepth 1 -name "*.app" | head -1)
+          echo "--- entitlements actually signed into the exported app ---"
+          codesign -d --entitlements :- "$APP" 2>/dev/null || true
+          echo "--- embedded profile ---"
+          security cms -D -i "$APP/embedded.mobileprovision" 2>/dev/null \
+            | plutil -extract Name raw - 2>/dev/null || true
+
       # The .xcarchive (dSYMs included) is the one artifact worth keeping past this run —
       # useful for symbolicating a crash report TestFlight shows later. The exported IPA
       # itself already made it to App Store Connect by this point, so it isn't uploaded here.
