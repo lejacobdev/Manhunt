@@ -5,6 +5,7 @@ import { prisma } from '../lib/prisma';
 import { generateUserTag } from '../utils/arrestCode';
 import { signToken } from '../middleware/auth';
 import { zodErrorMessage } from '../utils/validation';
+import { rejectionMessage, screenUsername } from '../services/UsernameFilter';
 
 export const authRouter = Router();
 
@@ -19,6 +20,13 @@ authRouter.post('/register', async (req, res) => {
     return res.status(400).json({ error: zodErrorMessage(parsed.error) });
   }
   const { username, password } = parsed.data;
+
+  // Screened before the account exists, so a blocked name never gets a tag, a token, or a
+  // row someone later has to clean up.
+  const verdict = await screenUsername(username);
+  if (!verdict.allowed) {
+    return res.status(400).json({ error: rejectionMessage(verdict) });
+  }
 
   let userTag = generateUserTag();
   let attempts = 0;

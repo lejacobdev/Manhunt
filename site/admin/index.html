@@ -197,7 +197,8 @@ async function doLogin() {
 
 const NAV = [
   ["dashboard","Dashboard","▦"], ["reports","Reports","⚑"], ["users","Users","☺"],
-  ["sessions","Matches","◎"], ["broadcast","Broadcast","✦"], ["audit","Audit log","☰"]
+  ["sessions","Matches","◎"], ["usernames","Usernames","Aa"],
+  ["broadcast","Broadcast","✦"], ["audit","Audit log","☰"]
 ];
 
 function shell(inner) {
@@ -238,6 +239,7 @@ async function render() {
     else if (VIEW === "reports") await viewReports();
     else if (VIEW === "users") await viewUsers();
     else if (VIEW === "sessions") await viewSessions();
+    else if (VIEW === "usernames") await viewUsernames();
     else if (VIEW === "broadcast") viewBroadcast();
     else if (VIEW === "audit") await viewAudit();
   } catch (e) {
@@ -514,6 +516,81 @@ async function endSession(id) {
   if (!confirm("Force this match to end for everyone in it?")) return;
   await api(`/admin/sessions/${id}/end`, { method:"POST" });
   viewSessions();
+}
+
+/* ------------------------------------------------------------------ usernames */
+
+async function viewUsernames() {
+  const [{ flagged }, { terms }] = await Promise.all([
+    api("/admin/usernames/flagged"), api("/admin/usernames/terms")
+  ]);
+  paint(`
+    <h1>Usernames</h1><div class="sub">The filter folds leetspeak, separators and padding back to plain letters before matching, so f_u_c_k, fvck and fuuuck all land on the same term.</div>
+
+    <div class="panel">
+      <h2>Test a name</h2>
+      <div class="row">
+        <input id="tn" placeholder="Try n1gg3r, f_u_c_k, Cassandra…" style="flex:1;min-width:200px">
+        <button class="primary" onclick="testName()">Check</button>
+      </div>
+      <div id="tres" style="margin-top:12px"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Existing accounts that match (${flagged.length})</h2>
+      ${flagged.length ? `<table><thead><tr><th>Account</th><th>Matched</th><th>Category</th><th>Joined</th><th></th></tr></thead><tbody>
+        ${flagged.map(f=>`<tr>
+          <td>${esc(f.username)}#${esc(f.userTag)} ${f.isBanned?'<span class="pill banned">banned</span>':""}</td>
+          <td class="mono">${esc(f.term)}</td>
+          <td><span class="pill">${esc(f.category)}</span></td>
+          <td class="muted mono">${day(f.createdAt)}</td>
+          <td><button class="ghost" style="padding:3px 9px;font-size:12px" onclick="openUser('${f.id}')">open</button></td>
+        </tr>`).join("")}</tbody></table>`
+        : '<div class="muted">No existing account matches the filter.</div>'}
+    </div>
+
+    <div class="panel">
+      <h2>Custom terms</h2>
+      <div class="row" style="margin-bottom:12px">
+        <input id="nt" placeholder="Add a term…" style="flex:1;min-width:160px">
+        <select id="nk" style="width:auto">
+          <option value="false">Block it</option>
+          <option value="true">Allow it (false positive)</option>
+        </select>
+        <button class="primary" onclick="addTerm()">Add</button>
+      </div>
+      ${terms.length ? `<table><tbody>${terms.map(t=>`<tr>
+        <td class="mono">${esc(t.term)}</td>
+        <td><span class="pill ${t.isAllowlist?"resolved":"banned"}">${t.isAllowlist?"allowed":"blocked"}</span>
+            <span class="pill">${esc(t.category)}</span></td>
+        <td class="muted mono">${day(t.createdAt)}</td>
+        <td style="text-align:right"><button class="danger" style="padding:3px 9px;font-size:12px"
+          onclick="removeTerm('${t.id}')">Remove</button></td>
+      </tr>`).join("")}</tbody></table>`
+        : '<div class="muted">Nothing custom yet — the built-in list is still active.</div>'}
+      <div class="muted" style="margin-top:12px;font-size:12px">The built-in list covers slurs, sexual terms, profanity, staff impersonation and self-harm. Add terms here to extend it, or allow a word the filter is wrongly catching.</div>
+    </div>`);
+  document.getElementById("tn").addEventListener("keydown", e => { if (e.key === "Enter") testName(); });
+}
+
+async function testName() {
+  const name = document.getElementById("tn").value.trim();
+  if (!name) return;
+  const { verdict } = await api("/admin/usernames/test?name=" + encodeURIComponent(name));
+  document.getElementById("tres").innerHTML = verdict.allowed
+    ? `<span class="pill resolved">allowed</span> <span class="muted">${esc(name)} would be accepted.</span>`
+    : `<span class="pill banned">blocked</span> <span class="muted">matched <b class="mono">${esc(verdict.term)}</b> (${esc(verdict.category)})</span>`;
+}
+async function addTerm() {
+  const term = document.getElementById("nt").value.trim();
+  if (!term) return;
+  const isAllowlist = document.getElementById("nk").value === "true";
+  await api("/admin/usernames/terms", { method:"POST", body: JSON.stringify({ term, isAllowlist }) });
+  viewUsernames();
+}
+async function removeTerm(id) {
+  await api("/admin/usernames/terms/" + id, { method:"DELETE" });
+  viewUsernames();
 }
 
 /* ------------------------------------------------------------------ broadcast */

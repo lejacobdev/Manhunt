@@ -161,6 +161,17 @@ model Report {
 /// of who did what is just unaccountable power over other people's accounts — and when
 /// something is disputed later, "which admin banned this person, when, and why" needs an
 /// answer. Not relations, so deleting either the admin or the target leaves the trail.
+/// Admin-managed additions to the built-in username filter. `isAllowlist` entries are the
+/// opposite: innocent words that contain a blocked term and should be let through.
+model BlockedTerm {
+  id          String   @id @default(uuid())
+  term        String   @unique
+  category    String   @default("CUSTOM")
+  isAllowlist Boolean  @default(false)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+}
+
 model AdminAction {
   id         String   @id @default(uuid())
   adminId    String

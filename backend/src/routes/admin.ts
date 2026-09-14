@@ -8,6 +8,11 @@ import { zodErrorMessage } from '../utils/validation';
 // inside handlers, which run long after both modules finish loading.
 import { io, isUserOnline } from '../server';
 import { pushService } from '../services/PushService';
+import {
+  invalidateUsernameFilterCache,
+  scanExistingUsernames,
+  screenUsername,
+} from '../services/UsernameFilter';
 
 export const adminRouter = Router();
 adminRouter.use(requireAuth, requireAdmin);
@@ -362,6 +367,13 @@ adminRouter.post('/users/:id/rename', async (req: AuthedRequest, res) => {
   });
   if (clash) return res.status(409).json({ error: 'That username and tag combination is taken.' });
 
+  // Renaming someone *onto* a blocked name would be an odd own goal for a tool whose main
+  // use is renaming people off one.
+  const verdict = await screenUsername(parsed.data.username);
+  if (!verdict.allowed) {
+    return res.status(400).json({ error: `That name matches the blocklist (${verdict.term}).` });
+  }
+
   const user = await prisma.user.update({
     where: { id: existing.id },
     data: { username: parsed.data.username },
@@ -506,6 +518,55 @@ adminRouter.post('/broadcast', async (req: AuthedRequest, res) => {
   }
   await audit(req, 'BROADCAST', 'ALL', 'all', `${targets.length} recipients: ${parsed.data.body.slice(0, 150)}`);
   return res.json({ sent: targets.length });
+});
+
+// ---------------------------------------------------------------- username filter
+
+/** Every account whose username matches the filter as it stands right now. */
+adminRouter.get('/usernames/flagged', async (_req, res) => {
+  return res.json({ flagged: await scanExistingUsernames() });
+});
+
+adminRouter.get('/usernames/terms', async (_req, res) => {
+  const terms = await prisma.blockedTerm.findMany({ orderBy: { createdAt: 'desc' } });
+  return res.json({ terms });
+});
+
+const termSchema = z.object({
+  term: z.string().min(2).max(60),
+  category: z.string().max(30).optional(),
+  isAllowlist: z.boolean().optional(),
+});
+
+adminRouter.post('/usernames/terms', async (req: AuthedRequest, res) => {
+  const parsed = termSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
+  const term = await prisma.blockedTerm.upsert({
+    where: { term: parsed.data.term.toLowerCase() },
+    create: {
+      term: parsed.data.term.toLowerCase(),
+      category: parsed.data.category ?? (parsed.data.isAllowlist ? 'ALLOWED' : 'CUSTOM'),
+      isAllowlist: parsed.data.isAllowlist ?? false,
+      createdBy: req.user!.userId,
+    },
+    update: { isAllowlist: parsed.data.isAllowlist ?? false },
+  });
+  invalidateUsernameFilterCache();
+  await audit(req, parsed.data.isAllowlist ? 'ALLOW_TERM' : 'BLOCK_TERM', 'TERM', term.id, term.term);
+  return res.status(201).json({ term });
+});
+
+adminRouter.delete('/usernames/terms/:id', async (req: AuthedRequest, res) => {
+  const term = await prisma.blockedTerm.delete({ where: { id: req.params.id } });
+  invalidateUsernameFilterCache();
+  await audit(req, 'REMOVE_TERM', 'TERM', term.id, term.term);
+  return res.status(204).send();
+});
+
+/** Quick way to see what the filter makes of a name without creating an account. */
+adminRouter.get('/usernames/test', async (req, res) => {
+  const name = typeof req.query.name === 'string' ? req.query.name : '';
+  return res.json({ name, verdict: await screenUsername(name) });
 });
 
 // ---------------------------------------------------------------- audit trail
