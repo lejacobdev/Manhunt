@@ -187,7 +187,31 @@ friendsRouter.get('/blocked', async (req: AuthedRequest, res) => {
   return res.json({ blocked });
 });
 
-const reportSchema = z.object({ reason: z.string().min(1).max(500) });
+const reportSchema = z
+  .object({
+    category: z.enum([
+      'CHEATING',
+      'INAPPROPRIATE_USERNAME',
+      'HARASSMENT',
+      'THREATS',
+      'SEXUAL_CONTENT',
+      'IMPERSONATION',
+      'UNSAFE_PLAY',
+      'OTHER',
+    ]),
+    /// Optional context on top of the category, except for OTHER where the category on its
+    /// own conveys nothing at all.
+    detail: z.string().max(500).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.category === 'OTHER' && !data.detail?.trim()) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Describe what happened when choosing "Something else".',
+        path: ['detail'],
+      });
+    }
+  });
 
 /**
  * App Store guideline 1.2 requires apps with user-generated content to let people flag
@@ -195,6 +219,10 @@ const reportSchema = z.object({ reason: z.string().min(1).max(500) });
  * Persisted (so reports survive past a single log line, and outlive the reported account
  * if it's later deleted — see Report's schema comment) as well as logged, both under the
  * same "[REPORT]"/"[BLOCK]" tags for easy grepping in production.
+ *
+ * Reports are categorised rather than free text: a category can be counted and triaged
+ * ("four cheating reports against this account this week"), where prose can only be read
+ * one at a time. Free-text detail rides along as optional context.
  */
 friendsRouter.post('/:userId/report', async (req: AuthedRequest, res) => {
   const parsed = reportSchema.safeParse(req.body);
@@ -206,11 +234,14 @@ friendsRouter.post('/:userId/report', async (req: AuthedRequest, res) => {
     return res.status(400).json({ error: 'Cannot report yourself.' });
   }
 
+  const detail = parsed.data.detail?.trim() || null;
   const report = await prisma.report.create({
-    data: { reporterId, reportedUserId, reason: parsed.data.reason },
+    data: { reporterId, reportedUserId, category: parsed.data.category, reason: detail },
   });
   console.log(
-    `[REPORT] user ${reporterId} reported user ${reportedUserId} — "${parsed.data.reason}" (report ${report.id})`
+    `[REPORT] ${parsed.data.category} — user ${reporterId} reported user ${reportedUserId}` +
+      (detail ? ` — "${detail}"` : '') +
+      ` (report ${report.id})`
   );
   return res.status(201).json({ report });
 });

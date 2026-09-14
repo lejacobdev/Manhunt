@@ -139,10 +139,18 @@ final class APIClient {
         return resp.blocked
     }
 
-    struct ReportBody: Encodable { let reason: String }
+    struct ReportBody: Encodable {
+        let category: String
+        let detail: String?
+    }
 
-    func reportUser(id: String, reason: String) async throws {
-        let _: EmptyResponse = try await post("/friends/\(id)/report", body: ReportBody(reason: reason))
+    /// `category` is a `ReportCategory` raw value — the wire contract with the backend enum.
+    /// `detail` is optional context, except for OTHER where the server rejects it missing.
+    func reportUser(id: String, category: String, detail: String?) async throws {
+        let _: EmptyResponse = try await post(
+            "/friends/\(id)/report",
+            body: ReportBody(category: category, detail: detail)
+        )
     }
 
     // MARK: - Invites

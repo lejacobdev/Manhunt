@@ -123,8 +123,7 @@ struct PublicProfileView: View {
 
     @StateObject private var viewModel: ProfileViewModel
     @Environment(\.dismiss) private var dismiss
-    @State private var showReportAlert = false
-    @State private var reportReason = ""
+    @State private var showReportSheet = false
     @State private var showBlockConfirm = false
     @State private var isSubmitting = false
     @State private var actionError: String?
@@ -152,12 +151,10 @@ struct PublicProfileView: View {
         .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar { reportBlockToolbarContent }
         .task { await viewModel.load() }
-        .alert("Report \(displayName)", isPresented: $showReportAlert) {
-            TextField("What happened?", text: $reportReason)
-            Button("Submit", role: .destructive) { Task { await submitReport() } }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This sends a report to the Hunting Game team.")
+        .sheet(isPresented: $showReportSheet) {
+            ReportSheet(displayName: displayName) { category, detail in
+                await submitReport(category: category, detail: detail)
+            }
         }
         .confirmationDialog("Block \(displayName)?", isPresented: $showBlockConfirm, titleVisibility: .visible) {
             Button("Block User", role: .destructive) { Task { await block() } }
@@ -186,8 +183,7 @@ struct PublicProfileView: View {
         ToolbarItem(placement: .navigationBarTrailing) {
             Menu {
                 Button {
-                    reportReason = ""
-                    showReportAlert = true
+                    showReportSheet = true
                 } label: {
                     Label("Report User", systemImage: "flag.fill")
                 }
@@ -203,15 +199,13 @@ struct PublicProfileView: View {
         }
     }
 
-    private func submitReport() async {
-        let reason = reportReason.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !reason.isEmpty else { return }
-        isSubmitting = true
-        defer { isSubmitting = false }
+    /// Returns an error message for the sheet to show, or nil once it's filed.
+    private func submitReport(category: ReportCategory, detail: String?) async -> String? {
         do {
-            try await APIClient.shared.reportUser(id: userId, reason: reason)
+            try await APIClient.shared.reportUser(id: userId, category: category.rawValue, detail: detail)
+            return nil
         } catch {
-            actionError = error.localizedDescription
+            return error.localizedDescription
         }
     }
 

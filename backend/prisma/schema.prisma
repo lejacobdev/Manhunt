@@ -41,6 +41,20 @@ enum FriendStatus {
   BLOCKED
 }
 
+/// What a report is actually about. Structured rather than free text so reports can be
+/// triaged and counted by kind — "3 cheating reports against this account this week" is
+/// actionable in a way that three paragraphs of prose isn't.
+enum ReportCategory {
+  CHEATING
+  INAPPROPRIATE_USERNAME
+  HARASSMENT
+  THREATS
+  SEXUAL_CONTENT
+  IMPERSONATION
+  UNSAFE_PLAY
+  OTHER
+}
+
 enum InviteStatus {
   PENDING
   ACCEPTED
@@ -103,13 +117,18 @@ model Friendship {
 // blocking it via a foreign key; the report itself should outlive the account it was
 // filed against.
 model Report {
-  id             String   @id @default(uuid())
+  id             String         @id @default(uuid())
   reporterId     String
   reportedUserId String
-  reason         String
-  createdAt      DateTime @default(now())
+  category       ReportCategory @default(OTHER)
+  /// Optional free-text detail on top of the category — required only for OTHER, where the
+  /// category alone says nothing. Reports filed before categories existed kept their prose
+  /// here and were backfilled to OTHER.
+  reason         String?
+  createdAt      DateTime       @default(now())
 
   @@index([reportedUserId])
+  @@index([category])
 }
 
 model GameSession {
