@@ -54,7 +54,13 @@ struct FriendsView: View {
                 if !viewModel.searchResults.isEmpty {
                     VStack(spacing: 8) {
                         ForEach(viewModel.searchResults) { user in
-                            HStack {
+                            // A search result opens the profile, same as a friend row does,
+                            // so Report and Block are reachable for someone you haven't
+                            // friended — which is precisely who you'd need them for. ADD is
+                            // overlaid outside the link so it keeps its own taps.
+                            NavigationLink {
+                                PublicProfileView(userId: user.id, displayName: user.tagLabel)
+                            } label: {
                                 HStack(spacing: 8) {
                                     Circle()
                                         .fill(ADATheme.spatialCyan.opacity(0.25))
@@ -67,13 +73,19 @@ struct FriendsView: View {
                                     Text(user.tagLabel)
                                         .font(ADATheme.uiFont(size: 13))
                                         .foregroundColor(.white)
+                                    Spacer()
+                                    Color.clear.frame(width: 62, height: 28)
                                 }
-                                Spacer()
+                                .padding(12)
+                                .glassCard(cornerRadius: ADATheme.controlCornerRadius)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .overlay(alignment: .trailing) {
                                 Button("ADD") { Task { await viewModel.sendRequest(to: user) } }
                                     .buttonStyle(GlassButtonStyle(tint: ADATheme.runnerGreen))
+                                    .padding(.trailing, 12)
                             }
-                            .padding(12)
-                            .glassCard(cornerRadius: ADATheme.controlCornerRadius)
                             .transition(.scale.combined(with: .opacity))
                         }
                     }
