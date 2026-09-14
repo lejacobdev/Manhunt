@@ -43,6 +43,13 @@ services:
       PORT: 4000
       OVERPASS_API_URL: https://overpass-api.de/api/interpreter
       CORS_ORIGIN: ${CORS_ORIGIN}
+      # Apple Push Notification service. Absent, PushService no-ops with a warning rather
+      # than failing, so the app still works without these — nothing just gets delivered.
+      APNS_KEY_ID: ${APNS_KEY_ID}
+      APNS_TEAM_ID: ${APNS_TEAM_ID}
+      APNS_BUNDLE_ID: ${APNS_BUNDLE_ID}
+      APNS_ENVIRONMENT: ${APNS_ENVIRONMENT}
+      APNS_PRIVATE_KEY: ${APNS_PRIVATE_KEY}
       # Where GET /u/:username/:tag sends someone who taps "Don't have the app?".
       APP_STORE_URL: ${APP_STORE_URL}
       NODE_ENV: production
