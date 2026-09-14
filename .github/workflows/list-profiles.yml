@@ -1,4 +1,4 @@
-name: List provisioning profiles
+name: Inspect signing setup
 
 # Diagnostic only, and deliberately on ubuntu: it asks the App Store Connect API what
 # profiles exist and never touches Xcode, so it costs seconds rather than a macOS build.
@@ -9,7 +9,7 @@ jobs:
   list:
     runs-on: ubuntu-latest
     steps:
-      - name: List every profile the account has
+      - name: List profiles and App ID capabilities
         env:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -39,6 +39,21 @@ jobs:
             for (const p of body.data || []) {
               const bundle = bundles.get(p.relationships?.bundleId?.data?.id) || "(no bundle)";
               console.log([p.attributes.profileType, p.attributes.profileState, bundle, p.attributes.name].join("  |  "));
+            }
+
+            // The authoritative answer on whether Push is actually enabled for the App ID,
+            // rather than trying to read a checkbox out of a screenshot.
+            const ids = await (await fetch(
+              "https://api.appstoreconnect.apple.com/v1/bundleIds?limit=200&include=bundleIdCapabilities",
+              { headers: { Authorization: "Bearer " + jwt } })).json();
+            for (const b of ids.data || []) {
+              if (!String(b.attributes.identifier).startsWith("com.huntinggame.app")) continue;
+              const capIds = (b.relationships?.bundleIdCapabilities?.data || []).map((c) => c.id);
+              const caps = (ids.included || [])
+                .filter((i) => i.type === "bundleIdCapabilities" && capIds.includes(i.id))
+                .map((i) => i.attributes.capabilityType);
+              console.log("\nBUNDLE " + b.attributes.identifier);
+              console.log("  capabilities: " + (caps.length ? caps.join(", ") : "(none)"));
             }
           })();
           '
