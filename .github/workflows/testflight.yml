@@ -158,6 +158,59 @@ jobs:
       # the key's role needs to be Admin (or App Manager, on recent App Store Connect) for
       # that to actually be allowed to create new ones rather than only use existing ones.
       #
+      # Deletes the Xcode-managed App Store profiles for this app before archiving, so
+      # -allowProvisioningUpdates has to mint fresh ones.
+      #
+      # This exists because Xcode reuses an existing profile rather than checking whether it
+      # still reflects the App ID's capabilities. The profile in use had been generated
+      # before Push Notifications and App Groups were enabled, so it granted neither — and
+      # re-signing at export silently drops any entitlement the profile doesn't cover. The
+      # shipped app therefore had no aps-environment at all ("no valid aps-environment
+      # entitlement string found" on device) and no app-groups either, which would have
+      # broken the widget too. Nothing in the build output said so; it took dumping the
+      # exported IPA's own entitlements to see it.
+      #
+      # Deleting is safe: these are regenerated automatically on the next archive, and they
+      # are not the certificates. Scoped to IOS_APP_STORE profiles whose bundle id belongs
+      # to this app.
+      - name: Refresh provisioning profiles
+        continue-on-error: true
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          node -e '
+          const crypto = require("crypto"), fs = require("fs");
+          const keyId = process.env.KEY_ID, issuer = process.env.ISSUER_ID;
+          const key = fs.readFileSync(process.env.HOME + "/private_keys/AuthKey_" + keyId + ".p8");
+          const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+          const now = Math.floor(Date.now() / 1000);
+          const input = b64({ alg: "ES256", kid: keyId, typ: "JWT" }) + "." +
+                        b64({ iss: issuer, iat: now, exp: now + 600, aud: "appstoreconnect-v1" });
+          // ieee-p1363 gives the raw r||s signature JOSE wants, rather than DER.
+          const sig = crypto.sign("sha256", Buffer.from(input), { key, dsaEncoding: "ieee-p1363" });
+          const jwt = input + "." + sig.toString("base64url");
+          const api = (path, method = "GET") => fetch("https://api.appstoreconnect.apple.com/v1" + path,
+            { method, headers: { Authorization: "Bearer " + jwt } });
+
+          (async () => {
+            const res = await api("/profiles?limit=200&include=bundleId");
+            if (!res.ok) { console.log("Could not list profiles:", res.status); return; }
+            const body = await res.json();
+            const bundles = new Map((body.included || []).map((b) => [b.id, b.attributes.identifier]));
+            let deleted = 0;
+            for (const p of body.data || []) {
+              const bundle = bundles.get(p.relationships?.bundleId?.data?.id) || "";
+              if (!bundle.startsWith("com.huntinggame.app")) continue;
+              if (p.attributes.profileType !== "IOS_APP_STORE") continue;
+              const d = await api("/profiles/" + p.id, "DELETE");
+              console.log((d.ok ? "deleted  " : "failed   ") + p.attributes.name + "  [" + bundle + "]");
+              if (d.ok) deleted++;
+            }
+            console.log("Deleted " + deleted + " App Store profile(s); Xcode will regenerate them.");
+          })();
+          '
+
       # Signing is left fully automatic. Forcing CODE_SIGN_IDENTITY=Apple Distribution here
       # was tried and Xcode refuses it outright ("conflicting provisioning settings"):
       # archiving with a development identity and re-signing at export is the intended flow,
