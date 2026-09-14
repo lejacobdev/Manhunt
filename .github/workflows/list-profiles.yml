@@ -1,0 +1,44 @@
+name: List provisioning profiles
+
+# Diagnostic only, and deliberately on ubuntu: it asks the App Store Connect API what
+# profiles exist and never touches Xcode, so it costs seconds rather than a macOS build.
+on:
+  workflow_dispatch:
+
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    steps:
+      - name: List every profile the account has
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+        run: |
+          mkdir -p "$HOME/private_keys"
+          echo "$API_KEY_B64" | base64 --decode > "$HOME/private_keys/AuthKey_${KEY_ID}.p8"
+          node -e '
+          const crypto = require("crypto"), fs = require("fs");
+          const keyId = process.env.KEY_ID, issuer = process.env.ISSUER_ID;
+          const key = fs.readFileSync(process.env.HOME + "/private_keys/AuthKey_" + keyId + ".p8");
+          const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+          const now = Math.floor(Date.now() / 1000);
+          const input = b64({ alg: "ES256", kid: keyId, typ: "JWT" }) + "." +
+                        b64({ iss: issuer, iat: now, exp: now + 600, aud: "appstoreconnect-v1" });
+          const sig = crypto.sign("sha256", Buffer.from(input), { key, dsaEncoding: "ieee-p1363" });
+          const jwt = input + "." + sig.toString("base64url");
+
+          (async () => {
+            const res = await fetch("https://api.appstoreconnect.apple.com/v1/profiles?limit=200&include=bundleId",
+              { headers: { Authorization: "Bearer " + jwt } });
+            console.log("status", res.status);
+            const body = await res.json();
+            if (!res.ok) { console.log(JSON.stringify(body, null, 2)); return; }
+            const bundles = new Map((body.included || []).map((b) => [b.id, b.attributes.identifier]));
+            console.log("total profiles:", (body.data || []).length);
+            for (const p of body.data || []) {
+              const bundle = bundles.get(p.relationships?.bundleId?.data?.id) || "(no bundle)";
+              console.log([p.attributes.profileType, p.attributes.profileState, bundle, p.attributes.name].join("  |  "));
+            }
+          })();
+          '
