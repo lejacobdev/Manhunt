@@ -138,6 +138,7 @@ struct GameView: View {
         .onDisappear { viewModel.stop() }
         .fullScreenCover(isPresented: $showLocationConsent) {
             LocationConsentView(
+                purpose: .match,
                 isSubmitting: isRecordingConsent,
                 errorMessage: consentError,
                 onAccept: { Task { await consentAndShareLocation() } },

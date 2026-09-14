@@ -17,6 +17,12 @@ struct GameLobbyView: View {
     @State private var showExitConfirm = false
     @State private var showFriends = false
     @State private var showSettings = false
+    /// The play-area map needs this device's own position to open somewhere useful, so it
+    /// gets its own check-in explaining that — separate from the match one, because what's
+    /// being asked for is different: nothing here is shared with another player. Asked once
+    /// per visit to this lobby rather than on every trip into settings.
+    @State private var showPlayAreaConsent = false
+    @State private var playAreaLocationConsented = false
 
     init(gamePlayer: GamePlayer, session: GameSession) {
         _viewModel = StateObject(wrappedValue: GameLobbyViewModel(session: session, player: gamePlayer))
@@ -96,12 +102,27 @@ struct GameLobbyView: View {
             .sheet(isPresented: $showSettings) {
                 LobbySetupSheet(viewModel: viewModel, locationManager: locationManager)
             }
+            // Opening the settings sheet from `onDismiss` rather than from the buttons
+            // themselves: presenting a sheet in the same run loop that dismisses a
+            // fullScreenCover races, and SwiftUI drops one of the two. Either answer opens
+            // settings — declining just means the map won't know where you are.
+            .fullScreenCover(isPresented: $showPlayAreaConsent, onDismiss: { showSettings = true }) {
+                LocationConsentView(
+                    purpose: .playAreaSetup,
+                    onAccept: {
+                        playAreaLocationConsented = true
+                        showPlayAreaConsent = false
+                    },
+                    onDecline: { showPlayAreaConsent = false }
+                )
+                .preferredColorScheme(.dark)
+            }
             // The play-area map is the only thing in the lobby that needs a position, and it
             // needs only this device's own — nothing is broadcast to anyone from here. So
             // location runs for exactly as long as that sheet is open and stops the moment
             // it closes, rather than for the whole time someone sits in a lobby.
             .onChange(of: showSettings) { isOpen in
-                if isOpen {
+                if isOpen && playAreaLocationConsented {
                     locationManager.requestAuthorizationAndStart()
                 } else {
                     locationManager.stop()
@@ -204,7 +225,11 @@ struct GameLobbyView: View {
                 if viewModel.isHost {
                     Spacer()
                     Button {
-                        showSettings = true
+                        if playAreaLocationConsented {
+                            showSettings = true
+                        } else {
+                            showPlayAreaConsent = true
+                        }
                     } label: {
                         HStack(spacing: 4) { Image(systemName: "gearshape.fill"); Text("SETTINGS") }
                     }
