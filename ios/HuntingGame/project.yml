@@ -99,7 +99,9 @@ targets:
       entitlements:
         path: HuntingGame.entitlements
         properties:
-          com.apple.developer.location.push: false
+          # com.apple.developer.location.push deliberately absent: it was declared false,
+          # which does nothing, and Xcode still tries to resolve it against the profile and
+          # fails the build outright once the entitlements file is actually applied.
           com.apple.security.application-groups:
             - group.com.huntinggame.app.widget
           # Declared as "development" here for the unsigned xtool/SideStore path (which
