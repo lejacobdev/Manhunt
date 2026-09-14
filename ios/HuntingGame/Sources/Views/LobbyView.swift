@@ -7,6 +7,7 @@ struct LobbyView: View {
     @EnvironmentObject var presence: PresenceService
     @ObservedObject private var deepLinkRouter = DeepLinkRouter.shared
     @ObservedObject private var updateChecker = UpdateChecker.shared
+    @ObservedObject private var pushManager = PushNotificationManager.shared
     @State private var showHistory = false
     @State private var joiningInvite: GameInvite?
     @State private var launchedGame: (player: GamePlayer, session: GameSession)?
@@ -92,6 +93,23 @@ struct LobbyView: View {
         // which may not be the selected tab when the link opens.
         .sheet(item: $deepLinkRouter.pendingFriend) { handle in
             AddFriendSheet(mode: .handle(handle))
+        }
+        // Tapping a notification should land on whatever it was about. Invites live on the
+        // Play tab, anything friend-shaped on Friends; the rest are already surfaced as
+        // alerts wherever the user happens to be.
+        .onChange(of: pushManager.tappedType) { type in
+            guard let type else { return }
+            switch type {
+            case "friend_request", "friend_accepted":
+                selectedTab = .friends
+                Task { await presence.refreshIncomingInvites() }
+            case "game_invite":
+                selectedTab = .play
+                Task { await presence.refreshIncomingInvites() }
+            default:
+                break
+            }
+            pushManager.tappedType = nil
         }
         // A moderator's reply to a report this player filed, or a direct message from the
         // team. Mounted at the tab root so it lands whichever tab they're looking at.

@@ -13,7 +13,6 @@ struct ProfileStats: Codable, Equatable {
     let timesEliminated: Int
     let matchesHosted: Int
     let powerUpsCollected: Int
-    let gamblesWon: Int
     let gamblesLost: Int
     let minutesPlayed: Int
 

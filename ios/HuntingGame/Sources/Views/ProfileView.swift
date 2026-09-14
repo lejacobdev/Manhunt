@@ -339,8 +339,7 @@ private struct ProfileBody: View {
                 breakdownRow("hand.raised.fill", "Times caught", "\(stats.timesCaught)")
                 breakdownRow("heart.slash.fill", "Times eliminated", "\(stats.timesEliminated)")
                 breakdownRow("star.fill", "Matches hosted", "\(stats.matchesHosted)")
-                breakdownRow("shippingbox.fill", "Power-ups collected", "\(stats.powerUpsCollected)")
-                breakdownRow("circle.grid.2x2.fill", "Coin flips won", "\(stats.gamblesWon)", last: true)
+                breakdownRow("shippingbox.fill", "Power-ups collected", "\(stats.powerUpsCollected)", last: true)
             }
             .padding(.vertical, 4)
             .glassCard(cornerRadius: ADATheme.cardCornerRadius)

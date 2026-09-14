@@ -9,6 +9,11 @@ import UIKit
 final class PushNotificationManager: NSObject, ObservableObject {
     static let shared = PushNotificationManager()
 
+    /// The `type` from the payload of a notification the user actually tapped. Published so
+    /// the UI can take them where the notification was about — a tap that just opens the app
+    /// on whatever screen it was last on is barely better than no notification at all.
+    @Published var tappedType: String?
+
     /// Set when a device token arrives before sign-in has finished (e.g. a very fast first
     /// launch) — flushed once there's a session to attach it to.
     private var pendingToken: String?
@@ -72,6 +77,23 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        // .list as well as .banner so it's still in Notification Centre afterwards — a
+        // banner that vanishes unread is the same as never having sent it.
+        completionHandler([.banner, .sound, .list])
+    }
+
+    /// Handles the user tapping a notification, foreground or cold start. The payload's
+    /// `type` is set by PushService on the server (friend_request, game_invite,
+    /// report_response, announcement…), and the UI routes on it from here.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        let info = response.notification.request.content.userInfo
+        if let type = info["type"] as? String {
+            DispatchQueue.main.async { self.tappedType = type }
+        }
+        completionHandler()
     }
 }

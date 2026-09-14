@@ -107,7 +107,7 @@ targets:
           # AltStore/SideStore) — Xcode overwrites this to "production" automatically when
           # archiving against an App Store distribution profile (see the TestFlight
           # workflow), so one declaration covers both build paths.
-          aps-environment: development
+          aps-environment: production
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app

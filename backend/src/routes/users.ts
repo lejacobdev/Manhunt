@@ -20,6 +20,9 @@ interface ProfileStats {
   timesEliminated: number;
   matchesHosted: number;
   powerUpsCollected: number;
+  /// Still computed and returned, though nothing displays it any more: builds already in
+  /// the wild decode it as a required field, so dropping it from the payload would break
+  /// the profile screen for anyone who hasn't updated.
   gamblesWon: number;
   gamblesLost: number;
   /** Whole minutes across every match that actually started and ended. */
@@ -53,7 +56,6 @@ function buildAchievements(stats: ProfileStats): Achievement[] {
     { id: 'matches_50', title: 'Veteran', description: 'Play 50 matches.', icon: 'shield.lefthalf.filled', goal: 50, value: stats.matchesPlayed },
     { id: 'host_5', title: 'Ringleader', description: 'Host 5 matches.', icon: 'star.fill', goal: 5, value: stats.matchesHosted },
     { id: 'powerups_20', title: 'Scavenger', description: 'Collect 20 power-ups.', icon: 'shippingbox.fill', goal: 20, value: stats.powerUpsCollected },
-    { id: 'gambler_3', title: 'High Roller', description: 'Win 3 coin flips.', icon: 'circle.grid.2x2.fill', goal: 3, value: stats.gamblesWon },
     { id: 'marathon_120', title: 'Long Hunt', description: 'Play for 2 hours total.', icon: 'clock.fill', goal: 120, value: stats.minutesPlayed },
   ];
 
