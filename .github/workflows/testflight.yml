@@ -158,6 +158,17 @@ jobs:
       # the key's role needs to be Admin (or App Manager, on recent App Store Connect) for
       # that to actually be allowed to create new ones rather than only use existing ones.
       #
+      # CODE_SIGN_IDENTITY is forced to Apple Distribution because the default automatic
+      # behaviour archives with a *development* identity and re-signs at export. That cost
+      # us twice over: Xcode minted a brand-new development certificate on every run until
+      # that quota ran out too (the imported .p12 is Distribution, so it only ever stopped
+      # half the bleeding), and the development-signed archive carried
+      # "aps-environment: development", which export then reconciled against a distribution
+      # profile by dropping the push entitlement altogether — leaving the shipped app with
+      # none at all, which is exactly what the device reported. Signing for distribution
+      # from the start needs no development certificate and carries the right entitlement
+      # through unchanged.
+      #
       # CURRENT_PROJECT_VERSION is overridden to the run number (see project.yml, which
       # references it as $(CURRENT_PROJECT_VERSION) rather than a literal) because App
       # Store Connect refuses to accept the same version+build pair twice.
@@ -177,6 +188,7 @@ jobs:
             -authenticationKeyPath "$HOME/private_keys/AuthKey_${KEY_ID}.p8" \
             -authenticationKeyID "$KEY_ID" \
             -authenticationKeyIssuerID "$ISSUER_ID" \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
       # Export writes an IPA to disk and a separate step uploads it. Doing both in one
