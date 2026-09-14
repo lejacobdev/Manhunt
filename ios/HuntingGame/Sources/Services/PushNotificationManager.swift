@@ -30,16 +30,24 @@ final class PushNotificationManager: NSObject, ObservableObject {
     /// permission is a no-op, and a granted permission re-registers for remote
     /// notifications (and re-delivers the same token to didRegister) harmlessly.
     func requestAuthorizationIfNeeded() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            Task {
+                await APIClient.shared.pushDiagnostic(
+                    stage: granted ? "authorization-granted" : "authorization-denied",
+                    detail: error?.localizedDescription
+                )
+            }
             guard granted else { return }
             DispatchQueue.main.async {
                 UIApplication.shared.registerForRemoteNotifications()
+                Task { await APIClient.shared.pushDiagnostic(stage: "apns-register-called", detail: nil) }
             }
         }
     }
 
     func didRegister(token: String) {
         lastRegisteredToken = token
+        Task { await APIClient.shared.pushDiagnostic(stage: "apns-token-received", detail: "\(token.count) chars") }
         guard AuthSession.shared.token != nil else {
             pendingToken = token
             return
@@ -48,8 +56,16 @@ final class PushNotificationManager: NSObject, ObservableObject {
     }
 
     func didFailToRegister(error: Error) {
-        // Expected on the simulator and in some build configurations without a live APNs
-        // entitlement — this is a best-effort feature, not worth surfacing to the player.
+        // Not surfaced to the player — it's a best-effort feature and there's nothing they
+        // could do about it. Reported to the server instead, because swallowing this
+        // entirely is what made a broken push setup impossible to diagnose from either end:
+        // the app looked like it simply never tried.
+        Task {
+            await APIClient.shared.pushDiagnostic(
+                stage: "apns-register-failed",
+                detail: (error as NSError).localizedDescription + " [\((error as NSError).domain) \((error as NSError).code)]"
+            )
+        }
     }
 
     /// Uploads a token that arrived before sign-in completed. Call right after AuthSession

@@ -146,6 +146,13 @@ final class APIClient {
 
     /// `category` is a `ReportCategory` raw value — the wire contract with the backend enum.
     /// `detail` is optional context, except for OTHER where the server rejects it missing.
+    /// Best-effort note to the server about how push registration went. Fire-and-forget:
+    /// a diagnostic that breaks the thing it's diagnosing would be worse than no diagnostic.
+    func pushDiagnostic(stage: String, detail: String?) async {
+        struct Body: Encodable { let stage: String; let detail: String? }
+        let _: EmptyResponse? = try? await post("/push/diagnostic", body: Body(stage: stage, detail: detail))
+    }
+
     func reportUser(id: String, category: String, detail: String?) async throws {
         let _: EmptyResponse = try await post(
             "/friends/\(id)/report",

@@ -108,6 +108,10 @@ app.use('/powerups', powerUpsRouter);
 app.use('/invites', invitesRouter);
 app.use('/admin', adminRouter);
 app.use('/users', usersRouter);
+app.use('/push', (req, _res, next) => {
+  console.log(`[PUSH] ${req.method} ${req.path} auth=${req.headers.authorization ? 'yes' : 'no'}`);
+  next();
+});
 app.use('/push', pushRouter);
 
 /**
