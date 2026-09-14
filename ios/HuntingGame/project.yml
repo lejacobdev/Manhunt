@@ -110,6 +110,13 @@ targets:
           aps-environment: development
     settings:
       base:
+        # Set explicitly rather than relying on the `entitlements:` block above to wire it
+        # up. It doesn't: -showBuildSettings showed CODE_SIGN_ENTITLEMENTS unset entirely,
+        # so the file was generated and then never applied. Everything in it was silently
+        # absent from the signed app — no aps-environment (push registration failed with
+        # "no valid aps-environment entitlement string found") and no application-groups
+        # either, which the widget needs to read game state.
+        CODE_SIGN_ENTITLEMENTS: HuntingGame.entitlements
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
