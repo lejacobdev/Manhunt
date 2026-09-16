@@ -28,6 +28,12 @@ final class GameViewModel: ObservableObject {
     /// as its own @StateObject/@ObservedObject.
     @Published var currentLocation: CLLocation?
     @Published var currentHeadingDegrees: Double = 0
+    /// Republished from `locationManager` for the same reason as `currentLocation` above.
+    /// GameView watches this to react when the *system* permission prompt comes back denied
+    /// — the in-app consent screen no longer has a decline button of its own (App Store
+    /// guideline 5.1.1(iv)), so this is how a real "no" at the OS level still lets the
+    /// player leave a match they can't play without location.
+    @Published var locationAuthorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var powerUpSpawns: [PowerUpSpawn] = []
 
     // MARK: - Hearts / jail / gamble state
@@ -209,6 +215,13 @@ final class GameViewModel: ObservableObject {
     }
 
     private func bindLocation() {
+        locationManager.$authorizationStatus
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                self?.locationAuthorizationStatus = status
+            }
+            .store(in: &cancellables)
+
         locationManager.$currentHeading
             .receive(on: DispatchQueue.main)
             .sink { [weak self] heading in

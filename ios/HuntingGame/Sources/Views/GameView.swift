@@ -141,13 +141,17 @@ struct GameView: View {
                 purpose: .match,
                 isSubmitting: isRecordingConsent,
                 errorMessage: consentError,
-                onAccept: { Task { await consentAndShareLocation() } },
-                onDecline: {
-                    showLocationConsent = false
-                    dismiss()
-                }
+                onAccept: { Task { await consentAndShareLocation() } }
             )
             .preferredColorScheme(.dark)
+        }
+        // The consent screen above always leads to the real system permission prompt now
+        // (App Store guideline 5.1.1(iv) — no in-app decline that bypasses it). If the
+        // player says no there, this is how that still gets them out of a match they can't
+        // play without location, rather than leaving them stuck with a dead radar.
+        .onChange(of: viewModel.locationAuthorizationStatus) { status in
+            guard !showLocationConsent, status == .denied || status == .restricted else { return }
+            dismiss()
         }
         .onChange(of: viewModel.heartLossPulse) { _ in
             // Snap on, ease off — a symmetric fade reads as a soft glow rather than a hit.

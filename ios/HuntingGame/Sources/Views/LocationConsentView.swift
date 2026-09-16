@@ -34,29 +34,23 @@ struct LocationConsentView: View {
             }
         }
 
-        /// What declining actually costs, said plainly rather than left to be discovered.
+        /// What happens if location isn't granted at the system prompt that follows — said
+        /// plainly rather than left to be discovered. Purely informational now: this screen
+        /// no longer offers a button that skips that prompt (App Store guideline 5.1.1(iv) —
+        /// a custom message ahead of a permission request must always lead to the real
+        /// request, never to an in-app substitute for declining it).
         var declineNote: String {
             switch self {
             case .playAreaSetup:
-                return "Decline and you can still draw the area — you'll just have to find it on the map yourself."
+                return "If you don't allow it, you can still draw the area — you'll just have to find it on the map yourself."
             case .match:
-                return "Decline and you'll leave this match. Nothing is shared either way."
+                return "If you don't allow it, you won't be able to play this match. Nothing is shared either way."
             }
         }
 
-        var acceptLabel: String {
-            switch self {
-            case .playAreaSetup: return "USE MY LOCATION"
-            case .match: return "SHARE MY LOCATION"
-            }
-        }
-
-        var declineLabel: String {
-            switch self {
-            case .playAreaSetup: return "NOT NOW"
-            case .match: return "DECLINE & LEAVE"
-            }
-        }
+        // Deliberately generic — must not read as the action itself (e.g. "Use My
+        // Location"), only as proceeding to the system permission request that follows.
+        var acceptLabel: String { "CONTINUE" }
 
         var accent: Color {
             switch self {
@@ -69,8 +63,10 @@ struct LocationConsentView: View {
     var purpose: Purpose = .match
     var isSubmitting: Bool = false
     var errorMessage: String?
+    // No onDecline: this screen always proceeds to the real system permission request. If
+    // the user doesn't want to grant it, they say so there — not on this screen — and the
+    // caller reacts to `LocationManager.authorizationStatus` turning `.denied`/`.restricted`.
     let onAccept: () -> Void
-    let onDecline: () -> Void
 
     var body: some View {
         ZStack {
@@ -113,28 +109,19 @@ struct LocationConsentView: View {
 
                 Spacer()
 
-                VStack(spacing: 10) {
-                    Button {
-                        onAccept()
-                    } label: {
-                        if isSubmitting {
-                            ProgressView().tint(.black)
-                        } else {
-                            HStack {
-                                Image(systemName: purpose.icon)
-                                Text(purpose.acceptLabel)
-                            }
+                Button {
+                    onAccept()
+                } label: {
+                    if isSubmitting {
+                        ProgressView().tint(.black)
+                    } else {
+                        HStack {
+                            Image(systemName: purpose.icon)
+                            Text(purpose.acceptLabel)
                         }
                     }
-                    .buttonStyle(GlowButtonStyle(tint: purpose.accent, isLoading: isSubmitting))
-
-                    Button(purpose.declineLabel) {
-                        onDecline()
-                    }
-                    .font(ADATheme.telemetryFont(size: 11))
-                    .foregroundColor(.white.opacity(0.4))
-                    .tracking(1.5)
                 }
+                .buttonStyle(GlowButtonStyle(tint: purpose.accent, isLoading: isSubmitting))
                 .padding(.horizontal, 24)
                 .padding(.bottom, 20)
                 .disabled(isSubmitting)

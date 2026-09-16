@@ -112,8 +112,7 @@ struct GameLobbyView: View {
                     onAccept: {
                         playAreaLocationConsented = true
                         showPlayAreaConsent = false
-                    },
-                    onDecline: { showPlayAreaConsent = false }
+                    }
                 )
                 .preferredColorScheme(.dark)
             }

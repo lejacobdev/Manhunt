@@ -180,6 +180,16 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SKIP_INSTALL: YES
+        # Apple App Review, Guideline 2.3 (submission fdcbff62, Sep 16 2026): "the
+        # UIRequiredDeviceCapabilities key in the Info.plist is set up in such a way that the
+        # app will not install on the device used in review" — an Apple Watch. Root cause:
+        # this target never overrode the project-wide base TARGETED_DEVICE_FAMILY of "1,2"
+        # (iPhone/iPad family codes), so a watchOS binary was shipping with an iOS device
+        # family baked into its compiled Info.plist instead of watchOS's own family code
+        # "4" — which is exactly what an install-eligibility check on a real Watch rejects.
+        # Only the main HuntingGame app target overrode it (to "1"); these two watchOS
+        # targets didn't, and silently inherited the wrong value.
+        TARGETED_DEVICE_FAMILY: "4"
 
   HuntingGameWatchWidgets:
     type: app-extension
@@ -202,3 +212,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp.widgets
         SKIP_INSTALL: YES
+        # Same fix as HuntingGameWatch above, and for the same reason — this extension is
+        # embedded in the watchOS app, not the iOS one, so it needs watchOS's family code
+        # too rather than the inherited iPhone/iPad "1,2".
+        TARGETED_DEVICE_FAMILY: "4"
