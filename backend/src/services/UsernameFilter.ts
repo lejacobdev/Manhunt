@@ -64,9 +64,20 @@ const DEFAULT_BLOCKED: { term: string; category: string }[] = [
 
   // Names that let someone pass themselves off as staff. Not rude, but a support-impersonation
   // account is a more effective scam than any slur.
+  //
+  // Bare 'apple' deliberately isn't here — it was, substring-matched like everything else,
+  // until it blocked App Review itself: "applereview" (our own demo account's username),
+  // "appletest", and any reviewer's own account name containing those four letters all came
+  // back "reserved". Unlike a slur, "apple" is also just an ordinary word/name fragment —
+  // applejohn, appleseed, pineapple, appletree — so unlike Scunthorpe-style allowlisting
+  // (which works when the collisions are a short, enumerable list), no allowlist here would
+  // stay ahead of every legitimate name containing it. It's handled as an exact-match-only
+  // case below instead: someone whose whole identity reads as "apple" gets blocked, everyone
+  // whose username merely contains it doesn't.
   ...['admin', 'administrator', 'moderator', 'mod', 'staff', 'official', 'support',
     'huntinggame', 'huntinggameteam', 'system', 'server', 'root', 'owner', 'developer',
-    'apple', 'appstore', 'appleteam', 'applesupport',
+    'appstore', 'appleteam', 'applesupport', 'appleofficial', 'appleadmin', 'applestaff',
+    'appleceo', 'applehq', 'applecorp',
   ].map((term) => ({ term, category: 'IMPERSONATION' })),
 
   // Self-harm and violence, which we'd rather not have on a leaderboard.
@@ -156,6 +167,18 @@ function candidates(username: string): { direct: string[]; collapsed: string[] }
   return { direct, collapsed: [...new Set(direct.map(collapse))] };
 }
 
+/**
+ * Whole-identity-only reserved handles: blocked when a username normalises to exactly one
+ * of these (leetspeak/homoglyph folding included — "Appl3" still hits), never when it merely
+ * contains one. See the comment above the IMPERSONATION term list for why "apple" needs this
+ * instead of the usual substring + allowlist treatment.
+ */
+const EXACT_BLOCKED: { term: string; category: string }[] = [
+  { term: 'apple', category: 'IMPERSONATION' },
+  { term: 'appleinc', category: 'IMPERSONATION' },
+  { term: 'applecompany', category: 'IMPERSONATION' },
+];
+
 export interface UsernameVerdict {
   allowed: boolean;
   term?: string;
@@ -206,6 +229,10 @@ export function invalidateUsernameFilterCache() {
 export async function screenUsername(username: string): Promise<UsernameVerdict> {
   const { blocked, allowed } = await lists();
   const { direct, collapsed } = candidates(username);
+
+  for (const { term, category } of EXACT_BLOCKED) {
+    if (direct.includes(term)) return { allowed: false, term, category };
+  }
 
   const strip = (text: string) => {
     let residue = text;
