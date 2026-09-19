@@ -15,7 +15,7 @@
  */
 
 /** Zero-width characters String.trim() doesn't consider whitespace, but copy-paste picks up. */
-const INVISIBLE = /[​-‍⁠﻿]/g;
+const INVISIBLE = /[\u200B-\u200D\u2060\uFEFF]/g;
 
 /** Strips invisible characters, then trims ordinary and Unicode whitespace (incl. NBSP). */
 export function cleanText(input: string): string {

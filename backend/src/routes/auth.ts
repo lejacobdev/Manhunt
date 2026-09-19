@@ -4,15 +4,17 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { generateUserTag } from '../utils/arrestCode';
 import { signToken } from '../middleware/auth';
-import { zodErrorMessage } from '../utils/validation';
+import { passwordField, usernameField, zodErrorMessage } from '../utils/validation';
 import { rejectionMessage, screenUsername } from '../services/UsernameFilter';
 import { cleanText, parseLoginIdentity, printable } from '../utils/loginIdentity';
 
 export const authRouter = Router();
 
+// The rules and their wording live in utils/validation.ts — the message a player sees when a
+// username is rejected is the whole point, so it says which characters were the problem.
 const registerSchema = z.object({
-  username: z.string().min(3).max(20).regex(/^[a-zA-Z0-9_]+$/),
-  password: z.string().min(8).max(128),
+  username: usernameField(),
+  password: passwordField(),
 });
 
 authRouter.post('/register', async (req, res) => {
@@ -51,9 +53,12 @@ authRouter.post('/register', async (req, res) => {
 });
 
 const loginSchema = z.object({
-  username: z.string(),
-  userTag: z.string(),
-  password: z.string(),
+  username: z.string({ required_error: 'Please enter your username.' }),
+  // Optional: the tag can be written into the username ("name#1234") or left out when the
+  // name is unambiguous — see loginIdentity.ts. Requiring it here would answer those with a
+  // bare "userTag: Required" before the smarter lookup ever ran.
+  userTag: z.string().optional().default(''),
+  password: z.string({ required_error: 'Please enter your password.' }),
 });
 
 authRouter.post('/login', async (req, res) => {
@@ -67,6 +72,10 @@ authRouter.post('/login', async (req, res) => {
   const identity = parseLoginIdentity(rawUsername, rawTag);
   const { username, userTag } = identity;
   const ua = req.get('user-agent') ?? '-';
+
+  // A blank field is a "you forgot something", not a "your credentials are wrong".
+  if (!username) return res.status(400).json({ error: 'Please enter your username.' });
+  if (password.length === 0) return res.status(400).json({ error: 'Please enter your password.' });
 
   // Exact (name, tag) first so a correct login behaves exactly as it always has. Then the same
   // pair ignoring case. Only when no tag was given anywhere do we look up by name alone, and
@@ -117,7 +126,12 @@ authRouter.post('/login', async (req, res) => {
       `[AUTH] login FAILED reason=${candidates.length ? 'BAD_PASSWORD' : 'NO_SUCH_USER'} ` +
         `username=${printable(rawUsername)} tag=${printable(rawTag)} pwLen=${password.length} ua=${ua}`,
     );
-    return res.status(401).json({ error: 'Invalid credentials.' });
+    // Says what to check without saying *which* part was wrong — that would let anyone probe
+    // for valid usernames. The tag hint is there because it's the part people don't know
+    // exists: it's the 4 digits shown after the # on their profile.
+    return res.status(401).json({
+      error: 'Wrong username, tag or password. Your tag is the 4 digits after the # in your name (e.g. name#1234).',
+    });
   }
 
   if (rawUsername !== user.username || rawTag !== user.userTag || usedCleanedPassword) {

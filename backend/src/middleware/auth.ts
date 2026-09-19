@@ -11,7 +11,7 @@ const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-do-not-use-in-productio
 export function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing bearer token.' });
+    return res.status(401).json({ error: "You're not signed in. Please log in and try again." });
   }
   const token = header.slice('Bearer '.length);
   try {
@@ -19,7 +19,7 @@ export function requireAuth(req: AuthedRequest, res: Response, next: NextFunctio
     req.user = decoded;
     next();
   } catch {
-    return res.status(401).json({ error: 'Invalid or expired token.' });
+    return res.status(401).json({ error: 'Your session has expired. Please log in again.' });
   }
 }
 

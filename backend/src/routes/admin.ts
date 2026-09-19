@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { AuthedRequest, requireAuth } from '../middleware/auth';
 import { requireAdmin } from '../middleware/admin';
-import { zodErrorMessage } from '../utils/validation';
+import { usernameField, zodErrorMessage } from '../utils/validation';
 // Circular import (server.ts imports this router) — safe because these are only read
 // inside handlers, which run long after both modules finish loading.
 import { io, isUserOnline } from '../server';
@@ -349,7 +349,7 @@ adminRouter.post('/users/:id/unban', async (req: AuthedRequest, res) => {
   return res.json({ user });
 });
 
-const renameSchema = z.object({ username: z.string().min(3).max(20).regex(/^[A-Za-z0-9_]+$/) });
+const renameSchema = z.object({ username: usernameField() });
 
 /**
  * Renames an account. This exists because "inappropriate username" is one of the report

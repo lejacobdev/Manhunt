@@ -158,6 +158,24 @@ app.get('/u/:username/:tag', (req, res) => {
 </body></html>`);
 });
 
+/**
+ * Last stop for anything a route or body parser throws. Without it Express answers with a
+ * bare HTML "Bad Request" page, which the app can't decode — the player just sees
+ * "Request failed with status 400." Every failure should reach them as a sentence instead.
+ * (Must stay registered after every route above.)
+ */
+app.use((err: any, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+  if (res.headersSent) return next(err);
+  if (err?.type === 'entity.parse.failed') {
+    return res.status(400).json({ error: "That request couldn't be read. Please try again, and update the app if it keeps happening." });
+  }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: 'That request was too large to send.' });
+  }
+  console.error('[ERROR] unhandled route error:', err);
+  return res.status(500).json({ error: 'Something went wrong on our side. Please try again in a moment.' });
+});
+
 export const httpServer = createServer(app);
 export const io = new Server(httpServer, { cors: { origin: process.env.CORS_ORIGIN ?? '*' } });
 
