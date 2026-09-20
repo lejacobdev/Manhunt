@@ -34,9 +34,12 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
     func send(_ snapshot: WatchGameSnapshot) {
         guard WCSession.isSupported(), WCSession.default.activationState == .activated else { return }
 
-        let isStateTransition = snapshot.isActive != lastSentSnapshot.isActive || snapshot.isCaught != lastSentSnapshot.isCaught
+        // Beyond activity/caught transitions, anything the wearer needs to see NOW — a catch
+        // request to answer, a heart lost, a jail or zone change — skips the throttle, so it
+        // reaches the wrist immediately instead of on the next 1.5s tick.
+        let isUrgent = snapshot.isUrgentChange(from: lastSentSnapshot)
         let now = Date()
-        guard isStateTransition || now.timeIntervalSince(lastSentAt) >= minSendInterval else { return }
+        guard isUrgent || now.timeIntervalSince(lastSentAt) >= minSendInterval else { return }
 
         lastSentSnapshot = snapshot
         lastSentAt = now
@@ -68,6 +71,17 @@ extension PhoneConnectivityManager: WCSessionDelegate {
     }
 
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        deliver(message)
+    }
+
+    /// The Watch falls back to `transferUserInfo` when the phone isn't reachable at the moment
+    /// an action is sent (see WatchConnectivityManager.send). This handler didn't exist, so
+    /// every one of those queued actions was silently dropped instead of arriving late.
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        deliver(userInfo)
+    }
+
+    private func deliver(_ message: [String: Any]) {
         guard let action = WatchActionMessage(dictionary: message) else { return }
         DispatchQueue.main.async { [weak self] in
             self?.onAction?(action)

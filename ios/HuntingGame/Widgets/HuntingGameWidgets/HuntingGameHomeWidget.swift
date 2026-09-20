@@ -72,7 +72,9 @@ private struct HomeWidgetView: View {
                 Text("\(distance)m")
                     .font(.system(size: 30, weight: .black, design: .rounded))
                     .foregroundColor(.white)
-                Text("TO NEAREST HUNTER")
+                // A hunter's reading is the nearest *runner* now (it used to be empty for
+                // hunters), so the label follows the role instead of assuming a runner.
+                Text(snapshot.isHunter ? "TO NEAREST RUNNER" : "TO NEAREST HUNTER")
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .foregroundColor(dangerColor)
             } else {

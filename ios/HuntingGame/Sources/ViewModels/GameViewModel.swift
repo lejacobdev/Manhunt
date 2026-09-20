@@ -82,6 +82,7 @@ final class GameViewModel: ObservableObject {
     private var invisibilityTimer: Timer?
     private var watchSyncTimer: Timer?
     private let watchConnectivity = PhoneConnectivityManager.shared
+    private var watchChangeSubscription: AnyCancellable?
     private var lastSentAt: Date = .distantPast
     private let minSendInterval: TimeInterval = 2.0
     private var lastWidgetReloadAt: Date = .distantPast
@@ -136,6 +137,13 @@ final class GameViewModel: ObservableObject {
         watchSyncTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.pushWatchSnapshot() }
         }
+        // The timer alone left a catch request waiting up to 1.5s before the wrist buzzed. Also
+        // push whenever this model or the socket changes; PhoneConnectivityManager throttles
+        // ordinary updates and lets urgent ones (catch request, lost heart, jail) straight through.
+        watchChangeSubscription = objectWillChange
+            .merge(with: socket.objectWillChange)
+            .debounce(for: .milliseconds(150), scheduler: DispatchQueue.main)
+            .sink { [weak self] _ in self?.pushWatchSnapshot() }
         pushWatchSnapshot()
 
         if role == .hunter || role == .runner {
@@ -163,6 +171,7 @@ final class GameViewModel: ObservableObject {
         socket.disconnect()
         invisibilityTimer?.invalidate()
         watchSyncTimer?.invalidate()
+        watchChangeSubscription = nil
         jailCountdownTimer?.invalidate()
         jailArrivalTimer?.invalidate()
         watchConnectivity.onAction = nil
@@ -175,19 +184,7 @@ final class GameViewModel: ObservableObject {
     // MARK: - Watch companion
 
     private func pushWatchSnapshot() {
-        let snapshot = WatchGameSnapshot(
-            isActive: !isCaught,
-            gameCode: roomCode,
-            roleRaw: role.rawValue,
-            arrestCode: arrestCode,
-            isCaught: isCaught,
-            nearestDistanceMeters: nearestHunterDistance,
-            nearestBearingDegrees: nearestHunterBearing,
-            inventoryRaw: inventory.map(\.rawValue),
-            isRadarJammed: isRadarJammed,
-            visibleRunners: visibleRunners.map { WatchRunnerBlip(id: $0.id, username: $0.username) },
-            updatedAt: Date()
-        )
+        let snapshot = makeWatchSnapshot()
         watchConnectivity.send(snapshot)
 
         // Same snapshot, relayed to the iPhone home-screen widget via their shared App
@@ -203,14 +200,116 @@ final class GameViewModel: ObservableObject {
         WidgetCenter.shared.reloadTimelines(ofKind: "HuntingGameHomeWidget")
     }
 
+    /// Which way the player is facing, for the Watch's radar. Course over ground while moving —
+    /// the compass is unreliable with the phone in a pocket, GPS course isn't — and the compass
+    /// only once they've stopped. Nil when neither is known.
+    private var watchHeadingDegrees: Double? {
+        if let location = currentLocation, location.speed > 1.2, location.course >= 0 {
+            return location.course
+        }
+        if let heading = locationManager.currentHeading {
+            return heading.trueHeading >= 0 ? heading.trueHeading : heading.magneticHeading
+        }
+        return nil
+    }
+
+    /// The nearest players on the other side, for the Watch radar — hunters for a runner,
+    /// runners for a hunter — nearest first, capped so the payload stays small.
+    private func watchBlips() -> [WatchBlip] {
+        switch role {
+        case .runner:
+            return (socket.compass?.hunters ?? []).prefix(6).map {
+                WatchBlip(id: $0.hunterId, username: $0.username, distanceMeters: $0.distanceMeters, bearingDegrees: $0.bearingDegrees)
+            }
+        case .hunter:
+            return visibleRunnerBearings.prefix(6).map {
+                WatchBlip(id: $0.runnerId, username: $0.username, distanceMeters: $0.distanceMeters, bearingDegrees: $0.bearingDegrees)
+            }
+        case .spectator:
+            return []
+        }
+    }
+
+    private func makeWatchSnapshot() -> WatchGameSnapshot {
+        let blips = watchBlips()
+        let players = socket.players
+        let matchEndsAt = socket.matchStartedAt.map {
+            $0.addingTimeInterval(TimeInterval(sessionSettings.durationMinutes * 60))
+        }
+        let pendingTargetName = pendingCatchRequestRunnerId.flatMap { id in
+            players.first(where: { $0.id == id })?.username
+        }
+
+        return WatchGameSnapshot(
+            // Stays true for the whole match — including once caught or out. It used to be
+            // `!isCaught`, which made the Watch fall back to its "not in a game" screen the
+            // moment the wearer was caught, hiding its own caught state.
+            isActive: true,
+            gameCode: roomCode,
+            roleRaw: role.rawValue,
+            arrestCode: arrestCode,
+            isCaught: isCaught,
+            nearestDistanceMeters: role == .hunter ? blips.first?.distanceMeters : nearestHunterDistance,
+            nearestBearingDegrees: role == .hunter ? blips.first?.bearingDegrees : nearestHunterBearing,
+            inventoryRaw: inventory.map(\.rawValue),
+            isRadarJammed: isRadarJammed,
+            // Kept for Watch 1.0.0, which reads only this.
+            visibleRunners: visibleRunners.map { WatchRunnerBlip(id: $0.id, username: $0.username) },
+            updatedAt: Date(),
+            hearts: hearts,
+            maxHearts: role == .hunter ? 5 : 3,
+            modeRaw: mode.rawValue,
+            headingDegrees: watchHeadingDegrees,
+            blips: blips,
+            matchEndsAt: matchEndsAt,
+            isJailed: isJailed,
+            isOut: isOut,
+            eliminationReason: eliminationReason ?? "",
+            jailArrivalRemaining: jailArrivalRemaining,
+            jailEscapeCountdown: jailOutside ? (jailCountdownRemaining ?? 10) : nil,
+            bailActive: bailActive,
+            bailRemainingSeconds: bailRemainingSeconds,
+            // Same guard the iPhone banner uses against a stale warning once caught/jailed/out.
+            zoneOutside: boundaryOutside && !isCaught && !isJailed && !isOut,
+            zoneReason: boundaryOutside ? boundaryReason : "",
+            zoneRadiusMeters: zone.map { Int($0.radiusMeters) },
+            buffs: activeBuffRemainingSec
+                .map { WatchBuff(raw: $0.key.rawValue, remainingSeconds: $0.value) }
+                .sorted { $0.raw < $1.raw },
+            incomingCatch: incomingCatchRequest.map {
+                WatchCatchRequest(requestId: $0.requestId, hunterUsername: $0.hunterUsername)
+            },
+            pendingCatchTargetName: pendingTargetName,
+            denyConfirm: pendingDenyConfirm.map {
+                WatchDenyConfirm(requestId: $0.requestId, runnerUsername: $0.runnerUsername)
+            },
+            notice: showCatchFailure ?? "",
+            runnersFree: players.filter { $0.role == .runner && !$0.isCaught && !$0.isJailed && !$0.isOut }.count,
+            runnersJailed: players.filter { $0.role == .runner && $0.isJailed && !$0.isOut }.count,
+            huntersCount: players.filter { $0.role == .hunter && !$0.isOut }.count
+        )
+    }
+
     private func handleWatchAction(_ action: WatchActionMessage) {
         switch action.type {
         case .usePowerUp:
             guard let raw = action.powerUpTypeRaw, let type = PowerUpType(rawValue: raw) else { return }
             usePowerUp(type)
         case .attemptCatch:
+            // Watch 1.0.0's arrest-code catch. Kept so an un-updated Watch still works.
             guard let target = action.targetRunnerId, let code = action.arrestCode else { return }
             socket.attemptCatch(runnerId: target, arrestCode: code)
+        case .requestCatch:
+            guard role == .hunter, let target = action.targetRunnerId else { return }
+            beginCatch(on: target)
+        case .cancelCatchRequest:
+            cancelPendingCatchRequest()
+        case .acceptCatch:
+            acceptCatch()
+        case .denyCatch:
+            denyCatch()
+        case .acknowledgeDeny:
+            confirmDenyWasAccidental()
         }
     }
 
@@ -260,6 +359,11 @@ final class GameViewModel: ObservableObject {
                     self.pushWatchSnapshot()
                 } else if let hunterId = event.hunterId, hunterId == self.gamePlayerId {
                     HapticsEngine.shared.catchSucceeded()
+                    // The request this hunter had out has been answered — nothing is pending
+                    // any more. Nothing on the iPhone showed this state, so it never mattered
+                    // there; the Watch does show a "waiting for…" screen and would otherwise
+                    // sit on it after a successful catch.
+                    self.pendingCatchRequestRunnerId = nil
                 }
             }
             .store(in: &cancellables)
@@ -306,6 +410,8 @@ final class GameViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] reason in
                 self?.showCatchFailure = reason
+                // A failed attempt (out of range, runner already caught…) ends the request too.
+                self?.pendingCatchRequestRunnerId = nil
                 HapticsEngine.shared.catchFailed()
             }
             .store(in: &cancellables)

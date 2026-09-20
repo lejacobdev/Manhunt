@@ -1,0 +1,3 @@
+# One scenario per line: name [page]. Read by watch-check.yml; each is launched with -WatchScenario
+# (see WatchPreviewScenarios.swift) and screenshotted at a small and a large watch size.
+idle

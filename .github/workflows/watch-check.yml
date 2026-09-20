@@ -1,0 +1,148 @@
+name: Watch check
+
+# Manual only (paid macOS minutes). Unsigned — this never touches App Store Connect and never
+# consumes a build number, so it's the cheap way to find out whether a change compiles and what
+# the Watch app looks like before spending a real TestFlight build on it.
+#
+#   gh workflow run watch-check.yml --ref <branch>
+#
+# It does three things:
+#   1. runs the payload compatibility test (Tests/WatchPayloadCheck) on the macOS host,
+#   2. compiles the iPhone app and the Watch app, unsigned,
+#   3. runs the Watch app in the watchOS Simulator, once per scenario in .github/watch-scenarios.txt
+#      and at a small and a large watch size, and uploads the screenshots as an artifact.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: watch-check
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.6"
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # Only signing reads this, and nothing here signs — but project.yml references the file.
+      - name: Write empty signing config
+        working-directory: ios/HuntingGame
+        run: echo "DEVELOPMENT_TEAM = " > Config.xcconfig
+
+      - name: Generate Xcode project
+        working-directory: ios/HuntingGame
+        run: xcodegen generate
+
+      - name: Payload compatibility test
+        working-directory: ios/HuntingGame
+        run: |
+          swiftc Shared/WatchSyncPayload.swift Tests/WatchPayloadCheck/main.swift -o "$RUNNER_TEMP/payloadcheck"
+          "$RUNNER_TEMP/payloadcheck"
+
+      # Compiles the iPhone app (which embeds the Watch app and both widget extensions), so a
+      # break in GameViewModel, the shared payload, or any target shows up here.
+      - name: Build iPhone app (unsigned)
+        working-directory: ios/HuntingGame
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project HuntingGame.xcodeproj -scheme HuntingGame \
+            -configuration Debug -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd-ios" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            | tee "$RUNNER_TEMP/build-ios.log" | grep -E "error:|warning: .*Watch|BUILD (SUCCEEDED|FAILED)|\*\* BUILD" || true
+          grep -q "BUILD SUCCEEDED" "$RUNNER_TEMP/build-ios.log"
+
+      - name: Show compile errors, if any
+        if: failure()
+        run: grep -E "error:" "$RUNNER_TEMP/build-ios.log" | sort -u | head -60 || true
+
+      # ------------------------------------------------------------------ screenshots
+      # continue-on-error: a simulator hiccup must not hide the compile result above.
+      - name: Pick watch simulators
+        id: sims
+        continue-on-error: true
+        run: |
+          xcrun simctl list devices available | grep -i "watch" || true
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, subprocess
+          data = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "available", "-j"]))
+          watches = []
+          for runtime, devices in data["devices"].items():
+              if "watchOS" not in runtime:
+                  continue
+              for d in devices:
+                  watches.append((runtime, d["name"], d["udid"]))
+          def find(*needles):
+              for runtime, name, udid in sorted(watches, reverse=True):
+                  if all(n in name for n in needles):
+                      return name, udid
+              return None
+          small = find("42mm") or find("40mm") or find("41mm") or find("44mm")
+          large = find("Ultra") or find("49mm") or find("46mm")
+          for label, pick in (("small", small), ("large", large)):
+              if pick:
+                  print(f"{label}_name={pick[0]}")
+                  print(f"{label}_udid={pick[1]}")
+          PY
+
+      - name: Build Watch app for the simulator
+        id: watchbuild
+        continue-on-error: true
+        working-directory: ios/HuntingGame
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -project HuntingGame.xcodeproj -scheme HuntingGameWatch \
+            -configuration Debug -destination "platform=watchOS Simulator,id=${{ steps.sims.outputs.large_udid }}" \
+            -derivedDataPath "$RUNNER_TEMP/dd-watch" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            | tail -25
+          test -d "$RUNNER_TEMP/dd-watch/Build/Products/Debug-watchsimulator/HuntingGameWatch.app"
+
+      - name: Screenshot every scenario
+        continue-on-error: true
+        run: |
+          APP="$RUNNER_TEMP/dd-watch/Build/Products/Debug-watchsimulator/HuntingGameWatch.app"
+          BUNDLE="com.huntinggame.app.watchkitapp"
+          OUT="$RUNNER_TEMP/shots"; mkdir -p "$OUT"
+          for SIZE in small large; do
+            case $SIZE in
+              small) UDID="${{ steps.sims.outputs.small_udid }}" ;;
+              large) UDID="${{ steps.sims.outputs.large_udid }}" ;;
+            esac
+            [ -n "$UDID" ] || { echo "no $SIZE simulator available"; continue; }
+            xcrun simctl boot "$UDID" 2>/dev/null || true
+            xcrun simctl bootstatus "$UDID" -b >/dev/null 2>&1 || true
+            xcrun simctl install "$UDID" "$APP"
+            while read -r LINE; do
+              # "name [page]" — the optional second word picks which vertical page to open.
+              case "$LINE" in ''|\#*) continue ;; esac
+              NAME=$(echo "$LINE" | awk '{print $1}')
+              PAGE=$(echo "$LINE" | awk '{print $2}')
+              xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
+              xcrun simctl launch "$UDID" "$BUNDLE" -WatchScenario "$NAME" ${PAGE:+-WatchPage "$PAGE"} >/dev/null
+              sleep 5
+              xcrun simctl io "$UDID" screenshot "$OUT/${SIZE}_${NAME}${PAGE:+_$PAGE}.png" || true
+            done < .github/watch-scenarios.txt
+          done
+          ls -la "$OUT"
+          echo "SHOTS_DIR=$OUT" >> "$GITHUB_ENV"
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: watch-screenshots
+          path: ${{ runner.temp }}/shots/*.png
+          if-no-files-found: warn
