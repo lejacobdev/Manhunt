@@ -86,6 +86,7 @@ final class GameViewModel: ObservableObject {
     private var lastSentAt: Date = .distantPast
     private let minSendInterval: TimeInterval = 2.0
     private var lastWidgetReloadAt: Date = .distantPast
+    private var lastWidgetWriteAt: Date = .distantPast
     /// WidgetKit metes out a small daily budget of *actual* re-renders per widget kind —
     /// on the order of a few dozen, shared across the whole day, regardless of how many
     /// times reloadTimelines is called. Calling it on every 1.5s watchSyncTimer tick (as
@@ -189,12 +190,16 @@ final class GameViewModel: ObservableObject {
 
         // Same snapshot, relayed to the iPhone home-screen widget via their shared App
         // Group instead of WatchConnectivity — that's phone-to-watch only, but the widget
-        // extension runs on this same device, so no relay is needed at all. The write
-        // itself is just local storage and happens every time, cheap even on the 1.5s
-        // watchSyncTimer tick; only the explicit reload request below is throttled.
-        PhoneWidgetAppGroup.writeSnapshot(snapshot)
-
+        // extension runs on this same device, so no relay is needed at all. The write is just
+        // local storage, kept to once a second: this now runs on every (debounced) state change
+        // as well as the 1.5s timer, and the widget gains nothing from being rewritten several
+        // times a second. The explicit reload request below is throttled much harder still.
         let now = Date()
+        if now.timeIntervalSince(lastWidgetWriteAt) >= 1.0 {
+            lastWidgetWriteAt = now
+            PhoneWidgetAppGroup.writeSnapshot(snapshot)
+        }
+
         guard now.timeIntervalSince(lastWidgetReloadAt) >= minWidgetReloadInterval else { return }
         lastWidgetReloadAt = now
         WidgetCenter.shared.reloadTimelines(ofKind: "HuntingGameHomeWidget")
