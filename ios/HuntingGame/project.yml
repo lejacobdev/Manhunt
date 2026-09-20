@@ -147,15 +147,22 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
       path: Widgets/HuntingGameWidgets/HuntingGameWidgets.entitlements
+      # `properties` is not optional in practice: an `entitlements:` block with only a `path`
+      # makes XcodeGen OVERWRITE that file with an empty plist on every generate (181 bytes in CI,
+      # measured), silently discarding whatever was checked in. This widget extension, the Watch
+      # app and the complication therefore never shipped with their App Group — the home widget
+      # and the watch face could not read the game state the app writes for them. Declared here so
+      # the generated file is the real one.
+      properties:
+        com.apple.security.application-groups:
+          - group.com.huntinggame.app.widget
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.widgets
         INFOPLIST_KEY_CFBundleDisplayName: Hunting Game Widgets
         SKIP_INSTALL: YES
-        # Same trap the main app fell into: the `entitlements:` block above generates this
-        # file but never sets CODE_SIGN_ENTITLEMENTS, so its App Group was silently absent
-        # from every shipped build — leaving the home-screen widget and Live Activity with
-        # no way to read the game state the app writes for them.
+        # Same trap the main app fell into: the `entitlements:` block above does not set
+        # CODE_SIGN_ENTITLEMENTS, so it has to be set here. (Its `properties` matter too: see there.)
         CODE_SIGN_ENTITLEMENTS: Widgets/HuntingGameWidgets/HuntingGameWidgets.entitlements
 
   HuntingGameWatch:
@@ -180,14 +187,16 @@ targets:
           - UIInterfaceOrientationPortrait
     entitlements:
       path: Watch/HuntingGameWatch/HuntingGameWatch.entitlements
+      # See HuntingGameWidgets above: without `properties` the file is generated empty.
+      properties:
+        com.apple.security.application-groups:
+          - group.com.huntinggame.app.watch
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         SKIP_INSTALL: YES
-        # Same missing-entitlements trap as the main app (see HuntingGame's settings): without
-        # this the Watch app never joined its App Group, so the complication — a separate
-        # process that can only read state through that group — always saw an empty game.
+        # Same missing-entitlements trap as the main app (see HuntingGame's settings).
         CODE_SIGN_ENTITLEMENTS: Watch/HuntingGameWatch/HuntingGameWatch.entitlements
         # Apple App Review, Guideline 2.3 (submission fdcbff62, Sep 16 2026): "the
         # UIRequiredDeviceCapabilities key in the Info.plist is set up in such a way that the
@@ -217,6 +226,10 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
       path: WatchWidgets/HuntingGameWatchWidgets/HuntingGameWatchWidgets.entitlements
+      # Same App Group as the Watch app: the complication can only read game state through it.
+      properties:
+        com.apple.security.application-groups:
+          - group.com.huntinggame.app.watch
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp.widgets

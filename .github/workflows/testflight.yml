@@ -353,7 +353,10 @@ jobs:
             echo
           done
           echo "--- DistributionSummary.plist (Apple's own record of each bundle's profile and entitlements) ---"
-          plutil -p build/export/DistributionSummary.plist 2>/dev/null | grep -iE "\"(name|profile|entitlements|com.apple.security.application-groups|group\.)|bundle|=>" | head -60 || true
+          # Only the lines that identify a bundle or carry its groups — the whole file is long, and an
+          # earlier `head -60` cut it off before it reached the main app and the Watch app.
+          plutil -p build/export/DistributionSummary.plist 2>/dev/null \
+            | grep -E "\"name\" => \".*\.(app|appex)\"|application-groups|\"group\.|aps-environment" || true
 
       # The .xcarchive (dSYMs included) is the one artifact worth keeping past this run —
       # useful for symbolicating a crash report TestFlight shows later. The exported IPA
