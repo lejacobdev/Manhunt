@@ -47,6 +47,22 @@ jobs:
               console.log([p.attributes.profileType, p.attributes.profileState, bundle, p.attributes.name].join("  |  "));
             }
 
+            // Every signing certificate on the account, oldest first. Read-only. The account has a
+            // hard cap per type, and CI mints a fresh Apple Development certificate on any run whose
+            // keychain has none — so this is where a quota problem shows up. Expiry minus one year
+            // is when it was created.
+            const certRes = await fetch("https://api.appstoreconnect.apple.com/v1/certificates?limit=200",
+              { headers: { Authorization: "Bearer " + jwt } });
+            const certBody = await certRes.json();
+            console.log("\nCERTIFICATES: " + (certBody.data || []).length);
+            const rows = (certBody.data || []).map((c) => {
+              const exp = new Date(c.attributes.expirationDate);
+              const made = new Date(exp); made.setFullYear(exp.getFullYear() - 1);
+              return { made: made.toISOString().slice(0, 16).replace("T", " "), type: c.attributes.certificateType,
+                       name: c.attributes.name, id: c.id };
+            }).sort((a, b) => a.made.localeCompare(b.made));
+            for (const r of rows) console.log("  CERT  " + r.made + "  " + r.type.padEnd(22) + "  " + r.name + "  [" + r.id + "]");
+
             // The authoritative answer on whether Push is actually enabled for the App ID,
             // rather than trying to read a checkbox out of a screenshot.
             const ids = await (await fetch(
