@@ -7,6 +7,7 @@ import { zodErrorMessage } from '../utils/validation';
 // only read inside route handlers, which run long after both modules finish loading.
 import { io, isUserOnline } from '../server';
 import { pushService } from '../services/PushService';
+import { notifyNewReport } from '../services/ReportAlerts';
 
 export const friendsRouter = Router();
 friendsRouter.use(requireAuth);
@@ -243,6 +244,9 @@ friendsRouter.post('/:userId/report', async (req: AuthedRequest, res) => {
       (detail ? ` — "${detail}"` : '') +
       ` (report ${report.id})`
   );
+  // Email the moderator. Fire-and-forget on purpose — the report is already saved, and a mail
+  // problem must never fail the request of someone reporting a threat.
+  notifyNewReport(report);
   return res.status(201).json({ report });
 });
 

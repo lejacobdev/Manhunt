@@ -50,6 +50,12 @@ services:
       APNS_BUNDLE_ID: ${APNS_BUNDLE_ID}
       APNS_ENVIRONMENT: ${APNS_ENVIRONMENT}
       APNS_PRIVATE_KEY: ${APNS_PRIVATE_KEY}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      REPORT_ALERT_TO: ${REPORT_ALERT_TO:-}
+      ADMIN_URL: ${ADMIN_URL:-https://lejacob.dev/admin/}
       # Where GET /u/:username/:tag sends someone who taps "Don't have the app?".
       APP_STORE_URL: ${APP_STORE_URL}
       NODE_ENV: production
