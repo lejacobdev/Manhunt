@@ -62,7 +62,7 @@ jobs:
               console.log("  capabilities: " + (caps.length ? caps.join(", ") : "(none)"));
 
               // Optional, explicit, additive: switch App Groups on for one bundle ID. This is what
-              // Xcode's automatic signing does itself when it sees the entitlement; it needs doing
+              // Xcode automatic signing does itself when it sees the entitlement; it needs doing
               // by hand only when the App ID never picked it up. Which groups the App ID may use is
               // decided later, when Xcode generates its profile from the entitlements file.
               if (process.env.ENABLE_APP_GROUPS_FOR && b.attributes.identifier === process.env.ENABLE_APP_GROUPS_FOR) {
