@@ -217,6 +217,7 @@ struct WatchWaitingView: View {
                 .font(.wtRounded(11, weight: .medium))
                 .foregroundStyle(.white.opacity(0.5))
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
 
             Button("CANCEL", action: onCancel)
                 .buttonStyle(WTButtonStyle(tint: .white, prominent: false))

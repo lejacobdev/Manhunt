@@ -150,6 +150,7 @@ struct WTLabel: View {
             .tracking(1.2)
             .foregroundStyle(color)
             .lineLimit(1)
+            .minimumScaleFactor(0.75)
     }
 }
 
