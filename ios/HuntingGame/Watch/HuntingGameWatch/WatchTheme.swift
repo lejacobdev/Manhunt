@@ -293,3 +293,29 @@ struct WatchGear {
         }
     }
 }
+
+/// Rings spreading out from an icon — "waiting for an answer". Replaces the stock spinner, which
+/// was a few dim red dots that read as nothing at all on the dark backdrop.
+struct WTPulse: View {
+    let symbol: String
+    let tint: Color
+    @State private var spreading = false
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .strokeBorder(tint.opacity(0.6), lineWidth: 1.5)
+                    .scaleEffect(spreading ? 1 : 0.35)
+                    .opacity(spreading ? 0 : 0.85)
+                    .animation(
+                        .easeOut(duration: 1.8).repeatForever(autoreverses: false).delay(Double(index) * 0.6),
+                        value: spreading
+                    )
+            }
+            WTIconBadge(symbol: symbol, tint: tint, size: 30)
+        }
+        .frame(width: 84, height: 84)
+        .onAppear { spreading = true }
+    }
+}

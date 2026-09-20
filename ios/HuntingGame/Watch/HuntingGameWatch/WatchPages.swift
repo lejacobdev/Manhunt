@@ -34,13 +34,15 @@ struct WatchRadarPage: View {
                 blips: snapshot.radarBlips,
                 heading: snapshot.headingDegrees,
                 accent: accent,
-                centerValue: nearest.map { "\($0.distanceMeters)" } ?? "--",
+                centerValue: nearest.map { "\($0.distanceMeters)" } ?? "—",
+                centerSymbol: (nearest == nil && snapshot.isRadarJammed) ? "bolt.slash.fill" : nil,
                 centerCaption: caption
             )
 
             footer
         }
-        .padding(.horizontal, 4)
+        .padding(.leading, 4)
+        .padding(.trailing, 13)
     }
 
     /// One thing at the bottom: the most urgent warning if there is one, otherwise the clock and
@@ -115,7 +117,8 @@ struct WatchTargetsPage: View {
                         .padding(.top, 2)
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.leading, 4)
+        .padding(.trailing, 13)
             .padding(.bottom, 8)
         }
     }
@@ -151,7 +154,7 @@ struct WatchTargetsPage: View {
                         .font(.wtRounded(14))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    WTLabel(inRange ? "TAP TO CATCH" : "TOO FAR", color: tint, size: 8)
+                    WTLabel(inRange ? "TAP TO CATCH" : "TOO FAR", color: inRange ? tint : WT.amber.opacity(0.9), size: 8)
                 }
                 Spacer(minLength: 2)
                 VStack(alignment: .trailing, spacing: -2) {
@@ -166,8 +169,10 @@ struct WatchTargetsPage: View {
             .wtCard(tint: tint, radius: 14)
         }
         .buttonStyle(.plain)
-        .disabled(!inRange)
-        .opacity(inRange ? 1 : 0.6)
+        // Not `.disabled`: that adds SwiftUI's own dimming on top, and the far rows became
+        // unreadable. They stay legible, just visibly not the ones to tap.
+        .allowsHitTesting(inRange)
+        .opacity(inRange ? 1 : 0.85)
     }
 }
 
@@ -223,7 +228,8 @@ struct WatchGearPage: View {
                     WTLabel("TAP TWICE TO USE", size: 8)
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(.leading, 4)
+        .padding(.trailing, 13)
             .padding(.bottom, 8)
         }
         // Un-arm after a few seconds so a stray tap earlier doesn't leave a power-up one touch
@@ -253,7 +259,7 @@ struct WatchGearPage: View {
         let gear = WatchGear.info(for: buff.raw)
         return HStack(spacing: 7) {
             Image(systemName: gear.symbol).font(.system(size: 11, weight: .bold)).foregroundStyle(gear.tint)
-            WTLabel("\(gear.name.uppercased()) ACTIVE", color: .white, size: 8)
+            WTLabel(gear.name.uppercased(), color: .white, size: 8)
             Spacer(minLength: 2)
             WTCountdown(until: snapshot.deadline(after: buff.remainingSeconds), font: .wtMono(11))
                 .foregroundStyle(gear.tint)
@@ -288,7 +294,8 @@ struct WatchGearPage: View {
                         Text("×\(stack.count)")
                             .font(.wtMono(8))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 4)
+                            .padding(.leading, 4)
+        .padding(.trailing, 13)
                             .padding(.vertical, 1)
                             .background(Capsule().fill(Color.black.opacity(0.75)))
                             .offset(x: 7, y: -3)
@@ -364,7 +371,8 @@ struct WatchMatchPage: View {
                 }
                 .padding(.top, 4)
             }
-            .padding(.horizontal, 4)
+            .padding(.leading, 4)
+        .padding(.trailing, 13)
             .padding(.bottom, 8)
         }
     }

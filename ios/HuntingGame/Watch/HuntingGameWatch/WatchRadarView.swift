@@ -11,6 +11,8 @@ struct WTRadar: View {
     let heading: Double?
     let accent: Color
     let centerValue: String
+    /// Shown instead of the number when there isn't one (radar jammed).
+    var centerSymbol: String? = nil
     let centerCaption: String
     /// Distance at which a blip reaches the outer ring; anything farther is pinned to the edge.
     var rangeMeters: Double = 100
@@ -56,14 +58,21 @@ struct WTRadar: View {
                     blipView(blip, isNearest: index == 0, radius: r)
                 }
 
-                VStack(spacing: 0) {
-                    Text(centerValue)
-                        .font(.wtRounded(d * 0.27, weight: .black))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.5)
-                        .contentTransition(.numericText())
-                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: centerValue)
+                VStack(spacing: 2) {
+                    if let centerSymbol {
+                        Image(systemName: centerSymbol)
+                            .font(.system(size: d * 0.2, weight: .bold))
+                            .foregroundStyle(accent)
+                            .shadow(color: accent.opacity(0.6), radius: 6)
+                    } else {
+                        Text(centerValue)
+                            .font(.wtRounded(d * 0.27, weight: .black))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.5)
+                            .contentTransition(.numericText())
+                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: centerValue)
+                    }
                     Text(centerCaption)
                         .font(.wtMono(max(7, d * 0.055)))
                         .tracking(1.4)

@@ -135,12 +135,31 @@ struct WatchRootView: View {
             screen(accent: snapshot.isJailed ? WT.amber : WT.red) { WatchJailView(snapshot: snapshot) }
         } else if snapshot.isSpectator {
             screen(accent: WT.cyan) { WatchMatchPage(snapshot: snapshot, isReachable: connectivity.isReachable) }
+        } else if isOverlayShowing {
+            // An overlay is covering the pages. Dropping the TabView while it does also hides its
+            // page-indicator dots, which the system draws above app content and would otherwise
+            // poke through the overlay.
+            Color.clear
         } else {
             pagedGame
         }
     }
 
+    private var isOverlayShowing: Bool {
+        openCatchRequest != nil || waitingRunner != nil || (snapshot.denyConfirm != nil && snapshot.isActive)
+    }
+
     private var pagedGame: some View {
+        ZStack {
+            // Drawn here rather than through `containerBackground(for: .tabView)`, which left the
+            // pages on plain black in the simulator — the glow that gives every other screen its
+            // role colour was missing from the four pages people spend the match on.
+            WTBackground(accent: pageAccent)
+            pages
+        }
+    }
+
+    private var pages: some View {
         TabView(selection: $page) {
             WatchRadarPage(snapshot: snapshot)
                 .tag(WatchPage.radar)
@@ -157,9 +176,6 @@ struct WatchRootView: View {
                 .tag(WatchPage.match)
         }
         .tabViewStyle(.verticalPage)
-        .containerBackground(for: .tabView) {
-            WTBackground(accent: pageAccent)
-        }
     }
 
     /// The backdrop glow follows the danger on the radar page, and the role's own colour elsewhere.

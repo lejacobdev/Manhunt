@@ -205,7 +205,7 @@ struct WatchWaitingView: View {
 
     var body: some View {
         VStack(spacing: 9) {
-            ProgressView().tint(WT.red)
+            WTPulse(symbol: "scope", tint: WT.red)
 
             Text("WAITING FOR \(runner.uppercased())")
                 .font(.wtMono(11))
