@@ -4,6 +4,11 @@ name: Inspect signing setup
 # profiles exist and never touches Xcode, so it costs seconds rather than a macOS build.
 on:
   workflow_dispatch:
+    inputs:
+      enable_app_groups_for:
+        description: "Optional: a bundle identifier to switch the App Groups capability on for (does nothing if it is already on)"
+        required: false
+        default: ""
 
 jobs:
   list:
@@ -14,6 +19,7 @@ jobs:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+          ENABLE_APP_GROUPS_FOR: ${{ inputs.enable_app_groups_for }}
         run: |
           mkdir -p "$HOME/private_keys"
           echo "$API_KEY_B64" | base64 --decode > "$HOME/private_keys/AuthKey_${KEY_ID}.p8"
@@ -54,6 +60,28 @@ jobs:
                 .map((i) => i.attributes.capabilityType);
               console.log("\nBUNDLE " + b.attributes.identifier);
               console.log("  capabilities: " + (caps.length ? caps.join(", ") : "(none)"));
+
+              // Optional, explicit, additive: switch App Groups on for one bundle ID. This is what
+              // Xcode's automatic signing does itself when it sees the entitlement; it needs doing
+              // by hand only when the App ID never picked it up. Which groups the App ID may use is
+              // decided later, when Xcode generates its profile from the entitlements file.
+              if (process.env.ENABLE_APP_GROUPS_FOR && b.attributes.identifier === process.env.ENABLE_APP_GROUPS_FOR) {
+                if (caps.includes("APP_GROUPS")) {
+                  console.log("  -> App Groups already enabled, nothing to do");
+                } else {
+                  const made = await fetch("https://api.appstoreconnect.apple.com/v1/bundleIdCapabilities", {
+                    method: "POST",
+                    headers: { Authorization: "Bearer " + jwt, "Content-Type": "application/json" },
+                    body: JSON.stringify({ data: {
+                      type: "bundleIdCapabilities",
+                      attributes: { capabilityType: "APP_GROUPS" },
+                      relationships: { bundleId: { data: { type: "bundleIds", id: b.id } } },
+                    } }),
+                  });
+                  console.log("  -> enabling App Groups: HTTP " + made.status);
+                  if (!made.ok) console.log(JSON.stringify(await made.json(), null, 2));
+                }
+              }
             }
           })();
           '

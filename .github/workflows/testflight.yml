@@ -253,6 +253,17 @@ jobs:
           echo "--- entitlements signed into the ARCHIVED app ---"
           codesign -d --entitlements :- "$APP" 2>/dev/null || true
           echo
+          # The widget extension, the Watch app and the complication each have their own
+          # signature and their own entitlements. Only the main app used to be looked at, which is
+          # how a missing App Group on the complication went unnoticed.
+          echo "--- application-groups per nested bundle (ARCHIVED) ---"
+          find "$APP" \( -name "*.appex" -o -name "*.app" \) -not -path "$APP" | sort | while read -r B; do
+            printf '%s\n    ' "${B#$APP/}"
+            codesign -d --entitlements :- "$B" 2>/dev/null \
+              | grep -oE "group\.[A-Za-z0-9.]+" | sort -u | tr '\n' ' '
+            echo
+          done
+          echo
           echo "--- CODE_SIGN_ENTITLEMENTS as built ---"
           xcodebuild -project HuntingGame.xcodeproj -scheme HuntingGame -configuration Release \
             -showBuildSettings 2>/dev/null | grep -iE "CODE_SIGN_ENTITLEMENTS|CODE_SIGN_STYLE|PROVISIONING" | head
@@ -331,6 +342,18 @@ jobs:
           echo "--- embedded profile ---"
           security cms -D -i "$APP/embedded.mobileprovision" 2>/dev/null \
             | plutil -extract Name raw - 2>/dev/null || true
+          echo "--- application-groups per nested bundle (EXPORTED — what actually ships) ---"
+          find "$APP" \( -name "*.appex" -o -name "*.app" \) -not -path "$APP" | sort | while read -r B; do
+            printf '%s\n    signed: ' "${B#$APP/}"
+            codesign -d --entitlements :- "$B" 2>/dev/null \
+              | grep -oE "group\.[A-Za-z0-9.]+" | sort -u | tr '\n' ' '
+            printf '\n    profile: '
+            security cms -D -i "$B/embedded.mobileprovision" 2>/dev/null \
+              | plutil -extract Name raw - 2>/dev/null | tr '\n' ' '
+            echo
+          done
+          echo "--- DistributionSummary.plist (Apple's own record of each bundle's profile and entitlements) ---"
+          plutil -p build/export/DistributionSummary.plist 2>/dev/null | grep -iE "\"(name|profile|entitlements|com.apple.security.application-groups|group\.)|bundle|=>" | head -60 || true
 
       # The .xcarchive (dSYMs included) is the one artifact worth keeping past this run —
       # useful for symbolicating a crash report TestFlight shows later. The exported IPA
