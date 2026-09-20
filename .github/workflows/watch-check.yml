@@ -43,6 +43,26 @@ jobs:
         working-directory: ios/HuntingGame
         run: xcodegen generate
 
+      # Which entitlements file each target actually resolves to. This is a query, not a build: it
+      # exists because setting CODE_SIGN_ENTITLEMENTS in project.yml was not enough for the
+      # extensions, and the only way to see why is to ask Xcode what it ends up with.
+      - name: Show resolved entitlement settings per target
+        working-directory: ios/HuntingGame
+        run: |
+          for T in HuntingGame HuntingGameWidgets HuntingGameWatch HuntingGameWatchWidgets; do
+            echo "=== $T"
+            for CFG in Debug Release; do
+              printf '  %-8s ' "$CFG"
+              xcodebuild -project HuntingGame.xcodeproj -target "$T" -configuration "$CFG" -showBuildSettings 2>/dev/null \
+                | grep -E "^ +CODE_SIGN_ENTITLEMENTS = " | sed 's/^ *//' || true
+              echo
+            done
+          done
+          echo "--- raw occurrences in the generated project ---"
+          grep -n "CODE_SIGN_ENTITLEMENTS" HuntingGame.xcodeproj/project.pbxproj || echo "(none at all)"
+          echo "--- do the referenced files exist? ---"
+          ls -la HuntingGame.entitlements Widgets/HuntingGameWidgets/*.entitlements Watch/HuntingGameWatch/*.entitlements WatchWidgets/HuntingGameWatchWidgets/*.entitlements
+
       - name: Payload compatibility test
         working-directory: ios/HuntingGame
         run: |
