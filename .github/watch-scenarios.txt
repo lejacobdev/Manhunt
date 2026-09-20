@@ -1,3 +1,24 @@
 # One scenario per line: name [page]. Read by watch-check.yml; each is launched with -WatchScenario
 # (see WatchPreviewScenarios.swift) and screenshotted at a small and a large watch size.
 idle
+runner_safe
+runner_close
+runner_zone
+runner_bail
+runner_gear gear
+runner_empty_gear gear
+hunter_radar
+hunter_close
+hunter_targets targets
+hunter_empty targets
+hunter_jammed
+hunter_gear gear
+match_squad match
+caught_walk
+jailed
+jailed_escape
+out
+catch_request
+waiting
+deny_confirm
+spectator
