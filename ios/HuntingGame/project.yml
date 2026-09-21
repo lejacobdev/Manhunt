@@ -34,7 +34,7 @@ settings:
     # testflight.yml) rather than editing this file before every release. App Store
     # Connect rejects re-uploading the same version+build pair, so the workflow passes
     # a fresh CURRENT_PROJECT_VERSION (the run number) on every build.
-    MARKETING_VERSION: "1.0.1"
+    MARKETING_VERSION: "1.0.2"
     CURRENT_PROJECT_VERSION: "1"
 
 packages:

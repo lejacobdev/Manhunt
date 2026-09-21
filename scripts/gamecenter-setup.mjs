@@ -98,8 +98,15 @@ say(`MODE ${mode}${APPLY ? '' : '  (read-only: nothing is created)'}`);
 say('\n== Game Center capability on the App ID ==');
 {
   const ids = await api('GET', `/v1/bundleIds?filter[identifier]=${BUNDLE_ID}&include=bundleIdCapabilities&limit=10`);
+  // The identifier filter matches every App ID that STARTS with it (the widgets, the Watch app...)
+  // and `included` pools all their capabilities together, so narrow both to this one App ID.
   const bundle = (ids.json.data || []).find((b) => b.attributes.identifier === BUNDLE_ID);
-  const capTypes = (ids.json.included || []).filter((i) => i.type === 'bundleIdCapabilities').map((i) => i.attributes.capabilityType);
+  const ownCapabilityIds = new Set(
+    (((bundle && bundle.relationships && bundle.relationships.bundleIdCapabilities) || {}).data || []).map((c) => c.id)
+  );
+  const capTypes = (ids.json.included || [])
+    .filter((i) => i.type === 'bundleIdCapabilities' && ownCapabilityIds.has(i.id))
+    .map((i) => i.attributes.capabilityType);
   say(`  capabilities: ${capTypes.join(', ') || '(none)'}`);
   if (!bundle) fail('bundle id not found');
   else if (capTypes.includes('GAME_CENTER')) say('  GAME_CENTER already enabled');
