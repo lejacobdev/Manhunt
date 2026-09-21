@@ -1,0 +1,31 @@
+name: Inspect App Store Connect build
+
+# Read-only diagnostic, on ubuntu because it only calls the App Store Connect API: shows which build
+# each version has attached, the Game Center state of each version, and the entitlements App Store
+# Connect itself recorded for a build's bundles. This repo is public, so the logs are too: the script
+# prints identifiers, states and entitlement keys, never a credential (the team id is redacted).
+on:
+  workflow_dispatch:
+    inputs:
+      build:
+        description: "Build number to show the bundles' entitlements for (empty = the newest build)"
+        required: false
+        default: ""
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ask App Store Connect
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          echo "$API_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          export KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          node scripts/asc-inspect-build.mjs "$BUILD"
