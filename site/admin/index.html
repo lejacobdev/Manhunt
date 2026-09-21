@@ -420,6 +420,7 @@ async function openUser(id) {
           ? `<button onclick="act('${u.id}','unban')">Unban</button>`
           : `<button class="danger" onclick="banUser('${u.id}')">Ban</button>`}
         <button onclick="renameUser('${u.id}','${esc(u.username)}')">Rename</button>
+        <button onclick="retagUser('${u.id}','${esc(u.userTag)}')">Change tag</button>
         <button onclick="messageUser('${u.id}')">Send message</button>
         <button onclick="toggleAdmin('${u.id}',${!u.isAdmin})">${u.isAdmin?"Revoke admin":"Make admin"}</button>
         <button class="danger" onclick="deleteUser('${u.id}')">Delete account</button>
@@ -461,6 +462,16 @@ async function renameUser(id, current) {
   const username = prompt("New username (letters, numbers, underscore):", current);
   if (!username) return;
   await act(id, "rename", { username });
+}
+// The tag is the other half of a name: someone being harassed through their shareable friend
+// code can be moved off it without losing the account. "random" lets the server find a free
+// one, which is the only way out when every tag on a popular name is taken. Same endpoint as
+// Rename, which takes either half; an admin change skips the cooldown and does not spend the
+// owner own next change.
+async function retagUser(id, current) {
+  const userTag = prompt("New 4-digit tag, or \"random\" to let the server pick a free one:", current);
+  if (!userTag) return;
+  await act(id, "rename", { userTag: userTag.trim() });
 }
 async function messageUser(id) {
   const title = prompt("Notification title:", "A message from the Hunting Game team");
