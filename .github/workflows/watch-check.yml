@@ -1,6 +1,6 @@
 name: Watch check
 
-# Manual only (paid macOS minutes). Unsigned — this never touches App Store Connect and never
+# Manual only (about 15 minutes a run). Unsigned — this never touches App Store Connect and never
 # consumes a build number, so it's the cheap way to find out whether a change compiles and what
 # the Watch app looks like before spending a real TestFlight build on it.
 #

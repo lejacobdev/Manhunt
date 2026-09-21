@@ -1,8 +1,10 @@
 name: TestFlight
 
-# Manual only — every run burns paid macOS runner minutes (private repo) and consumes one
-# App Store Connect build-number slot, so this shouldn't fire on every push. Trigger it from
-# the Actions tab, or `gh workflow run testflight.yml`.
+# Manual only — every run consumes one App Store Connect build-number slot and, because the
+# runner's keychain holds no Apple Development identity, makes Xcode mint a new certificate that
+# the account then keeps; the account caps those (see the signing notes below), so this
+# shouldn't fire on every push. Actions minutes themselves cost nothing: the repo is public.
+# Trigger it from the Actions tab, or `gh workflow run testflight.yml`.
 on:
   workflow_dispatch:
     inputs:
