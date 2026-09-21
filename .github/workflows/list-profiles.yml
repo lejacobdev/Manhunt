@@ -175,17 +175,38 @@ jobs:
                   console.log("  -> " + request.type + " already enabled, nothing to do");
                   continue;
                 }
-                const madeCap = await fetch("https://api.appstoreconnect.apple.com/v1/bundleIdCapabilities", {
-                  method: "POST",
-                  headers: { Authorization: "Bearer " + jwt, "Content-Type": "application/json" },
-                  body: JSON.stringify({ data: {
-                    type: "bundleIdCapabilities",
-                    attributes: { capabilityType: request.type },
-                    relationships: { bundleId: { data: { type: "bundleIds", id: b.id } } },
-                  } }),
-                });
-                console.log("  -> enabling " + request.type + ": HTTP " + madeCap.status);
-                if (!madeCap.ok) console.log(JSON.stringify(await madeCap.json(), null, 2));
+                // Some capabilities are rejected without a configuration. Sign in with Apple answers
+                // 409 "Please select at least one configuration for Sign In with Apple" on a bare
+                // create: it needs the same choice the portal asks for, this app being the primary
+                // App ID rather than grouped under another one. Each shape below is tried in turn so
+                // a capability that needs no settings still goes through the plain create.
+                const settingShapes = request.type === "APPLE_ID_AUTH"
+                  ? [
+                      [{ key: "APPLE_ID_AUTH_APP_CONSENT", options: [{ key: "PRIMARY_APP_CONSENT" }] }],
+                      [{ key: "APPLE_ID_AUTH_APP_CONSENT", enabled: true, options: [{ key: "PRIMARY_APP_CONSENT", enabled: true }] }],
+                    ]
+                  : [null];
+
+                let enabledOk = false;
+                for (const settings of settingShapes) {
+                  const attributes = settings
+                    ? { capabilityType: request.type, settings }
+                    : { capabilityType: request.type };
+                  const madeCap = await fetch("https://api.appstoreconnect.apple.com/v1/bundleIdCapabilities", {
+                    method: "POST",
+                    headers: { Authorization: "Bearer " + jwt, "Content-Type": "application/json" },
+                    body: JSON.stringify({ data: {
+                      type: "bundleIdCapabilities",
+                      attributes,
+                      relationships: { bundleId: { data: { type: "bundleIds", id: b.id } } },
+                    } }),
+                  });
+                  console.log("  -> enabling " + request.type + ": HTTP " + madeCap.status
+                    + (settings ? " (with settings)" : ""));
+                  if (madeCap.ok) { enabledOk = true; break; }
+                  console.log(JSON.stringify(await madeCap.json(), null, 2));
+                }
+                if (!enabledOk) console.log("  -> FAILED to enable " + request.type);
               }
             }
           })();
