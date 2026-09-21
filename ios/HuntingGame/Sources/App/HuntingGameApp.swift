@@ -61,6 +61,7 @@ struct RootView: View {
                 PushNotificationManager.shared.requestAuthorizationIfNeeded()
                 PushNotificationManager.shared.flushPendingTokenIfNeeded()
             }
+            startGameCenterIfReady()
             Task { await UpdateChecker.shared.checkIfNeeded() }
         }
         .onChange(of: authSession.isAuthenticated) { isAuthenticated in
@@ -68,6 +69,7 @@ struct RootView: View {
                 presence.start()
                 PushNotificationManager.shared.requestAuthorizationIfNeeded()
                 PushNotificationManager.shared.flushPendingTokenIfNeeded()
+                startGameCenterIfReady()
             } else {
                 presence.stop()
             }
@@ -77,7 +79,21 @@ struct RootView: View {
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 Task { await UpdateChecker.shared.checkIfNeeded() }
+                // Throttled inside: cheap when nothing changed, and it catches a match finished
+                // while the app was in the background.
+                Task { await GameCenterManager.shared.syncFromServer() }
             }
         }
+        // Someone who accepts the terms and rules after they were already signed in (an account
+        // from before those gates existed) becomes eligible at that moment, not next launch.
+        .onChange(of: hasAcceptedTerms) { _ in startGameCenterIfReady() }
+        .onChange(of: hasSeenRules) { _ in startGameCenterIfReady() }
+    }
+
+    /// Game Center is only started for a signed-in player who has been through the terms and the
+    /// rules. Nothing about it should appear in front of either gate.
+    private func startGameCenterIfReady() {
+        guard authSession.isAuthenticated, hasAcceptedTerms, hasSeenRules else { return }
+        GameCenterManager.shared.startAuthenticationIfNeeded()
     }
 }

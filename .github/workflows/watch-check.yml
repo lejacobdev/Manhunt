@@ -69,6 +69,15 @@ jobs:
           swiftc Shared/WatchSyncPayload.swift Tests/WatchPayloadCheck/main.swift -o "$RUNNER_TEMP/payloadcheck"
           "$RUNNER_TEMP/payloadcheck"
 
+      # The Game Center logic (what to report, and never going backwards) plus a check that the
+      # identifiers in code and in GameCenter/catalog.json, which App Store Connect is built from,
+      # agree. Game Center fails silently when an id is wrong, so this is where that gets caught.
+      - name: Game Center logic test
+        working-directory: ios/HuntingGame
+        run: |
+          swiftc Sources/Services/GameCenter/GameCenterCatalog.swift Tests/GameCenterCheck/main.swift -o "$RUNNER_TEMP/gccheck"
+          "$RUNNER_TEMP/gccheck" GameCenter/catalog.json
+
       # Compiles the iPhone app (which embeds the Watch app and both widget extensions), so a
       # break in GameViewModel, the shared payload, or any target shows up here.
       - name: Build iPhone app (unsigned)

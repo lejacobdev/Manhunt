@@ -44,16 +44,25 @@ interface Achievement {
  * Every achievement is derived from the same counters as the stat block rather than
  * stored per-user: unlocking is a pure function of match history, so there's no separate
  * state to migrate, backfill, or drift out of sync with the games actually played.
+ *
+ * Game Center mirrors this list one-to-one (ios/HuntingGame/GameCenter/catalog.json). The app
+ * reports each achievement's progress/goal to Game Center after fetching the profile, so adding
+ * one here means adding it to the catalogue and to App Store Connect too — an id the catalogue
+ * does not know is simply not reported, so forgetting is harmless, just incomplete.
  */
 function buildAchievements(stats: ProfileStats): Achievement[] {
   const defs: Array<Omit<Achievement, 'progress' | 'unlocked'> & { value: number }> = [
     { id: 'first_catch', title: 'First Blood', description: 'Catch your first runner.', icon: 'hand.raised.fill', goal: 1, value: stats.catchesMade },
     { id: 'catches_10', title: 'Bounty Hunter', description: 'Catch 10 runners.', icon: 'figure.run.circle.fill', goal: 10, value: stats.catchesMade },
     { id: 'catches_50', title: 'Manhunter', description: 'Catch 50 runners.', icon: 'target', goal: 50, value: stats.catchesMade },
+    { id: 'catches_100', title: 'Apex Predator', description: 'Catch 100 runners.', icon: 'crown.fill', goal: 100, value: stats.catchesMade },
     { id: 'wins_1', title: 'On the Board', description: 'Win your first match.', icon: 'rosette', goal: 1, value: stats.wins },
     { id: 'wins_10', title: 'Champion', description: 'Win 10 matches.', icon: 'trophy.fill', goal: 10, value: stats.wins },
+    { id: 'wins_25', title: 'Legend', description: 'Win 25 matches.', icon: 'flame.fill', goal: 25, value: stats.wins },
     { id: 'matches_10', title: 'Regular', description: 'Play 10 matches.', icon: 'gamecontroller.fill', goal: 10, value: stats.matchesPlayed },
     { id: 'matches_50', title: 'Veteran', description: 'Play 50 matches.', icon: 'shield.lefthalf.filled', goal: 50, value: stats.matchesPlayed },
+    { id: 'hunter_10', title: 'Predator', description: 'Play 10 matches as a hunter.', icon: 'scope', goal: 10, value: stats.matchesAsHunter },
+    { id: 'runner_10', title: 'Fugitive', description: 'Play 10 matches as a runner.', icon: 'figure.run', goal: 10, value: stats.matchesAsRunner },
     { id: 'host_5', title: 'Ringleader', description: 'Host 5 matches.', icon: 'star.fill', goal: 5, value: stats.matchesHosted },
     { id: 'powerups_20', title: 'Scavenger', description: 'Collect 20 power-ups.', icon: 'shippingbox.fill', goal: 20, value: stats.powerUpsCollected },
     { id: 'marathon_120', title: 'Long Hunt', description: 'Play for 2 hours total.', icon: 'clock.fill', goal: 120, value: stats.minutesPlayed },

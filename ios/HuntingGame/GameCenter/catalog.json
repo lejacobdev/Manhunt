@@ -1,0 +1,29 @@
+{
+  "_comment": "The single source of truth for Game Center. Read by scripts/gamecenter-setup.mjs (creates these in App Store Connect) and checked against GameCenterCatalog.swift by Tests/GameCenterCheck. Vendor identifiers can NEVER be changed once created, so think before renaming one. Achievement keys match the server's buildAchievements ids (backend/src/routes/users.ts).",
+  "prefix": {
+    "leaderboard": "hg.leaderboard.",
+    "achievement": "hg.achievement."
+  },
+  "leaderboards": [
+    { "sort": "wins",     "name": "Matches Won",    "suffix": "wins",    "suffixSingular": "win" },
+    { "sort": "catches",  "name": "Runners Caught", "suffix": "catches", "suffixSingular": "catch" },
+    { "sort": "matches",  "name": "Matches Played", "suffix": "matches", "suffixSingular": "match" },
+    { "sort": "playtime", "name": "Time Played",    "suffix": "min",     "suffixSingular": "min" }
+  ],
+  "achievements": [
+    { "key": "first_catch",  "name": "First Blood",   "before": "Catch your first runner.",          "after": "You caught your first runner.",       "points": 10,  "icon": "hand.raised.fill",        "tint": "red" },
+    { "key": "catches_10",   "name": "Bounty Hunter", "before": "Catch 10 runners.",                 "after": "You caught 10 runners.",              "points": 25,  "icon": "figure.run.circle.fill",  "tint": "red" },
+    { "key": "catches_50",   "name": "Manhunter",     "before": "Catch 50 runners.",                 "after": "You caught 50 runners.",              "points": 50,  "icon": "target",                  "tint": "red" },
+    { "key": "catches_100",  "name": "Apex Predator", "before": "Catch 100 runners.",                "after": "You caught 100 runners.",             "points": 100, "icon": "crown.fill",              "tint": "red" },
+    { "key": "wins_1",       "name": "On the Board",  "before": "Win your first match.",             "after": "You won your first match.",           "points": 20,  "icon": "rosette",                 "tint": "amber" },
+    { "key": "wins_10",      "name": "Champion",      "before": "Win 10 matches.",                   "after": "You won 10 matches.",                 "points": 60,  "icon": "trophy.fill",             "tint": "amber" },
+    { "key": "wins_25",      "name": "Legend",        "before": "Win 25 matches.",                   "after": "You won 25 matches.",                 "points": 100, "icon": "flame.fill",              "tint": "amber" },
+    { "key": "matches_10",   "name": "Regular",       "before": "Play 10 matches.",                  "after": "You played 10 matches.",              "points": 15,  "icon": "gamecontroller.fill",     "tint": "cyan" },
+    { "key": "matches_50",   "name": "Veteran",       "before": "Play 50 matches.",                  "after": "You played 50 matches.",              "points": 60,  "icon": "shield.lefthalf.filled",  "tint": "cyan" },
+    { "key": "host_5",       "name": "Ringleader",    "before": "Host 5 matches.",                   "after": "You hosted 5 matches.",               "points": 30,  "icon": "star.fill",               "tint": "purple" },
+    { "key": "powerups_20",  "name": "Scavenger",     "before": "Collect 20 power-ups.",             "after": "You collected 20 power-ups.",        "points": 30,  "icon": "shippingbox.fill",        "tint": "green" },
+    { "key": "marathon_120", "name": "Long Hunt",     "before": "Play for 2 hours in total.",        "after": "You have played for 2 hours in total.", "points": 40, "icon": "clock.fill",              "tint": "cyan" },
+    { "key": "hunter_10",    "name": "Predator",      "before": "Play 10 matches as a hunter.",      "after": "You played 10 matches as a hunter.",  "points": 30,  "icon": "scope",                   "tint": "red" },
+    { "key": "runner_10",    "name": "Fugitive",      "before": "Play 10 matches as a runner.",      "after": "You played 10 matches as a runner.",  "points": 30,  "icon": "figure.run",              "tint": "green" }
+  ]
+}

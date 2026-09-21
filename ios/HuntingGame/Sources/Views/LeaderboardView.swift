@@ -3,16 +3,38 @@ import SwiftUI
 struct LeaderboardView: View {
     @StateObject private var viewModel = LeaderboardViewModel()
     @EnvironmentObject var authSession: AuthSession
+    @ObservedObject private var gameCenter = GameCenterManager.shared
+    @State private var gameCenterDestination: GameCenterDestination?
 
     /// No backdrop or NavigationStack of its own — LobbyView owns both, so its stationary
     /// backdrop shows through this page and the friend-profile rows below push onto its
     /// stack.
     var body: some View {
         VStack(spacing: 0) {
-            Text("Leaderboard")
-                .font(ADATheme.displayFont(size: 20))
-                .foregroundColor(.white)
-                .padding(.top, 12)
+            ZStack {
+                Text("Leaderboard")
+                    .font(ADATheme.displayFont(size: 20))
+                    .foregroundColor(.white)
+
+                // This screen ranks you against your own players; Game Center's board is the
+                // whole world's. Only offered once Game Center is actually connected.
+                if gameCenter.isConnected {
+                    HStack {
+                        Spacer()
+                        Button {
+                            gameCenterDestination = .leaderboard(sort: viewModel.sort.rawValue)
+                        } label: {
+                            Image(systemName: "globe.americas.fill")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundColor(ADATheme.spatialCyan)
+                                .padding(8)
+                        }
+                        .accessibilityLabel("Open this leaderboard in Game Center")
+                    }
+                    .padding(.horizontal, 12)
+                }
+            }
+            .padding(.top, 12)
 
             sortPicker
 
@@ -43,6 +65,10 @@ struct LeaderboardView: View {
         .adaptiveContentWidth()
         .task { await viewModel.load() }
         .refreshable { await viewModel.load() }
+        .sheet(item: $gameCenterDestination) { destination in
+            GameCenterView(destination: destination) { gameCenterDestination = nil }
+                .ignoresSafeArea()
+        }
     }
 
     private var sortPicker: some View {

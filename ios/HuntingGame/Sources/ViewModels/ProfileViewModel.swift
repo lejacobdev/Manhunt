@@ -28,7 +28,11 @@ final class ProfileViewModel: ObservableObject {
         do {
             switch source {
             case .me:
-                profile = try await api.myProfile()
+                let loaded = try await api.myProfile()
+                profile = loaded
+                // The profile screen already paid for this fetch; hand it to Game Center rather
+                // than asking the server again. Never someone else's profile, only our own.
+                Task { await GameCenterManager.shared.report(loaded) }
             case .user(let id):
                 profile = try await api.profile(userId: id)
             }

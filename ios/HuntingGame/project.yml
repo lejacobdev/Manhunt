@@ -110,6 +110,11 @@ targets:
           # archiving against an App Store distribution profile (see the TestFlight
           # workflow), so one declaration covers both build paths.
           aps-environment: development
+          # Game Center. Also needs the GAME_CENTER capability on the App ID
+          # (com.huntinggame.app) in App Store Connect, which scripts/gamecenter-setup.mjs
+          # switches on. Without either half the app still runs: authentication just reports
+          # failure and the Game Center card shows "offline".
+          com.apple.developer.game-center: true
     settings:
       base:
         # Set explicitly rather than relying on the `entitlements:` block above to wire it

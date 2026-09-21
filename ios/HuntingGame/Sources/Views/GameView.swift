@@ -129,6 +129,16 @@ struct GameView: View {
         .animation(ADATheme.ambientSpring, value: viewModel.isCaught)
         .animation(ADATheme.ambientSpring, value: viewModel.isOut)
         .animation(ADATheme.ambientSpring, value: socket.gameOverReason)
+        // A match just finished, so wins, catches and playtime just changed. Give the server a
+        // moment to write the final results, then tell Game Center; that is what turns an
+        // achievement earned in this match into a banner while the player is still looking.
+        .onChange(of: socket.gameOverReason) { reason in
+            guard reason != nil else { return }
+            Task {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                await GameCenterManager.shared.syncFromServer(force: true)
+            }
+        }
         .animation(ADATheme.ambientSpring, value: viewModel.catchTargetId)
         .animation(ADATheme.controlSpring, value: viewModel.incomingCatchRequest)
         .animation(ADATheme.controlSpring, value: viewModel.pendingDenyConfirm)

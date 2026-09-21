@@ -32,6 +32,8 @@ struct ProfileView: View {
                     .padding(.horizontal)
                 }
 
+                GameCenterCard()
+
                 NavigationLink {
                     RulesView()
                 } label: {
