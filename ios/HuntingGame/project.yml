@@ -226,19 +226,13 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     entitlements:
       path: WatchWidgets/HuntingGameWatchWidgets/HuntingGameWatchWidgets.entitlements
-      # TEMPORARILY NOT REQUESTING THE APP GROUP. The complication can only read game state through
-      # group.com.huntinggame.app.watch, and it should declare it exactly as the Watch app does:
-      #
-      #   properties:
-      #     com.apple.security.application-groups:
-      #       - group.com.huntinggame.app.watch
-      #
-      # It is off because the group is not yet associated with this App ID
-      # (com.huntinggame.app.watchkitapp.widgets) in the Apple Developer portal, and Xcode cannot
-      # make that association with an API key: archiving fails with "Authentication failed ...
-      # bearer token" / "No profiles for ... were found". Fix: Identifiers > that App ID > App
-      # Groups > Configure > tick group.com.huntinggame.app.watch. Then restore the block above.
-      # Until then the complication builds and installs but reads an empty container (idle).
+      # Same App Group as the Watch app: the complication can only read game state through it.
+      # This needs the group associated with the App ID (com.huntinggame.app.watchkitapp.widgets)
+      # in the Apple Developer portal — Xcode cannot do that with an API key, and archiving fails
+      # with "Authentication failed ... bearer token" / "No profiles for ... were found" without it.
+      properties:
+        com.apple.security.application-groups:
+          - group.com.huntinggame.app.watch
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp.widgets
