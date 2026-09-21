@@ -17,6 +17,14 @@ on:
         description: "Optional: comma-separated bundle identifiers to switch the Game Center capability on for (skips any that already have it)"
         required: false
         default: ""
+      enable_capability:
+        description: "Optional: any capabilityType to switch on, e.g. APPLE_ID_AUTH, GAME_CENTER, APP_GROUPS (used with enable_capability_for)"
+        required: false
+        default: ""
+      enable_capability_for:
+        description: "Optional: comma-separated bundle identifiers for enable_capability"
+        required: false
+        default: ""
 
 jobs:
   list:
@@ -29,6 +37,8 @@ jobs:
           API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
           ENABLE_APP_GROUPS_FOR: ${{ inputs.enable_app_groups_for }}
           ENABLE_GAME_CENTER_FOR: ${{ inputs.enable_game_center_for }}
+          ENABLE_CAPABILITY: ${{ inputs.enable_capability }}
+          ENABLE_CAPABILITY_FOR: ${{ inputs.enable_capability_for }}
           AGE_RATING_PATCH: ${{ inputs.age_rating_patch }}
         run: |
           mkdir -p "$HOME/private_keys"
@@ -147,27 +157,35 @@ jobs:
                 }
               }
 
-              // Optional, explicit, additive: switch Game Center on for the listed bundle IDs.
-              // App Store Connect can refuse a version that has Game Center on when only the main
-              // app carries the entitlement; developers report the Watch and extension App IDs
-              // need the capability too, and Xcode has no checkbox for a Watch target.
-              const gameCenterFor = (process.env.ENABLE_GAME_CENTER_FOR || "").split(",").map((x) => x.trim()).filter(Boolean);
-              if (gameCenterFor.includes(b.attributes.identifier)) {
-                if (caps.includes("GAME_CENTER")) {
-                  console.log("  -> Game Center already enabled, nothing to do");
-                } else {
-                  const madeGc = await fetch("https://api.appstoreconnect.apple.com/v1/bundleIdCapabilities", {
-                    method: "POST",
-                    headers: { Authorization: "Bearer " + jwt, "Content-Type": "application/json" },
-                    body: JSON.stringify({ data: {
-                      type: "bundleIdCapabilities",
-                      attributes: { capabilityType: "GAME_CENTER" },
-                      relationships: { bundleId: { data: { type: "bundleIds", id: b.id } } },
-                    } }),
-                  });
-                  console.log("  -> enabling Game Center: HTTP " + madeGc.status);
-                  if (!madeGc.ok) console.log(JSON.stringify(await madeGc.json(), null, 2));
+              // Optional, explicit, additive: switch a capability on for the listed bundle IDs.
+              // App Store Connect refuses a version whose entitlements the App ID does not allow, and
+              // automatic signing builds its profile from the entitlements file — so a capability has
+              // to be on the App ID BEFORE the archive, not after. enable_capability covers any of
+              // them; the two named inputs are kept because they are what earlier notes refer to.
+              const gcList = (process.env.ENABLE_GAME_CENTER_FOR || "").split(",").map((x) => x.trim()).filter(Boolean);
+              const genericList = (process.env.ENABLE_CAPABILITY_FOR || "").split(",").map((x) => x.trim()).filter(Boolean);
+              const genericType = (process.env.ENABLE_CAPABILITY || "").trim();
+              const wanted = [
+                ...gcList.map((id) => ({ id, type: "GAME_CENTER" })),
+                ...(genericType ? genericList.map((id) => ({ id, type: genericType })) : []),
+              ].filter((w) => w.id === b.attributes.identifier);
+
+              for (const request of wanted) {
+                if (caps.includes(request.type)) {
+                  console.log("  -> " + request.type + " already enabled, nothing to do");
+                  continue;
                 }
+                const madeCap = await fetch("https://api.appstoreconnect.apple.com/v1/bundleIdCapabilities", {
+                  method: "POST",
+                  headers: { Authorization: "Bearer " + jwt, "Content-Type": "application/json" },
+                  body: JSON.stringify({ data: {
+                    type: "bundleIdCapabilities",
+                    attributes: { capabilityType: request.type },
+                    relationships: { bundleId: { data: { type: "bundleIds", id: b.id } } },
+                  } }),
+                });
+                console.log("  -> enabling " + request.type + ": HTTP " + madeCap.status);
+                if (!madeCap.ok) console.log(JSON.stringify(await madeCap.json(), null, 2));
               }
             }
           })();

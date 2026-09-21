@@ -83,6 +83,103 @@ final class APIClient {
         return (resp.token, resp.user)
     }
 
+    // MARK: - Sign in with Apple / Game Center
+
+    /// Both provider endpoints answer with either a session or a ticket, so one shape decodes both.
+    private struct ProviderSignInResponse: Decodable {
+        let token: String?
+        let user: AppUser?
+        let needsUsername: Bool?
+        let ticket: String?
+    }
+
+    private func outcome(from response: ProviderSignInResponse) throws -> ProviderSignInOutcome {
+        if let token = response.token, let user = response.user {
+            return .signedIn(token: token, user: user)
+        }
+        if response.needsUsername == true, let ticket = response.ticket {
+            return .needsUsername(ticket: ticket)
+        }
+        throw APIError.server("That sign-in didn't come back with anything we could use. Please try again.")
+    }
+
+    struct AppleSignInBody: Encodable {
+        let identityToken: String
+        let nonce: String?
+    }
+
+    func signInWithApple(identityToken: String, nonce: String?) async throws -> ProviderSignInOutcome {
+        let resp: ProviderSignInResponse = try await post(
+            "/auth/apple",
+            body: AppleSignInBody(identityToken: identityToken, nonce: nonce),
+            authorized: false
+        )
+        return try outcome(from: resp)
+    }
+
+    func signInWithGameCenter(_ payload: GameCenterIdentityService.Payload) async throws -> ProviderSignInOutcome {
+        let resp: ProviderSignInResponse = try await post("/auth/gamecenter", body: payload, authorized: false)
+        return try outcome(from: resp)
+    }
+
+    /// Finishes a provider sign-up once the person has chosen a username.
+    func completeProviderSignUp(ticket: String, username: String) async throws -> (token: String, user: AppUser) {
+        struct Body: Encodable { let ticket: String; let username: String }
+        struct Response: Decodable { let token: String; let user: AppUser }
+        let resp: Response = try await post(
+            "/auth/provider/complete",
+            body: Body(ticket: ticket, username: username),
+            authorized: false
+        )
+        return (resp.token, resp.user)
+    }
+
+    // MARK: - Account settings
+
+    func accountOverview() async throws -> AccountOverview {
+        try await get("/users/me/account")
+    }
+
+    /// Changes the username, the tag, or both. `userTag` may be the literal "random" to have the
+    /// server find a free one — the only way out of a name whose every tag is taken.
+    func changeName(username: String?, userTag: String?) async throws -> (token: String, user: AppUser, nextNameChangeAt: String?) {
+        struct Body: Encodable { let username: String?; let userTag: String? }
+        struct Response: Decodable { let token: String; let user: AppUser; let nextNameChangeAt: String? }
+        let resp: Response = try await patch("/users/me/name", body: Body(username: username, userTag: userTag))
+        return (resp.token, resp.user, resp.nextNameChangeAt)
+    }
+
+    /// `currentPassword` is required only when the account already has one; an account created with
+    /// Apple or Game Center sets its first password without one.
+    func setPassword(newPassword: String, currentPassword: String?) async throws {
+        struct Body: Encodable { let newPassword: String; let currentPassword: String? }
+        struct Response: Decodable { let ok: Bool }
+        let _: Response = try await post(
+            "/users/me/password",
+            body: Body(newPassword: newPassword, currentPassword: currentPassword)
+        )
+    }
+
+    private struct ConnectionsResponse: Decodable { let connections: AccountConnections }
+
+    func linkApple(identityToken: String, nonce: String?) async throws -> AccountConnections {
+        let resp: ConnectionsResponse = try await post(
+            "/users/me/link/apple",
+            body: AppleSignInBody(identityToken: identityToken, nonce: nonce)
+        )
+        return resp.connections
+    }
+
+    func linkGameCenter(_ payload: GameCenterIdentityService.Payload) async throws -> AccountConnections {
+        let resp: ConnectionsResponse = try await post("/users/me/link/gamecenter", body: payload)
+        return resp.connections
+    }
+
+    func unlink(_ provider: AccountProvider) async throws -> AccountConnections {
+        let resp: ConnectionsResponse = try await sendDelete("/users/me/link/\(provider.rawValue)")
+        return resp.connections
+    }
+
     // MARK: - Friends
 
     func searchUsers(query: String) async throws -> [AppUser] {
@@ -403,6 +500,15 @@ final class APIClient {
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
+        return try await send(request)
+    }
+
+    /// A real HTTP DELETE that decodes its response body. Separate from `delete(_:)` below, which
+    /// despite its name POSTs (the delete-account and decline routes are POST endpoints) and
+    /// decodes nothing.
+    private func sendDelete<T: Decodable>(_ path: String) async throws -> T {
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = "DELETE"
         return try await send(request)
     }
 

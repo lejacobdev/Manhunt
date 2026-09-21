@@ -52,6 +52,9 @@ final class GameCenterManager: ObservableObject {
     private var pendingSignInController: UIViewController?
     private var isSyncing = false
     private var lastSyncAt: Date = .distantPast
+    /// Callers of `authenticateForSignIn()`, waiting for the handler to reach a settled status.
+    /// Keyed so a timed-out waiter can be resumed and removed without disturbing the others.
+    private var authenticationWaiters: [(id: UUID, continuation: CheckedContinuation<Status, Never>)] = []
 
     private init() {
         isSharingEnabled = UserDefaults.standard.object(forKey: Keys.sharing) as? Bool ?? true
@@ -78,6 +81,8 @@ final class GameCenterManager: ObservableObject {
         if let viewController {
             pendingSignInController = viewController
             status = .needsSignIn
+            // Deliberately not settling the waiters: a sheet appearing is a step on the way to an
+            // answer, not the answer. `authenticateForSignIn` presents it and keeps waiting.
             return
         }
 
@@ -86,6 +91,7 @@ final class GameCenterManager: ObservableObject {
             pendingSignInController = nil
             status = .signedOut
             if let error { print("[GameCenter] not signed in: \(error.localizedDescription)") }
+            settleAuthenticationWaiters()
             return
         }
 
@@ -94,17 +100,64 @@ final class GameCenterManager: ObservableObject {
             // Child accounts get Game Center's own restrictions; never post their name and
             // scores to public boards from here.
             status = .restricted
+            settleAuthenticationWaiters()
             return
         }
 
         status = .connected(alias: player.displayName)
+        settleAuthenticationWaiters()
         Task { await syncFromServer(force: true) }
+    }
+
+    private func settleAuthenticationWaiters() {
+        let waiters = authenticationWaiters
+        authenticationWaiters = []
+        for waiter in waiters { waiter.continuation.resume(returning: status) }
+    }
+
+    /// Resumes one waiter if it is still pending. Removing it from the list first is what makes a
+    /// double resume impossible: every path resumes only continuations it has just taken out.
+    private func timeOutAuthenticationWaiter(id: UUID) {
+        guard let index = authenticationWaiters.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = authenticationWaiters.remove(at: index)
+        waiter.continuation.resume(returning: status)
     }
 
     /// Shows the Game Center sign-in sheet that authentication handed back.
     func presentSignIn() {
         guard let controller = pendingSignInController else { return }
         Self.topViewController()?.present(controller, animated: true)
+    }
+
+    /// Authenticates because the player asked to sign in to the game *with* Game Center, and waits
+    /// for an answer.
+    ///
+    /// This is the one place that presents Game Center's sheet without being asked twice, and it is
+    /// allowed to: the player tapped "Continue with Game Center". Everything else in this class
+    /// still leaves the sheet parked behind a button (see `startAuthenticationIfNeeded`), so Game
+    /// Center never appears in front of the terms gate on a fresh install.
+    ///
+    /// Returns the settled status. The timeout exists because the handler is not guaranteed to fire
+    /// again if the player dismisses Game Center's sheet without choosing anything — without it the
+    /// caller's spinner would run forever.
+    func authenticateForSignIn(timeout: TimeInterval = 90) async -> Status {
+        if isConnected { return status }
+
+        startAuthenticationIfNeeded()
+
+        if case .needsSignIn = status { presentSignIn() }
+
+        // A plain continuation plus a timer, rather than a task group racing the two: cancelling a
+        // task blocked on `withCheckedContinuation` does not resume it, so a group would sit
+        // forever waiting for that child to finish even after the timeout won.
+        let waiterId = UUID()
+        return await withCheckedContinuation { continuation in
+            authenticationWaiters.append((id: waiterId, continuation: continuation))
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                self?.timeOutAuthenticationWaiter(id: waiterId)
+            }
+        }
     }
 
     // MARK: - Reporting

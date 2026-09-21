@@ -32,6 +32,14 @@ struct ProfileView: View {
                     .padding(.horizontal)
                 }
 
+                NavigationLink {
+                    AccountSettingsView()
+                } label: {
+                    HStack { Image(systemName: "person.text.rectangle"); Text("NAME & SIGN-IN") }
+                }
+                .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                .padding(.horizontal)
+
                 GameCenterCard()
 
                 NavigationLink {

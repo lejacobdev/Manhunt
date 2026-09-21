@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 
 struct AuthView: View {
@@ -22,6 +23,14 @@ struct AuthView: View {
         }
         .onAppear {
             withAnimation(.easeOut(duration: 0.5)) { hasAppeared = true }
+        }
+        // A provider sign-in with no account behind it yet: the identity is verified and held in a
+        // short-lived ticket while the person picks a name.
+        .sheet(isPresented: Binding(
+            get: { viewModel.pendingSignUpTicket != nil },
+            set: { if !$0 { viewModel.cancelSignUp() } }
+        )) {
+            ChooseUsernameView(viewModel: viewModel)
         }
         // Explains a sign-out that otherwise looks like the app breaking for no reason.
         .alert("Account suspended", isPresented: Binding(
@@ -113,6 +122,8 @@ struct AuthView: View {
                     .buttonStyle(GlowButtonStyle(tint: ADATheme.runnerGreen, isLoading: viewModel.isLoading))
                     .padding(.horizontal)
                     .disabled(viewModel.isLoading)
+
+                    providerSignIn
                 }
                 .adaptiveContentWidth()
                 .padding(.vertical, 28)
@@ -121,6 +132,66 @@ struct AuthView: View {
                 .animation(ADATheme.controlSpring, value: viewModel.errorMessage)
             }
         }
+    }
+
+    /// The two Apple-provided ways in, under the username form.
+    ///
+    /// Sign in with Apple uses Apple's own button rather than one styled like the rest of the
+    /// screen: its appearance is specified by Apple, and a lookalike is the kind of thing App Review
+    /// notices. Game Center sits beside it in the app's own glass style, since Apple publishes no
+    /// standard button for it.
+    private var providerSignIn: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 10) {
+                dividerLine
+                Text("OR")
+                    .font(ADATheme.telemetryFont(size: 10))
+                    .foregroundColor(.white.opacity(0.35))
+                    .tracking(1.5)
+                dividerLine
+            }
+            .padding(.horizontal)
+
+            SignInWithAppleButton(.continue) { request in
+                AppleSignInService.shared.configure(request)
+            } onCompletion: { result in
+                viewModel.handleAppleButton(result)
+            }
+            .signInWithAppleButtonStyle(.white)
+            .frame(height: 50)
+            .clipShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
+            .padding(.horizontal)
+            .disabled(viewModel.busyProvider != nil)
+
+            Button {
+                viewModel.signInWithGameCenter()
+            } label: {
+                HStack(spacing: 8) {
+                    if viewModel.busyProvider == .gamecenter {
+                        ProgressView().tint(.white)
+                    } else {
+                        Image(systemName: "gamecontroller.fill")
+                    }
+                    Text("Continue with Game Center")
+                }
+            }
+            .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+            .padding(.horizontal)
+            .disabled(viewModel.busyProvider != nil)
+
+            Text("Signing in with Apple or Game Center never posts anything for you, and we never see your email address.")
+                .font(ADATheme.telemetryFont(size: 10))
+                .foregroundColor(.white.opacity(0.3))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 28)
+        }
+        .padding(.top, 4)
+    }
+
+    private var dividerLine: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.12))
+            .frame(height: 1)
     }
 
     private func submit() {
