@@ -19,13 +19,13 @@
 
 import crypto from 'node:crypto';
 
+import { IdentityError } from './IdentityError';
+
 const APPLE_ISSUER = 'https://appleid.apple.com';
 const APPLE_KEYS_URL = 'https://appleid.apple.com/auth/keys';
 /** Both halves of the app ship under the iOS bundle id, so one audience covers phone and watch. */
 const DEFAULT_AUDIENCE = 'com.huntinggame.app';
 const CLOCK_SKEW_SECONDS = 120;
-
-export class IdentityError extends Error {}
 
 interface AppleKey {
   kid: string;
@@ -147,3 +147,5 @@ export async function verifyAppleIdentityToken(
   if (!claims.sub) throw new IdentityError('That Apple sign-in carries no account identifier.');
   return { subject: claims.sub };
 }
+
+export { IdentityError };

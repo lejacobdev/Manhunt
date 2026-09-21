@@ -13,6 +13,7 @@ import { gamesRouter } from './routes/games';
 import { powerUpsRouter } from './routes/powerups';
 import { invitesRouter } from './routes/invites';
 import { adminRouter } from './routes/admin';
+import { installAsyncRouteErrorForwarding } from './utils/asyncRouteErrors';
 import { usersRouter } from './routes/users';
 import { pushRouter } from './routes/push';
 import { prisma } from './lib/prisma';
@@ -52,6 +53,10 @@ import {
 const JWT_SECRET = process.env.JWT_SECRET ?? 'dev-secret-do-not-use-in-production';
 
 export const app = express();
+// Must run before any request is served: without it, an async handler that rejects leaves the
+// request hanging instead of reaching the error middleware at the bottom of this file.
+installAsyncRouteErrorForwarding();
+
 app.use(cors({ origin: process.env.CORS_ORIGIN ?? '*' }));
 app.use(express.json());
 

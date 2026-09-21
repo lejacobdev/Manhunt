@@ -5,7 +5,8 @@ import { prisma } from '../lib/prisma';
 import { AuthedRequest, requireAuth, signToken } from '../middleware/auth';
 import { passwordField, usernameField, zodErrorMessage } from '../utils/validation';
 import { NAME_CHANGE_COOLDOWN_DAYS, changeAccountName, nextNameChangeAt } from '../services/AccountName';
-import { IdentityError, verifyAppleIdentityToken } from '../services/AppleIdentity';
+import { verifyAppleIdentityToken } from '../services/AppleIdentity';
+import { IdentityError } from '../services/IdentityError';
 import { verifyGameCenterSignature } from '../services/GameCenterIdentity';
 import {
   PROVIDER_LABEL,

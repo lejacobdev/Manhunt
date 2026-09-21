@@ -25,7 +25,7 @@
 
 import crypto from 'node:crypto';
 
-export class IdentityError extends Error {}
+import { IdentityError } from './IdentityError';
 
 const DEFAULT_BUNDLE_ID = 'com.huntinggame.app';
 /** Apple's own advice is "make sure the timestamp is recent"; ten minutes is generous for a slow network. */
@@ -150,3 +150,5 @@ export async function verifyGameCenterSignature(input: GameCenterSignature): Pro
 
   return { playerId };
 }
+
+export { IdentityError };

@@ -7,7 +7,8 @@ import { signToken } from '../middleware/auth';
 import { passwordField, usernameField, zodErrorMessage } from '../utils/validation';
 import { rejectionMessage, screenUsername } from '../services/UsernameFilter';
 import { cleanText, parseLoginIdentity, printable } from '../utils/loginIdentity';
-import { IdentityError, verifyAppleIdentityToken } from '../services/AppleIdentity';
+import { verifyAppleIdentityToken } from '../services/AppleIdentity';
+import { IdentityError } from '../services/IdentityError';
 import { verifyGameCenterSignature } from '../services/GameCenterIdentity';
 import {
   Provider,
