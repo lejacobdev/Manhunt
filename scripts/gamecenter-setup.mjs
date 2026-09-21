@@ -319,13 +319,21 @@ say('\n== Game Center for the version being prepared ==');
       }
     } else if (!APPLY) say(`  no gameCenterAppVersion yet (HTTP ${gcv.status}); would create`);
     else {
+      // `enabled` is rejected on CREATE ("can not be included in a CREATE operation"): create the
+      // resource bare, then switch it on with an update if it did not come up enabled.
       const made = await api('POST', '/v1/gameCenterAppVersions', { data: {
         type: 'gameCenterAppVersions',
-        attributes: { enabled: true },
         relationships: { appStoreVersion: { data: { type: 'appStoreVersions', id: preparing.id } } },
       } });
       say(`  creating gameCenterAppVersion: HTTP ${made.status}`);
       if (!made.ok) fail(problem(made));
+      else if (made.json.data.attributes.enabled !== true) {
+        const patched = await api('PATCH', `/v1/gameCenterAppVersions/${made.json.data.id}`, { data: {
+          type: 'gameCenterAppVersions', id: made.json.data.id, attributes: { enabled: true },
+        } });
+        say(`  enabling: HTTP ${patched.status}`);
+        if (!patched.ok) fail(problem(patched));
+      } else say('  created already enabled');
     }
   }
 }
