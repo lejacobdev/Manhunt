@@ -1,8 +1,19 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 import { prisma } from '../lib/prisma';
-import { AuthedRequest, requireAuth } from '../middleware/auth';
-import { zodErrorMessage } from '../utils/validation';
+import { AuthedRequest, requireAuth, signToken } from '../middleware/auth';
+import { passwordField, usernameField, zodErrorMessage } from '../utils/validation';
+import { NAME_CHANGE_COOLDOWN_DAYS, changeAccountName, nextNameChangeAt } from '../services/AccountName';
+import { IdentityError, verifyAppleIdentityToken } from '../services/AppleIdentity';
+import { verifyGameCenterSignature } from '../services/GameCenterIdentity';
+import {
+  PROVIDER_LABEL,
+  describeConnections,
+  isProvider,
+  linkProviderToUser,
+  unlinkProviderFromUser,
+} from '../services/ProviderAccounts';
 // Circular import (server.ts imports this router) — safe because `isUserOnline` is only
 // read inside route handlers, which run long after both modules finish loading.
 import { isUserOnline } from '../server';
@@ -343,4 +354,164 @@ usersRouter.get('/by-tag', async (req: AuthedRequest, res) => {
   });
   if (!user) return res.status(404).json({ error: 'No player with that tag.' });
   return res.json({ user: { ...user, isOnline: isUserOnline(user.id) } });
+});
+
+// ---------------------------------------------------------------------------------------
+// Account settings: the name, the password, and which Apple/Game Center identities sign in
+// ---------------------------------------------------------------------------------------
+
+/** Everything the app's account screen needs in one round trip. */
+usersRouter.get('/me/account', async (req: AuthedRequest, res) => {
+  const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+  if (!user) return res.status(404).json({ error: 'Account not found.' });
+  const nextChange = nextNameChangeAt(user.nameChangedAt);
+  return res.json({
+    user: { id: user.id, username: user.username, userTag: user.userTag, avatarUrl: user.avatarUrl },
+    connections: describeConnections(user),
+    // The app disables its own Save button on this rather than letting someone type a new name
+    // and only then be told to come back in six days.
+    nameChangeCooldownDays: NAME_CHANGE_COOLDOWN_DAYS,
+    nextNameChangeAt: nextChange ? nextChange.toISOString() : null,
+  });
+});
+
+const nameSchema = z
+  .object({
+    username: usernameField().optional(),
+    // 'random' asks the server to pick a free one, which is the only way out of the corner where
+    // every tag on the name you want is taken.
+    userTag: z.union([z.literal('random'), z.string()]).optional(),
+  })
+  .refine((value) => value.username !== undefined || value.userTag !== undefined, {
+    message: 'Send a new username, a new tag, or both.',
+  });
+
+/**
+ * The owner changing their own name#tag. Same rules as registration (length, characters,
+ * blocklist, the pair being free) plus a cooldown — see AccountName.ts for why.
+ *
+ * Answers with a fresh token because the old one carries the old username in its claims; the app
+ * swaps it in so log lines and its cached copy of the account agree with the database.
+ */
+usersRouter.patch('/me/name', async (req: AuthedRequest, res) => {
+  const parsed = nameSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
+
+  const result = await changeAccountName({
+    userId: req.user!.userId,
+    username: parsed.data.username,
+    userTag: parsed.data.userTag,
+  });
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+
+  const fresh = await prisma.user.findUnique({ where: { id: result.user.id } });
+  if (!fresh) return res.status(404).json({ error: 'Account not found.' });
+  if (result.changed) {
+    console.log(
+      `[ACCOUNT] rename ${result.previous.username}#${result.previous.userTag} -> ${fresh.username}#${fresh.userTag}`,
+    );
+  }
+  const nextChange = nextNameChangeAt(fresh.nameChangedAt);
+  return res.json({
+    token: signToken({ userId: fresh.id, username: fresh.username }),
+    user: { id: fresh.id, username: fresh.username, userTag: fresh.userTag, avatarUrl: fresh.avatarUrl },
+    nextNameChangeAt: nextChange ? nextChange.toISOString() : null,
+  });
+});
+
+const passwordSchema = z.object({
+  newPassword: passwordField(),
+  currentPassword: z.string().optional(),
+});
+
+/**
+ * Sets or changes the password.
+ *
+ * An account created with Apple or Game Center has no password, and setting its first one needs no
+ * current password — the bearer token presenting this request was itself issued by a verified
+ * provider sign-in. Changing an EXISTING password does require the current one, so a stolen phone
+ * with an unlocked app can't be turned into a permanent account takeover.
+ */
+usersRouter.post('/me/password', async (req: AuthedRequest, res) => {
+  const parsed = passwordSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
+
+  const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+  if (!user) return res.status(404).json({ error: 'Account not found.' });
+
+  if (user.passwordHash) {
+    const current = parsed.data.currentPassword ?? '';
+    if (!current) return res.status(400).json({ error: 'Please enter your current password.' });
+    if (!(await bcrypt.compare(current, user.passwordHash))) {
+      return res.status(403).json({ error: 'That current password is not right.' });
+    }
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash: await bcrypt.hash(parsed.data.newPassword, 12) },
+  });
+  console.log(`[ACCOUNT] password ${user.passwordHash ? 'changed' : 'set'} for ${user.username}#${user.userTag}`);
+  return res.json({ ok: true, hadPassword: Boolean(user.passwordHash) });
+});
+
+const appleLinkSchema = z.object({
+  identityToken: z.string({ required_error: 'Apple did not return a sign-in token.' }).min(1),
+  nonce: z.string().optional(),
+});
+
+const gameCenterLinkSchema = z.object({
+  playerId: z.string({ required_error: 'Game Center did not return a player identifier.' }).min(1),
+  publicKeyUrl: z.string({ required_error: 'Game Center did not return a key location.' }).min(1),
+  signature: z.string({ required_error: 'Game Center did not return a signature.' }).min(1),
+  salt: z.string({ required_error: 'Game Center did not return a salt.' }).min(1),
+  timestamp: z.number({ required_error: 'Game Center did not return a timestamp.' }),
+});
+
+/**
+ * Links an Apple or Game Center identity to the account already signed in — the "add it to my
+ * existing account" half of the feature. The identity is verified here exactly as it is at
+ * sign-in; being signed in already is not a reason to trust an identifier the app hands over.
+ */
+usersRouter.post('/me/link/:provider', async (req: AuthedRequest, res) => {
+  const provider = req.params.provider;
+  if (!isProvider(provider)) return res.status(404).json({ error: 'Unknown sign-in method.' });
+
+  try {
+    let subject: string;
+    if (provider === 'apple') {
+      const parsed = appleLinkSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
+      subject = (await verifyAppleIdentityToken(parsed.data.identityToken, parsed.data.nonce)).subject;
+    } else {
+      const parsed = gameCenterLinkSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
+      subject = (await verifyGameCenterSignature(parsed.data)).playerId;
+    }
+
+    const outcome = await linkProviderToUser(req.user!.userId, provider, subject);
+    if (!outcome.ok) return res.status(outcome.status ?? 400).json({ error: outcome.error });
+
+    const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+    if (!user) return res.status(404).json({ error: 'Account not found.' });
+    console.log(`[ACCOUNT] linked ${provider} to ${user.username}#${user.userTag}`);
+    return res.json({ connections: describeConnections(user) });
+  } catch (error) {
+    if (error instanceof IdentityError) return res.status(401).json({ error: error.message });
+    throw error;
+  }
+});
+
+/** Unlinks one, unless it is the only way left into the account (see ProviderAccounts.ts). */
+usersRouter.delete('/me/link/:provider', async (req: AuthedRequest, res) => {
+  const provider = req.params.provider;
+  if (!isProvider(provider)) return res.status(404).json({ error: 'Unknown sign-in method.' });
+
+  const outcome = await unlinkProviderFromUser(req.user!.userId, provider);
+  if (!outcome.ok) return res.status(outcome.status ?? 400).json({ error: outcome.error });
+
+  const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+  if (!user) return res.status(404).json({ error: 'Account not found.' });
+  console.log(`[ACCOUNT] unlinked ${PROVIDER_LABEL[provider]} from ${user.username}#${user.userTag}`);
+  return res.json({ connections: describeConnections(user) });
 });

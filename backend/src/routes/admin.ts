@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma';
 import { AuthedRequest, requireAuth } from '../middleware/auth';
 import { requireAdmin } from '../middleware/admin';
 import { usernameField, zodErrorMessage } from '../utils/validation';
+import { changeAccountName } from '../services/AccountName';
 // Circular import (server.ts imports this router) — safe because these are only read
 // inside handlers, which run long after both modules finish loading.
 import { io, isUserOnline } from '../server';
@@ -349,42 +350,51 @@ adminRouter.post('/users/:id/unban', async (req: AuthedRequest, res) => {
   return res.json({ user });
 });
 
-const renameSchema = z.object({ username: usernameField() });
+const renameSchema = z
+  .object({
+    username: usernameField().optional(),
+    /** 'random' asks the server to find a free one for the name being set. */
+    userTag: z.union([z.literal('random'), z.string()]).optional(),
+  })
+  .refine((value) => value.username !== undefined || value.userTag !== undefined, {
+    message: 'Send a new username, a new tag, or both.',
+  });
 
 /**
- * Renames an account. This exists because "inappropriate username" is one of the report
- * categories, and banning someone over a name they can't change themselves is a blunt
- * answer to a fixable problem.
+ * Renames an account, either half of `username#tag`. This exists because "inappropriate username"
+ * is one of the report categories, and banning someone over a name they can't change themselves is
+ * a blunt answer to a fixable problem. The tag half matters for the other direction: a player
+ * being harassed through their shareable friend code can be moved off it without losing the
+ * account.
+ *
+ * Shares every rule with the owner's own rename (AccountName.ts) except the cooldown, which an
+ * admin is not subject to and which an admin rename does not spend on the owner's behalf.
  */
 adminRouter.post('/users/:id/rename', async (req: AuthedRequest, res) => {
   const parsed = renameSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
-  const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
-  if (!existing) return res.status(404).json({ error: 'User not found.' });
 
-  const clash = await prisma.user.findFirst({
-    where: { username: parsed.data.username, userTag: existing.userTag, id: { not: existing.id } },
+  const result = await changeAccountName({
+    userId: req.params.id,
+    username: parsed.data.username,
+    userTag: parsed.data.userTag,
+    byAdmin: true,
   });
-  if (clash) return res.status(409).json({ error: 'That username and tag combination is taken.' });
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
 
-  // Renaming someone *onto* a blocked name would be an odd own goal for a tool whose main
-  // use is renaming people off one.
-  const verdict = await screenUsername(parsed.data.username);
-  if (!verdict.allowed) {
-    return res.status(400).json({ error: `That name matches the blocklist (${verdict.term}).` });
+  const user = await prisma.user.findUnique({ where: { id: result.user.id }, select: safeUser });
+  if (!user) return res.status(404).json({ error: 'User not found.' });
+
+  const before = `${result.previous.username}#${result.previous.userTag}`;
+  const after = `${result.user.username}#${result.user.userTag}`;
+  if (result.changed) {
+    void pushService.notify(user.id, {
+      title: 'Your name was changed',
+      body: `A moderator changed your name to ${after}.`,
+      data: { type: 'username_changed' },
+    });
+    await audit(req, 'RENAME', 'USER', user.id, `${before} -> ${after}`);
   }
-
-  const user = await prisma.user.update({
-    where: { id: existing.id },
-    data: { username: parsed.data.username },
-    select: safeUser,
-  });
-  void pushService.notify(user.id, {
-    title: 'Your username was changed',
-    body: `A moderator changed your username to ${user.username}#${user.userTag}.`,
-    data: { type: 'username_changed' },
-  });
-  await audit(req, 'RENAME', 'USER', user.id, `${existing.username} -> ${user.username}`);
   return res.json({ user });
 });
 

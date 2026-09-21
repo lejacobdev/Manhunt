@@ -11,7 +11,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "check:identity": "ts-node src/checks/identityCheck.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",

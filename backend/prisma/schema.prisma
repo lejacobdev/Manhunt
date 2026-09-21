@@ -69,11 +69,30 @@ enum InviteStatus {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  username     String
-  userTag      String
-  passwordHash String
-  avatarUrl    String?
+  id       String @id @default(uuid())
+  username String
+  userTag  String
+  /// Nullable since accounts can be created with Sign in with Apple or Game Center, which
+  /// never produce a password. Every password check must treat null as "no password login" —
+  /// bcrypt.compare against a null hash would throw, and treating it as a match would be a
+  /// hole big enough to sign in through. A provider-only account can set one later
+  /// (POST /users/me/password) without knowing a current password, because the bearer token
+  /// it presents was already issued by a verified provider sign-in.
+  passwordHash String?
+  /// Sign in with Apple's `sub` claim: stable per (developer team, person), so it survives a
+  /// reinstall and is the thing to match an account on. Apple's email/name are deliberately
+  /// NOT stored — the privacy policy promises no email address is asked for, and Apple only
+  /// returns them on the very first authorization anyway.
+  appleUserId String?
+  /// GameKit's `teamPlayerID`: stable across every game from this team, unlike the per-game
+  /// `gamePlayerID`. Only ever set from a server-verified identity signature, never from a
+  /// value the app simply claims.
+  gameCenterPlayerId String?
+  /// When the username or tag was last changed by the owner, for the rename cooldown. An
+  /// admin rename deliberately leaves it alone: a moderator renaming someone off a bad name
+  /// shouldn't spend the person's own next change.
+  nameChangedAt DateTime?
+  avatarUrl     String?
   /// Grants access to the admin panel. Checked against the database on every admin
   /// request rather than read from the JWT, so revoking it takes effect immediately
   /// instead of whenever that user's month-long token happens to expire.
@@ -95,6 +114,8 @@ model User {
   deviceTokens DeviceToken[]
 
   @@unique([username, userTag])
+  @@unique([appleUserId])
+  @@unique([gameCenterPlayerId])
   @@index([username])
 }
 
