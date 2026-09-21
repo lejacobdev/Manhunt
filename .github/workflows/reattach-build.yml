@@ -1,0 +1,33 @@
+name: Re-attach build to version
+
+# Ubuntu, App Store Connect API only. Clears and re-attaches the build on the version being prepared
+# (what the minus next to Build in App Store Connect does), then verifies the SAME build is attached.
+# Public repo, public logs: identifiers and states only.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "App Store version string being prepared, e.g. 1.0.2"
+        required: true
+      build:
+        description: "Build number to attach, e.g. 41"
+        required: true
+
+jobs:
+  reattach:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Re-attach
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+        run: |
+          echo "$API_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          export KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          node scripts/asc-reattach-build.mjs "$VERSION" "$BUILD"
