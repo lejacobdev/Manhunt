@@ -5,6 +5,10 @@ name: Inspect signing setup
 on:
   workflow_dispatch:
     inputs:
+      age_rating_patch:
+        description: "Optional: JSON of age-rating attributes to set on the editable app info, e.g. {\"ageRatingOverrideV2\":\"THIRTEEN_PLUS\"}. Empty = read-only."
+        required: false
+        default: ""
       enable_app_groups_for:
         description: "Optional: a bundle identifier to switch the App Groups capability on for (does nothing if it is already on)"
         required: false
@@ -20,6 +24,7 @@ jobs:
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
           ENABLE_APP_GROUPS_FOR: ${{ inputs.enable_app_groups_for }}
+          AGE_RATING_PATCH: ${{ inputs.age_rating_patch }}
         run: |
           mkdir -p "$HOME/private_keys"
           echo "$API_KEY_B64" | base64 --decode > "$HOME/private_keys/AuthKey_${KEY_ID}.p8"
@@ -45,6 +50,44 @@ jobs:
             for (const p of body.data || []) {
               const bundle = bundles.get(p.relationships?.bundleId?.data?.id) || "(no bundle)";
               console.log([p.attributes.profileType, p.attributes.profileState, bundle, p.attributes.name].join("  |  "));
+            }
+
+            // App Store age rating. Read-only unless AGE_RATING_PATCH is set. Review notes are
+            // deliberately never printed (they hold the demo password and this repo is public):
+            // only their length.
+            const auth = { headers: { Authorization: "Bearer " + jwt } };
+            const apps = await (await fetch("https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=com.huntinggame.app", auth)).json();
+            const appId = (apps.data || [])[0] ? apps.data[0].id : null;
+            console.log("\nAPP " + appId);
+            if (appId) {
+              const infos = await (await fetch("https://api.appstoreconnect.apple.com/v1/apps/" + appId + "/appInfos", auth)).json();
+              for (const info of infos.data || []) {
+                const st = info.attributes.state || info.attributes.appStoreState;
+                console.log("APPINFO " + info.id + "  state=" + st);
+                const decl = await (await fetch("https://api.appstoreconnect.apple.com/v1/appInfos/" + info.id + "/ageRatingDeclaration", auth)).json();
+                if (!decl.data) { console.log("  no declaration: " + JSON.stringify(decl).slice(0, 300)); continue; }
+                console.log("  AGE DECLARATION " + decl.data.id);
+                console.log("  " + JSON.stringify(decl.data.attributes));
+                if (process.env.AGE_RATING_PATCH) {
+                  // Only the editable app info (the one for a version being prepared) can change.
+                  if (st === "READY_FOR_SALE" || st === "READY_FOR_DISTRIBUTION") { console.log("  -> live app info, not editable; skipped"); continue; }
+                  const patch = await fetch("https://api.appstoreconnect.apple.com/v1/ageRatingDeclarations/" + decl.data.id, {
+                    method: "PATCH",
+                    headers: { Authorization: "Bearer " + jwt, "Content-Type": "application/json" },
+                    body: JSON.stringify({ data: { type: "ageRatingDeclarations", id: decl.data.id, attributes: JSON.parse(process.env.AGE_RATING_PATCH) } }),
+                  });
+                  console.log("  -> PATCH age rating: HTTP " + patch.status);
+                  const back = await patch.json();
+                  console.log("  " + JSON.stringify(patch.ok ? back.data.attributes : back).slice(0, 1500));
+                }
+              }
+              const vers = await (await fetch("https://api.appstoreconnect.apple.com/v1/apps/" + appId + "/appStoreVersions?limit=5", auth)).json();
+              for (const v of vers.data || []) {
+                console.log("VERSION " + v.attributes.versionString + "  state=" + (v.attributes.appStoreState || v.attributes.appVersionState));
+                const rd = await (await fetch("https://api.appstoreconnect.apple.com/v1/appStoreVersions/" + v.id + "/appStoreReviewDetail", auth)).json();
+                const notes = rd.data && rd.data.attributes ? (rd.data.attributes.notes || "") : "";
+                console.log("  review notes length: " + notes.length + " of 4000  |  mentions 13+: " + /13\+/.test(notes));
+              }
             }
 
             // Every signing certificate on the account, oldest first. Read-only. The account has a
