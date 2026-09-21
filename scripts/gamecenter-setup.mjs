@@ -237,10 +237,28 @@ if (detailId || !APPLY) {
       }
 
       const image = await api('GET', `/v1/gameCenterAchievementLocalizations/${loc.id}/gameCenterAchievementImage`);
-      const hasImage = image.ok && image.json && image.json.data;
-      if (hasImage) { say(`    ${locale} icon: present (${image.json.data.attributes.assetDeliveryState?.state || 'state unknown'})`); continue; }
+      const existingImage = image.ok && image.json && image.json.data ? image.json.data : null;
+      const iconFile = path.join(iconsDir || '.', ach.key + '.png');
+      if (existingImage) {
+        const state = (existingImage.attributes.assetDeliveryState || {}).state || 'UNKNOWN';
+        if (state === 'AWAITING_UPLOAD') {
+          // Reserved (and its bytes sent) on an earlier run, but never committed: a run that failed
+          // between the two. Commit it; if that does not take, start again from a clean reservation.
+          if (!APPLY) { say(`    ${locale} icon ${state} (would commit)`); continue; }
+          if (await commitIcon(existingImage.id, locale)) continue;
+          await api('DELETE', `/v1/gameCenterAchievementImages/${existingImage.id}`);
+          await uploadIcon(loc.id, iconFile, locale);
+        } else if (state === 'FAILED') {
+          if (!APPLY) { say(`    ${locale} icon FAILED (would replace)`); continue; }
+          await api('DELETE', `/v1/gameCenterAchievementImages/${existingImage.id}`);
+          await uploadIcon(loc.id, iconFile, locale);
+        } else {
+          say(`    ${locale} icon: ${state}`);
+        }
+        continue;
+      }
       if (!APPLY) { say(`    ${locale} icon MISSING (would upload)`); continue; }
-      await uploadIcon(loc.id, path.join(iconsDir || '.', ach.key + '.png'), locale);
+      await uploadIcon(loc.id, iconFile, locale);
     }
   }
 } else say('  skipped: Game Center detail could not be created');
@@ -261,13 +279,20 @@ async function uploadIcon(localizationId, file, locale) {
     const part = await fetch(op.url, { method: op.method, headers, body: bytes.subarray(op.offset, op.offset + op.length) });
     if (!part.ok) { fail(`icon upload part: HTTP ${part.status}`); return; }
   }
-  const commit = await api('PATCH', `/v1/gameCenterAchievementImages/${image.id}`, { data: {
+  await commitIcon(image.id, locale);
+}
+
+/** Tells Apple the bytes are all there. Unlike some other asset resources this one takes no checksum:
+ *  sending one is rejected as an unknown attribute. Returns whether it was accepted. */
+async function commitIcon(imageId, locale) {
+  const commit = await api('PATCH', `/v1/gameCenterAchievementImages/${imageId}`, { data: {
     type: 'gameCenterAchievementImages',
-    id: image.id,
-    attributes: { uploaded: true, sourceFileChecksum: crypto.createHash('md5').update(bytes).digest('hex') },
+    id: imageId,
+    attributes: { uploaded: true },
   } });
-  say(`    ${locale} icon uploaded: HTTP ${commit.status}`);
-  if (!commit.ok) fail(`icon commit: ${problem(commit)}`);
+  say(`    ${locale} icon commit: HTTP ${commit.status}`);
+  if (!commit.ok) { fail(`icon commit: ${problem(commit)}`); return false; }
+  return true;
 }
 
 // ---------------------------------------------------------------------------- 5. Game Center for the version
