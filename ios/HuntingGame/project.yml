@@ -161,6 +161,13 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.huntinggame.app.widget
+        # Game Center. Only the iPhone app calls GameKit, but App Store Connect refused to add 1.0.2 for
+        # review ("you must add the com.apple.developer.game-center key in Xcode") while its own record of
+        # the build showed the key on the main binary only. Developers report that key missing from the
+        # Watch and extension bundles as a cause of that message, so every embedded bundle carries it.
+        # It needs the GAME_CENTER capability on the bundle's App ID too (list-profiles.yml,
+        # enable_game_center_for), or archiving fails on a profile that lacks it.
+        com.apple.developer.game-center: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.widgets
@@ -196,6 +203,8 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.huntinggame.app.watch
+        # Game Center on every embedded bundle: see HuntingGameWidgets above.
+        com.apple.developer.game-center: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp
@@ -238,6 +247,8 @@ targets:
       properties:
         com.apple.security.application-groups:
           - group.com.huntinggame.app.watch
+        # Game Center on every embedded bundle: see HuntingGameWidgets above.
+        com.apple.developer.game-center: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.huntinggame.app.watchkitapp.widgets
