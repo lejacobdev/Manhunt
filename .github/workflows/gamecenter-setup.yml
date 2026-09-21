@@ -1,0 +1,56 @@
+name: Game Center setup
+
+# Creates the Game Center configuration in App Store Connect from ios/HuntingGame/GameCenter/catalog.json.
+# On macOS only because the achievement icons are rendered from SF Symbols (AppKit); the App Store
+# Connect calls themselves are plain HTTPS. This repo is public, so its logs are too: the script prints
+# identifiers and names, never credentials.
+#
+#   gh workflow run gamecenter-setup.yml -f mode=icons    # render the icons, upload them as an artifact
+#   gh workflow run gamecenter-setup.yml -f mode=audit    # read-only: what exists, what is missing
+#   gh workflow run gamecenter-setup.yml -f mode=apply    # create whatever is missing (idempotent)
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "icons = render only; audit = read App Store Connect; apply = create what is missing"
+        required: true
+        default: "audit"
+        type: choice
+        options: [icons, audit, apply]
+
+jobs:
+  setup:
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.6"
+
+      - name: Render the achievement icons
+        run: |
+          swift scripts/render-achievement-icons.swift ios/HuntingGame/GameCenter/catalog.json "$RUNNER_TEMP/icons"
+          ls -la "$RUNNER_TEMP/icons"
+
+      - name: Upload the icons for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: achievement-icons
+          path: ${{ runner.temp }}/icons/*.png
+          if-no-files-found: error
+
+      - name: Talk to App Store Connect
+        if: inputs.mode != 'icons'
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+        run: |
+          echo "$API_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          export KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          node --version
+          node scripts/gamecenter-setup.mjs "${{ inputs.mode }}" ios/HuntingGame/GameCenter/catalog.json "$RUNNER_TEMP/icons"
