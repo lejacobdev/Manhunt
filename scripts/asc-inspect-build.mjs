@@ -80,9 +80,23 @@ for (const b of builds.json.data || []) {
   console.log(`\n  build ${a.version}  version ${pre || '?'}  processing=${a.processingState}  expired=${a.expired}  uploaded=${a.uploadedDate}`);
   if (wanted && a.version !== wanted) continue;
   if (!wanted && b !== builds.json.data[0]) continue;
-  const bundles = await get(`/v1/builds/${b.id}/buildBundles?limit=20`);
-  if (!bundles.ok) { console.log('    buildBundles FAILED ' + problem(bundles)); continue; }
-  for (const bb of bundles.json.data || []) {
+  // The sub-endpoint is not allowed for API keys, so try the other ways to reach the same records:
+  // sideloading them through `include`, then through the relationship's ids.
+  let records = [];
+  const viaInclude = await get(`/v1/builds/${b.id}?include=buildBundles`);
+  if (viaInclude.ok) records = (viaInclude.json.included || []).filter((i) => i.type === 'buildBundles');
+  else console.log('    include=buildBundles FAILED ' + problem(viaInclude));
+  if (records.length === 0) {
+    const rel = await get(`/v1/builds/${b.id}/relationships/buildBundles`);
+    if (!rel.ok) console.log('    relationships/buildBundles FAILED ' + problem(rel));
+    for (const ref of (rel.ok && rel.json.data) || []) {
+      const one = await get(`/v1/buildBundles/${ref.id}`);
+      if (one.ok) records.push(one.json.data);
+      else console.log(`    buildBundles/${ref.id} FAILED ` + problem(one));
+    }
+  }
+  if (records.length === 0) console.log('    (no bundle records reachable)');
+  for (const bb of records) {
     const attrs = bb.attributes || {};
     console.log(`    bundle ${attrs.bundleId}  type=${attrs.bundleType}`);
     if (attrs.entitlements === undefined) console.log(`      attributes present: ${Object.keys(attrs).join(', ')}`);
