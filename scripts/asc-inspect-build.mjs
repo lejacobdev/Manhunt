@@ -56,6 +56,20 @@ const app = apps.json && apps.json.data && apps.json.data[0];
 if (!app) { console.error('app not found: ' + problem(apps)); process.exit(1); }
 console.log(`APP ${app.id}`);
 
+// ---- the capabilities on the App ID itself (the identifier filter is a PREFIX match and `included`
+// pools every matching App ID's capabilities, so narrow to this exact bundle's own relationship ids)
+console.log('\n== Capabilities on the App ID ==');
+{
+  const ids = await get(`/v1/bundleIds?filter[identifier]=${BUNDLE_ID}&include=bundleIdCapabilities&limit=10`);
+  if (!ids.ok) console.log('  FAILED ' + problem(ids));
+  else {
+    const bundle = (ids.json.data || []).find((b) => b.attributes.identifier === BUNDLE_ID);
+    const own = new Set((((bundle && bundle.relationships && bundle.relationships.bundleIdCapabilities) || {}).data || []).map((c) => c.id));
+    const caps = (ids.json.included || []).filter((i) => i.type === 'bundleIdCapabilities' && own.has(i.id));
+    console.log(`  ${BUNDLE_ID}: ${caps.map((c) => c.attributes.capabilityType).join(', ') || '(none)'}`);
+  }
+}
+
 // ---- the versions and which build each one has attached
 console.log('\n== App Store versions ==');
 const versions = await get(`/v1/apps/${app.id}/appStoreVersions?limit=10`);
