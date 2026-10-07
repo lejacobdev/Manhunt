@@ -661,3 +661,6 @@ changes. Verify from your own machine: `curl -I https://lejacob.dev`.
 | Background location stops after a while | `NSLocationAlwaysAndWhenInUseUsageDescription` + `UIBackgroundModes: [location]` are already set in `project.yml` — if you're testing via Xcode's debugger, background execution can still be throttled by the debugger itself; test with a real, detached install for accurate behavior |
 | Install fails: "No code signature found" (`MIInstallerErrorDomain` Code 13) | `Config.xcconfig` is missing or has the placeholder `DEVELOPMENT_TEAM` still in it — copy `Config.xcconfig.example` to `Config.xcconfig`, set your real Team ID, `xcodegen generate` again, and confirm all four targets show a team under Signing & Capabilities (see "Signing for a device run") |
 | `xcodegen generate` fails referencing Config.xcconfig | You skipped the one-time `cp Config.xcconfig.example Config.xcconfig` step — `setup.command` does this automatically, the manual path needs it done once by hand |
+
+
+<!-- Security scan triggered at 2026-10-07 11:43:49 -->
