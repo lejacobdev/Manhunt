@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma';
 import { generateUserTag } from '../utils/arrestCode';
 import { signToken } from '../middleware/auth';
+// Circular import (server.ts imports this router) — only read inside handlers, after both load.
+import { emitAdminEvent } from '../server';
 import { passwordField, usernameField, zodErrorMessage } from '../utils/validation';
 import { rejectionMessage, screenUsername } from '../services/UsernameFilter';
 import { cleanText, parseLoginIdentity, printable } from '../utils/loginIdentity';
@@ -65,6 +67,7 @@ authRouter.post('/register', async (req, res) => {
   const user = await prisma.user.create({
     data: { username, userTag, passwordHash },
   });
+  emitAdminEvent('signup', { username: user.username });
 
   const token = signToken({ userId: user.id, username: user.username });
   return res.status(201).json({

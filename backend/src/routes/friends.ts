@@ -5,7 +5,7 @@ import { AuthedRequest, requireAuth } from '../middleware/auth';
 import { zodErrorMessage } from '../utils/validation';
 // Circular import (server.ts imports this router) — safe because `isUserOnline` is
 // only read inside route handlers, which run long after both modules finish loading.
-import { io, isUserOnline } from '../server';
+import { emitAdminEvent, io, isUserOnline } from '../server';
 import { pushService } from '../services/PushService';
 import { notifyNewReport } from '../services/ReportAlerts';
 
@@ -247,6 +247,7 @@ friendsRouter.post('/:userId/report', async (req: AuthedRequest, res) => {
   // Email the moderator. Fire-and-forget on purpose — the report is already saved, and a mail
   // problem must never fail the request of someone reporting a threat.
   notifyNewReport(report);
+  emitAdminEvent('report', { reportId: report.id, category: report.category });
   return res.status(201).json({ report });
 });
 

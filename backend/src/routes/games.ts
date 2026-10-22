@@ -8,7 +8,7 @@ import { zodErrorMessage } from '../utils/validation';
 // Circular import (server.ts imports this router) — safe because `io` and
 // the caches are only read inside route handlers, which run long after both
 // modules have finished loading, never at module top level.
-import { io, sessionModes, sessionSettingsCache, sessionStartedAtCache } from '../server';
+import { emitAdminEvent, io, sessionModes, sessionSettingsCache, sessionStartedAtCache } from '../server';
 
 export const gamesRouter = Router();
 gamesRouter.use(requireAuth);
@@ -226,6 +226,7 @@ gamesRouter.post('/:code/start', async (req: AuthedRequest, res) => {
   // rather than waiting on the next join_room DB read.
   if (started.startedAt) {
     sessionStartedAtCache.set(started.code, started.startedAt.getTime());
+    emitAdminEvent('match', { code: started.code, mode: started.mode });
   }
   io.to(started.code).emit('game_started', { startedAt: started.startedAt });
   return res.json({ session: started });

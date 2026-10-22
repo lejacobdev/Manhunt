@@ -7,7 +7,8 @@ import { usernameField, zodErrorMessage } from '../utils/validation';
 import { changeAccountName } from '../services/AccountName';
 // Circular import (server.ts imports this router) — safe because these are only read
 // inside handlers, which run long after both modules finish loading.
-import { io, isUserOnline } from '../server';
+import os from 'os';
+import { adminsPresent, io, isUserOnline, onlineCountryCounts, socketCount } from '../server';
 import { pushService } from '../services/PushService';
 import {
   invalidateUsernameFilterCache,
@@ -584,4 +585,222 @@ adminRouter.get('/usernames/test', async (req, res) => {
 adminRouter.get('/audit', async (_req, res) => {
   const actions = await prisma.adminAction.findMany({ orderBy: { createdAt: 'desc' }, take: 200 });
   return res.json({ actions });
+});
+
+// ---------------------------------------------------------------- live
+
+/**
+ * What is happening right now. Players are counted by country (Cloudflare's CF-IPCountry on the
+ * socket handshake), never located: the players include 13-year-olds, and a screen showing where
+ * they are has no moderation value.
+ */
+adminRouter.get('/live', async (_req, res) => {
+  const sessions = await prisma.gameSession.findMany({
+    where: { status: { in: ['LOBBY', 'ACTIVE', 'PAUSED'] } },
+    include: { players: { select: { role: true, isCaught: true, isOut: true } } },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+  });
+  const allUsers = await prisma.user.findMany({ select: { id: true } });
+  return res.json({
+    online: allUsers.filter((u) => isUserOnline(u.id)).length,
+    sockets: socketCount(),
+    countries: onlineCountryCounts(),
+    admins: adminsPresent(),
+    sessions: sessions.map((s) => ({
+      id: s.id,
+      code: s.code,
+      mode: s.mode,
+      status: s.status,
+      startedAt: s.startedAt,
+      createdAt: s.createdAt,
+      hunters: s.players.filter((p) => p.role === 'HUNTER').length,
+      runners: s.players.filter((p) => p.role === 'RUNNER').length,
+      spectators: s.players.filter((p) => p.role === 'SPECTATOR').length,
+      caught: s.players.filter((p) => p.isCaught || p.isOut).length,
+    })),
+  });
+});
+
+// ---------------------------------------------------------------- insights
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** Regulars, growth, modes, power-ups and peak times in one call — the Insights group. */
+adminRouter.get('/insights', async (_req, res) => {
+  const since90 = new Date(Date.now() - 90 * DAY);
+  const [users, players, sessions, powerEvents, spawns] = await Promise.all([
+    prisma.user.findMany({ select: { id: true, username: true, userTag: true, createdAt: true } }),
+    prisma.gamePlayer.findMany({ select: { userId: true, joinedAt: true, role: true } }),
+    prisma.gameSession.findMany({
+      where: { createdAt: { gte: since90 } },
+      select: { mode: true, status: true, hostId: true, startedAt: true, endedAt: true, settings: true },
+    }),
+    prisma.gameEvent.findMany({
+      where: { type: 'POWERUP_USED', timestamp: { gte: since90 } },
+      select: { type: true, payload: true },
+    }),
+    prisma.powerUpSpawn.groupBy({ by: ['type', 'isCollected'], where: { spawnedAt: { gte: since90 } }, _count: true }),
+  ]);
+  const byId = new Map(users.map((u) => [u.id, u]));
+  const label = (id: string) => {
+    const u = byId.get(id);
+    return u ? `${u.username}#${u.userTag}` : 'deleted account';
+  };
+
+  // Regulars: most matches played, and most matches hosted.
+  const playCount = new Map<string, number>();
+  for (const p of players) playCount.set(p.userId, (playCount.get(p.userId) ?? 0) + 1);
+  const hostCount = new Map<string, number>();
+  for (const s of sessions) hostCount.set(s.hostId, (hostCount.get(s.hostId) ?? 0) + 1);
+  const top = (m: Map<string, number>) =>
+    [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([id, count]) => ({ id, name: label(id), count }));
+
+  // Growth: day-1 and day-7 retention means playing a match on that day after signing up, the
+  // only activity this server records per user; the funnel is signup -> first match -> 3 matches.
+  const joinsByUser = new Map<string, number[]>();
+  for (const p of players) {
+    const arr = joinsByUser.get(p.userId) ?? [];
+    arr.push(p.joinedAt.getTime());
+    joinsByUser.set(p.userId, arr);
+  }
+  const retained = (offsetDays: number) => {
+    const eligible = users.filter((u) => u.createdAt.getTime() < Date.now() - (offsetDays + 1) * DAY);
+    if (eligible.length === 0) return null;
+    const kept = eligible.filter((u) => {
+      const start = u.createdAt.getTime() + offsetDays * DAY;
+      return (joinsByUser.get(u.id) ?? []).some((t) => t >= start && t < start + DAY);
+    }).length;
+    return Math.round((kept / eligible.length) * 100);
+  };
+  const played = users.filter((u) => (joinsByUser.get(u.id)?.length ?? 0) >= 1).length;
+  const regular = users.filter((u) => (joinsByUser.get(u.id)?.length ?? 0) >= 3).length;
+
+  // Modes: how often each is played and how long a finished match lasts.
+  const modes: Record<string, { matches: number; finished: number; avgMinutes: number | null }> = {};
+  for (const s of sessions) {
+    const m = (modes[s.mode] ??= { matches: 0, finished: 0, avgMinutes: null });
+    m.matches += 1;
+    if (s.startedAt && s.endedAt) {
+      const mins = (s.endedAt.getTime() - s.startedAt.getTime()) / 60000;
+      m.avgMinutes = ((m.avgMinutes ?? 0) * m.finished + mins) / (m.finished + 1);
+      m.finished += 1;
+    }
+  }
+  const durations: Record<string, number> = {};
+  for (const s of sessions) {
+    const d = (s.settings as { durationMinutes?: number } | null)?.durationMinutes;
+    if (d) durations[`${d} min`] = (durations[`${d} min`] ?? 0) + 1;
+  }
+
+  // Power-ups: spawned, collected and used, per type.
+  const power: Record<string, { spawned: number; collected: number; used: number }> = {};
+  for (const sp of spawns) {
+    const row = (power[sp.type] ??= { spawned: 0, collected: 0, used: 0 });
+    row.spawned += sp._count;
+    if (sp.isCollected) row.collected += sp._count;
+  }
+  for (const e of powerEvents) {
+    const type = String((e.payload as { powerUpType?: string } | null)?.powerUpType ?? 'UNKNOWN');
+    (power[type] ??= { spawned: 0, collected: 0, used: 0 }).used += 1;
+  }
+
+  // Peak times: weekday x hour (UTC) of match starts.
+  const heat = Array.from({ length: 7 }, () => Array(24).fill(0) as number[]);
+  for (const s of sessions) if (s.startedAt) heat[s.startedAt.getUTCDay()][s.startedAt.getUTCHours()] += 1;
+
+  return res.json({
+    regulars: { players: top(playCount), hosts: top(hostCount) },
+    growth: {
+      users: users.length,
+      played,
+      regular,
+      day1: retained(1),
+      day7: retained(7),
+    },
+    modes,
+    durations,
+    power,
+    heat,
+  });
+});
+
+// ---------------------------------------------------------------- safety
+
+/** Fixes the anti-cheat checks dropped, per player (stored at most once a minute per check). */
+adminRouter.get('/anticheat', async (_req, res) => {
+  const events = await prisma.gameEvent.findMany({
+    where: { type: 'ANTI_CHEAT_FLAG' },
+    orderBy: { timestamp: 'desc' },
+    take: 2000,
+    include: { session: { select: { code: true } } },
+  });
+  const byUser = new Map<string, { userId: string; username: string; total: number; checks: Record<string, number>; last: Date; sessions: Set<string> }>();
+  for (const e of events) {
+    const p = e.payload as { userId: string; username: string; check: string };
+    const row = byUser.get(p.userId) ?? { userId: p.userId, username: p.username, total: 0, checks: {}, last: e.timestamp, sessions: new Set<string>() };
+    row.total += 1;
+    row.checks[p.check] = (row.checks[p.check] ?? 0) + 1;
+    row.sessions.add(e.session.code);
+    byUser.set(p.userId, row);
+  }
+  return res.json({
+    players: [...byUser.values()]
+      .sort((a, b) => b.total - a.total)
+      .map((r) => ({ ...r, sessions: [...r.sessions] })),
+    recent: events.slice(0, 50).map((e) => ({ at: e.timestamp, code: e.session.code, ...(e.payload as object) })),
+  });
+});
+
+/** Every banned account, and the ban/unban history from the audit trail. */
+adminRouter.get('/bans', async (_req, res) => {
+  const [banned, history] = await Promise.all([
+    prisma.user.findMany({ where: { isBanned: true }, select: safeUser, orderBy: { bannedAt: 'desc' } }),
+    prisma.adminAction.findMany({ where: { action: { in: ['BAN', 'UNBAN'] } }, orderBy: { createdAt: 'desc' }, take: 200 }),
+  ]);
+  return res.json({ banned, history });
+});
+
+// ---------------------------------------------------------------- system
+
+adminRouter.get('/team', async (_req, res) => {
+  const team = await prisma.user.findMany({ where: { isAdmin: true }, select: safeUser, orderBy: { createdAt: 'asc' } });
+  const actions = await prisma.adminAction.groupBy({ by: ['adminId'], _count: true, _max: { createdAt: true } });
+  const byAdmin = new Map(actions.map((a) => [a.adminId, a]));
+  const present = new Set(adminsPresent());
+  return res.json({
+    team: team.map((u) => ({
+      ...u,
+      actions: byAdmin.get(u.id)?._count ?? 0,
+      lastAction: byAdmin.get(u.id)?._max.createdAt ?? null,
+      inPanel: present.has(u.username),
+    })),
+  });
+});
+
+/** Host and database health, read live. */
+adminRouter.get('/server', async (_req, res) => {
+  const [dbSize] = await prisma.$queryRaw<{ size: bigint }[]>`SELECT pg_database_size(current_database()) AS size`;
+  const tables = await prisma.$queryRaw<{ name: string; rows: bigint }[]>`
+    SELECT relname AS name, n_live_tup AS rows FROM pg_stat_user_tables ORDER BY n_live_tup DESC LIMIT 12`;
+  const mem = process.memoryUsage();
+  return res.json({
+    host: {
+      loadAverage: os.loadavg(),
+      cpus: os.cpus().length,
+      totalMemory: os.totalmem(),
+      freeMemory: os.freemem(),
+      uptimeSeconds: os.uptime(),
+    },
+    process: {
+      uptimeSeconds: process.uptime(),
+      rss: mem.rss,
+      heapUsed: mem.heapUsed,
+      node: process.version,
+      startedAt: new Date(Date.now() - process.uptime() * 1000),
+    },
+    database: { bytes: Number(dbSize.size), tables: tables.map((t) => ({ name: t.name, rows: Number(t.rows) })) },
+    sockets: socketCount(),
+    commit: process.env.GIT_COMMIT ?? null,
+  });
 });

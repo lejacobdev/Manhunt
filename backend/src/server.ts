@@ -318,6 +318,20 @@ io.on('connection', (socket: Socket) => {
   // invites can reach it, and counts toward "online" for the duration of the connection.
   socket.join(`user:${authedUser.userId}`);
   markUserOnline(authedUser.userId).catch((err) => console.error('[presence] markUserOnline failed', err));
+  const country = socket.handshake.headers['cf-ipcountry'];
+  if (typeof country === 'string' && /^[A-Z]{2}$/.test(country)) socketCountry.set(socket.id, country);
+  socket.on('disconnect', () => {
+    socketCountry.delete(socket.id);
+    if (socket.rooms.has('admins')) setImmediate(() => emitAdminEvent('presence', { admins: adminsPresent() }));
+  });
+
+  // The admin panel's live channel. Re-checked against the database, like every admin route.
+  socket.on('admin_subscribe', async () => {
+    const user = await prisma.user.findUnique({ where: { id: authedUser.userId }, select: { isAdmin: true, isBanned: true } });
+    if (!user?.isAdmin || user.isBanned) return;
+    socket.join('admins');
+    emitAdminEvent('presence', { admins: adminsPresent() });
+  });
 
   socket.on('get_online_friends', async () => {
     const friendIds = await getAcceptedFriendIds(authedUser.userId);
@@ -451,24 +465,24 @@ io.on('connection', (socket: Socket) => {
       if (antiCheatEnabled) {
         const accuracyCheck = checkAccuracy(accuracy);
         if (!accuracyCheck.allowed) {
-          socket.emit('anti_cheat_warning', { reason: accuracyCheck.reason });
+          flagAntiCheat(socket, roomCode, p, 'ACCURACY', accuracyCheck.reason!);
           return;
         }
         const motionCheck = checkMotion(isMovingOnFoot);
         if (!motionCheck.allowed) {
-          socket.emit('anti_cheat_warning', { reason: motionCheck.reason });
+          flagAntiCheat(socket, roomCode, p, 'MOTION', motionCheck.reason!);
           return;
         }
 
         const speedCheck = checkSpeed(p, speed);
         if (!speedCheck.allowed) {
-          socket.emit('anti_cheat_warning', { reason: speedCheck.reason });
+          flagAntiCheat(socket, roomCode, p, 'SPEED', speedCheck.reason!);
           return;
         }
 
         const prev = lastFix.get(gamePlayerId);
         if (!checkTeleport(prev, { lat, lng, timestamp: now }, speedCheck.ceilingMps)) {
-          socket.emit('anti_cheat_warning', { reason: 'Position jump exceeds plausible foot travel for the elapsed time.' });
+          flagAntiCheat(socket, roomCode, p, 'TELEPORT', 'Position jump exceeds plausible foot travel for the elapsed time.');
           return;
         }
         lastFix.set(gamePlayerId, { lat, lng, timestamp: now });
@@ -1178,6 +1192,57 @@ function pushRadarToHunter(roomCode: string, hunter: PlayerState, runners: Playe
     return { lat: pos.lat, lng: pos.lng, isDecoy: true };
   });
   io.to(hunter.id).emit('radar_broadcast', { runners: visibleRunners, runnerBearings, decoys: liveDecoys, jammed: false });
+}
+
+// gamePlayerId -> check -> epoch ms of the last stored flag. A spoofing client trips a check on
+// every fix; one stored flag per check per minute is enough to see the pattern in the admin
+// panel without writing a row a second.
+const lastAntiCheatFlag: Map<string, Map<string, number>> = new Map();
+
+/** Tells the player why a fix was dropped, and records it for the admin panel's anti-cheat view. */
+function flagAntiCheat(socket: Socket, roomCode: string, p: PlayerState, check: string, reason: string) {
+  socket.emit('anti_cheat_warning', { reason });
+  const perPlayer = lastAntiCheatFlag.get(p.id) ?? new Map<string, number>();
+  lastAntiCheatFlag.set(p.id, perPlayer);
+  const now = Date.now();
+  if (now - (perPlayer.get(check) ?? 0) < 60_000) return;
+  perPlayer.set(check, now);
+  void resolveSessionId(roomCode).then((sessionId) => {
+    if (!sessionId) return;
+    return prisma.gameEvent.create({
+      data: {
+        sessionId,
+        type: 'ANTI_CHEAT_FLAG',
+        payload: { playerId: p.id, userId: p.userId, username: p.username, check, reason },
+      },
+    });
+  }).catch((err) => console.error('[anti-cheat] could not store flag', err));
+  emitAdminEvent('anticheat', { username: p.username, check, roomCode });
+}
+
+/** Live layer for the admin panel: every open panel joins the `admins` room. */
+export function emitAdminEvent(kind: string, data: Record<string, unknown> = {}) {
+  io.to('admins').emit('admin_event', { kind, at: new Date().toISOString(), ...data });
+}
+
+/** Country of each connected socket, from Cloudflare's CF-IPCountry header — counts only, never a position. */
+const socketCountry: Map<string, string> = new Map();
+export function onlineCountryCounts(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const c of socketCountry.values()) out[c] = (out[c] ?? 0) + 1;
+  return out;
+}
+export function socketCount(): number {
+  return io.engine.clientsCount;
+}
+/** Usernames of admins with the panel open right now, for the "who else is here" faces. */
+export function adminsPresent(): string[] {
+  const names = new Set<string>();
+  for (const id of io.sockets.adapter.rooms.get('admins') ?? []) {
+    const s = io.sockets.sockets.get(id);
+    if (s?.data.user?.username) names.add(s.data.user.username);
+  }
+  return [...names];
 }
 
 async function resolveSessionId(roomCode: string): Promise<string | undefined> {
