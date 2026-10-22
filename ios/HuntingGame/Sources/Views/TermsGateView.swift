@@ -22,7 +22,7 @@ struct TermsGateView: View {
                                     .shadow(color: ADATheme.spatialCyan.opacity(0.5), radius: 16)
 
                                 Text("BEFORE YOU START")
-                                    .font(ADATheme.telemetryFont(size: 12))
+                                    .tacticalFont(.telemetry, size: 12)
                                     .foregroundColor(.white.opacity(0.4))
                                     .tracking(2)
                             }
@@ -48,7 +48,7 @@ struct TermsGateView: View {
 
                             VStack(spacing: 8) {
                                 Text("By continuing, you agree to our")
-                                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                                    .tacticalFont(.ui, size: 13, weight: .medium)
                                     .foregroundColor(.white.opacity(0.6))
                                 HStack(spacing: 4) {
                                     Link("Terms of Use", destination: URL(string: "https://huntinggame.lejacob.dev/terms.html")!)
@@ -56,7 +56,7 @@ struct TermsGateView: View {
                                         .foregroundColor(.white.opacity(0.6))
                                     Link("Privacy Policy", destination: URL(string: "https://huntinggame.lejacob.dev/privacy.html")!)
                                 }
-                                .font(ADATheme.uiFont(size: 13, weight: .semibold))
+                                .tacticalFont(.ui, size: 13, weight: .semibold)
                                 .tint(ADATheme.spatialCyan)
                             }
                             .multilineTextAlignment(.center)
@@ -84,11 +84,11 @@ struct TermsGateView: View {
     private func gateRow(icon: String, text: String) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
+                .tacticalFont(.symbol, size: 15, weight: .semibold)
                 .foregroundColor(ADATheme.spatialCyan)
                 .frame(width: 20)
             Text(text)
-                .font(ADATheme.uiFont(size: 13, weight: .medium))
+                .tacticalFont(.ui, size: 13, weight: .medium)
                 .foregroundColor(.white.opacity(0.8))
                 .fixedSize(horizontal: false, vertical: true)
         }

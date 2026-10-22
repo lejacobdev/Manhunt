@@ -20,7 +20,7 @@ struct SpectatorDashboardView: View {
                 Group {
                     if players.isEmpty {
                         Text("Waiting for players.")
-                            .font(ADATheme.uiFont(size: 11, weight: .medium))
+                            .tacticalFont(.ui, size: 11, weight: .medium)
                             .foregroundColor(.white.opacity(0.4))
                     } else {
                         ScrollView {
@@ -38,7 +38,7 @@ struct SpectatorDashboardView: View {
             }
         }
         .padding(12)
-        .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: ADATheme.neutralGray)
+        .glassCard(cornerRadius: ADATheme.cardCornerRadius)
     }
 
     /// Compact two-line row — see HostControlPanelView.row(for:) for why this
@@ -54,13 +54,13 @@ struct SpectatorDashboardView: View {
                         .fill(ADATheme.accent(for: player.role))
                         .frame(width: 7, height: 7)
                     Text(player.username.uppercased())
-                        .font(ADATheme.uiFont(size: 11, weight: .semibold))
+                        .tacticalFont(.ui, size: 11, weight: .semibold)
                         .foregroundColor(.white)
                         .lineLimit(1)
                         .truncationMode(.tail)
                     Spacer(minLength: 4)
                     Image(systemName: isFocused ? "scope" : "location")
-                        .font(.system(size: 12, weight: .semibold))
+                        .tacticalFont(.symbol, size: 12, weight: .semibold)
                         .foregroundColor(isFocused ? ADATheme.spatialCyan : .white.opacity(0.4))
                 }
                 HStack(spacing: 6) {
@@ -71,7 +71,7 @@ struct SpectatorDashboardView: View {
                     Spacer(minLength: 4)
                     statusBadge(for: player)
                 }
-                .font(ADATheme.telemetryFont(size: 9))
+                .tacticalFont(.telemetry, size: 9)
                 .foregroundColor(.white.opacity(0.5))
             }
             .padding(8)
@@ -93,6 +93,6 @@ struct SpectatorDashboardView: View {
                 Text("ACTIVE").foregroundColor(.white.opacity(0.4))
             }
         }
-        .font(ADATheme.telemetryFont(size: 10))
+        .tacticalFont(.telemetry, size: 10)
     }
 }

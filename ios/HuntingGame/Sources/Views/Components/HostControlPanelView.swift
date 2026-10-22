@@ -22,7 +22,7 @@ struct HostControlPanelView: View {
                 Group {
                     if players.isEmpty {
                         Text("Waiting for players.")
-                            .font(ADATheme.uiFont(size: 11, weight: .medium))
+                            .tacticalFont(.ui, size: 11, weight: .medium)
                             .foregroundColor(.white.opacity(0.4))
                     } else {
                         ScrollView {
@@ -46,7 +46,7 @@ struct HostControlPanelView: View {
                     Image(systemName: "stop.circle.fill")
                     Text("END GAME")
                 }
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
             }
             .buttonStyle(GlowButtonStyle(tint: ADATheme.hunterRed))
         }
@@ -72,7 +72,7 @@ struct HostControlPanelView: View {
                     .fill(ADATheme.accent(for: player.role))
                     .frame(width: 7, height: 7)
                 Text(player.username.uppercased())
-                    .font(ADATheme.uiFont(size: 11, weight: .semibold))
+                    .tacticalFont(.ui, size: 11, weight: .semibold)
                     .foregroundColor(.white)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -89,12 +89,12 @@ struct HostControlPanelView: View {
                         onOverride(player.id, !player.isCaught)
                     } label: {
                         Image(systemName: player.isCaught ? "arrow.uturn.backward.circle.fill" : "hand.raised.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .tacticalFont(.symbol, size: 14, weight: .bold)
                             .foregroundColor(player.isCaught ? ADATheme.runnerGreen : ADATheme.hunterRed)
                     }
                 }
             }
-            .font(ADATheme.telemetryFont(size: 9))
+            .tacticalFont(.telemetry, size: 9)
             .foregroundColor(.white.opacity(0.5))
         }
         .padding(8)
@@ -118,7 +118,7 @@ struct HostControlPanelView: View {
                     .foregroundColor(.white.opacity(0.4))
             }
         }
-        .font(ADATheme.telemetryFont(size: 10))
+        .tacticalFont(.telemetry, size: 10)
     }
 
     private func batteryIcon(for level: Int) -> String {

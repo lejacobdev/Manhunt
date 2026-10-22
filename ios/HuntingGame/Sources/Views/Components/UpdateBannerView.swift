@@ -9,19 +9,19 @@ struct UpdateBannerView: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: "arrow.down.circle.fill")
-                .font(.system(size: 18, weight: .bold))
+                .tacticalFont(.symbol, size: 18, weight: .bold)
                 .foregroundColor(ADATheme.spatialCyan)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("UPDATE AVAILABLE — v\(update.version)")
-                    .font(ADATheme.telemetryFont(size: 11))
+                    .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(.white)
                 Text(update.changelog)
-                    .font(ADATheme.uiFont(size: 11, weight: .medium))
+                    .tacticalFont(.ui, size: 11, weight: .medium)
                     .foregroundColor(.white.opacity(0.5))
                     .lineLimit(2)
                 Text("Install it from the SideStore/AltStore app.")
-                    .font(ADATheme.telemetryFont(size: 9))
+                    .tacticalFont(.telemetry, size: 9)
                     .foregroundColor(ADATheme.spatialCyan.opacity(0.8))
                     .padding(.top, 1)
             }

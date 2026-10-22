@@ -172,12 +172,12 @@ struct LobbyView: View {
                             Text("HISTORY")
                         }
                     }
-                    .buttonStyle(GlassButtonStyle(tint: .white))
+                    .buttonStyle(TacticalGhostButtonStyle(tint: .white))
                     .padding(.horizontal)
 
                     if let error = viewModel.errorMessage {
                         Text(error)
-                            .font(ADATheme.telemetryFont(size: 12))
+                            .tacticalFont(.telemetry, size: 12)
                             .foregroundColor(ADATheme.hunterRed)
                             .padding(.horizontal)
                             .transition(.opacity)
@@ -261,7 +261,7 @@ struct LobbyView: View {
             HuntingGameWordmark(size: 28)
 
             Text("MISSION CONTROL")
-                .font(ADATheme.telemetryFont(size: 10))
+                .tacticalFont(.telemetry, size: 10)
                 .foregroundColor(ADATheme.runnerGreen)
                 .tracking(3)
 
@@ -273,7 +273,7 @@ struct LobbyView: View {
                         .frame(width: 6, height: 6)
                         .shadow(color: ADATheme.runnerGreen, radius: 4)
                     Text(user.tagLabel.uppercased())
-                        .font(ADATheme.telemetryFont(size: 11))
+                        .tacticalFont(.telemetry, size: 11)
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .padding(.top, 2)
@@ -284,11 +284,12 @@ struct LobbyView: View {
 
     private var joinSection: some View {
         VStack(spacing: 10) {
+            tileHeader(icon: "person.badge.plus", title: "JOIN A GAME", subtitle: "Type the code from the host's screen.", tint: ADATheme.runnerGreen)
             ADATextField(placeholder: "GAME CODE", text: $viewModel.joinCodeInput)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .multilineTextAlignment(.center)
-                .font(ADATheme.displayFont(size: 20))
+                .tacticalFont(.display, size: 20)
 
             if viewModel.selectedMode == .squad {
                 ADATextField(placeholder: "Squad name", text: $viewModel.squadName)
@@ -317,6 +318,7 @@ struct LobbyView: View {
     /// play area, jail and gambling all get set up from inside it instead.
     private var hostSection: some View {
         VStack(spacing: 10) {
+            tileHeader(icon: "dot.radiowaves.left.and.right", title: "HOST A GAME", subtitle: "Pick the mode now, set up the rest in the lobby.", tint: ADATheme.spatialCyan)
             Picker("Mode", selection: $viewModel.hostMode.animation(ADATheme.controlSpring)) {
                 ForEach(GameMode.allCases) { mode in
                     Text(mode.displayName).tag(mode)
@@ -347,6 +349,32 @@ struct LobbyView: View {
         .glassCard(cornerRadius: ADATheme.cardCornerRadius)
         .padding(.horizontal)
         .animation(ADATheme.controlSpring, value: viewModel.hostMode)
+    }
+
+    /// The icon, title and one-line explanation at the top of the Host and Join tiles.
+    private func tileHeader(icon: String, title: String, subtitle: String, tint: Color) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .tacticalFont(.symbol, size: 16, weight: .bold)
+                .foregroundColor(tint)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(tint.opacity(0.14)))
+                .overlay(Circle().stroke(tint.opacity(0.3), lineWidth: 0.5))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .tacticalFont(.telemetry, size: 13)
+                    .foregroundColor(.white)
+                    .tracking(1)
+                Text(subtitle)
+                    .tacticalFont(.ui, size: 11, weight: .medium)
+                    .foregroundColor(.white.opacity(0.45))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
 }

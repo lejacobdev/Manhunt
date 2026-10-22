@@ -29,12 +29,12 @@ struct HeartsRowView: View {
         HStack(spacing: 4) {
             ForEach(0..<slots, id: \.self) { index in
                 Image(systemName: index < hearts ? "heart.fill" : "heart")
-                    .font(.system(size: 16, weight: .bold))
+                    .tacticalFont(.symbol, size: 16, weight: .bold)
                     .foregroundColor(color(for: index))
                     .overlay {
                         if breakingIndex == index {
                             Image(systemName: "heart.fill")
-                                .font(.system(size: 16, weight: .bold))
+                                .tacticalFont(.symbol, size: 16, weight: .bold)
                                 .foregroundColor(ADATheme.hunterRed)
                                 .shadow(color: ADATheme.hunterRed, radius: 8)
                                 .scaleEffect(breakAnimating ? 2.4 : 1)
@@ -47,7 +47,12 @@ struct HeartsRowView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
-        .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.hunterRed)
+        // The red lives in the hearts themselves; the panel stays neutral glass so it reads over
+        // a red-roofed neighbourhood too.
+        .glassCard(cornerRadius: ADATheme.controlCornerRadius)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Hearts")
+        .accessibilityValue("\(hearts) of \(slots)")
         .scaleEffect(flinch ? 1.08 : 1)
         .offset(x: flinch ? -5 : 0)
         .animation(ADATheme.controlSpring, value: hearts)

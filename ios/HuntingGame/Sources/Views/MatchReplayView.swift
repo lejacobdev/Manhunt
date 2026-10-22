@@ -30,7 +30,7 @@ struct MatchReplayView: View {
                     ProgressView().tint(.white)
                 } else if let errorMessage {
                     Text(errorMessage)
-                        .font(ADATheme.uiFont(size: 13, weight: .medium))
+                        .tacticalFont(.ui, size: 13, weight: .medium)
                         .foregroundColor(ADATheme.hunterRed)
                         .padding()
                 } else if timeRange != nil {
@@ -48,7 +48,7 @@ struct MatchReplayView: View {
                     .adaptiveContentWidth()
                 } else {
                     Text("No location data was recorded for this match.")
-                        .font(ADATheme.uiFont(size: 13, weight: .medium))
+                        .tacticalFont(.ui, size: 13, weight: .medium)
                         .foregroundColor(.white.opacity(0.5))
                         .padding()
                 }
@@ -81,12 +81,12 @@ struct MatchReplayView: View {
                     isPlaying ? stopPlayback() : startPlayback()
                 } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 16, weight: .bold))
+                        .tacticalFont(.symbol, size: 16, weight: .bold)
                 }
-                .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
 
                 Text(timeLabel)
-                    .font(ADATheme.telemetryFont(size: 13))
+                    .tacticalFont(.telemetry, size: 13)
                     .foregroundColor(.white.opacity(0.7))
 
                 Spacer()

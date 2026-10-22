@@ -27,7 +27,7 @@ struct MatchHistoryView: View {
                     ProgressView().tint(.white)
                 } else if let errorMessage {
                     Text(errorMessage)
-                        .font(ADATheme.uiFont(size: 13, weight: .medium))
+                        .tacticalFont(.ui, size: 13, weight: .medium)
                         .foregroundColor(ADATheme.hunterRed)
                         .padding()
                 } else {
@@ -58,7 +58,7 @@ struct MatchHistoryView: View {
                         Section {
                             if entries.isEmpty && currentSession == nil {
                                 Text("No matches yet — your finished games will show up here.")
-                                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                                    .tacticalFont(.ui, size: 13, weight: .medium)
                                     .foregroundColor(.white.opacity(0.4))
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)
@@ -87,7 +87,7 @@ struct MatchHistoryView: View {
                                     Text(unreadableCount == 1
                                          ? "1 older match couldn't be read and was skipped."
                                          : "\(unreadableCount) older matches couldn't be read and were skipped.")
-                                        .font(ADATheme.telemetryFont(size: 10))
+                                        .tacticalFont(.telemetry, size: 10)
                                         .foregroundColor(ADATheme.tacticalAmber.opacity(0.7))
                                         .multilineTextAlignment(.center)
                                         .frame(maxWidth: .infinity)
@@ -158,11 +158,11 @@ struct MatchHistoryView: View {
             HStack(spacing: 6) {
                 Circle().fill(tint).frame(width: 8, height: 8)
                 Text("CODE \(session.code) · \(session.mode.displayName.uppercased())")
-                    .font(ADATheme.telemetryFont(size: 13))
+                    .tacticalFont(.telemetry, size: 13)
                     .foregroundColor(.white)
             }
             Text(session.status.rawValue)
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
                 .foregroundColor(tint)
 
             // Starting, settings, and inviting friends all happen inside the lobby itself
@@ -213,17 +213,17 @@ struct MatchHistoryView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(entry.session.mode.displayName.uppercased()) · \(entry.session.code)")
-                        .font(ADATheme.uiFont(size: 13, weight: .semibold))
+                        .tacticalFont(.ui, size: 13, weight: .semibold)
                         .foregroundColor(.white)
                     Text(resultLabel(for: entry))
-                        .font(ADATheme.telemetryFont(size: 10))
+                        .tacticalFont(.telemetry, size: 10)
                         .foregroundColor(.white.opacity(0.45))
                 }
 
                 Spacer()
 
                 Text(entry.session.status.rawValue)
-                    .font(ADATheme.telemetryFont(size: 10))
+                    .tacticalFont(.telemetry, size: 10)
                     .foregroundColor(isEnded ? ADATheme.spatialCyan : ADATheme.runnerGreen)
 
                 Image(systemName: isEnded ? "play.circle.fill" : "arrow.uturn.backward.circle.fill")

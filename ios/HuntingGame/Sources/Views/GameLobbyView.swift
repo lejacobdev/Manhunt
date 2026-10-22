@@ -66,7 +66,7 @@ struct GameLobbyView: View {
 
                     if let error = viewModel.errorMessage {
                         Text(error)
-                            .font(ADATheme.telemetryFont(size: 12))
+                            .tacticalFont(.telemetry, size: 12)
                             .foregroundColor(ADATheme.hunterRed)
                             .padding(.horizontal)
                             .padding(.top, 8)
@@ -144,11 +144,11 @@ struct GameLobbyView: View {
                     .frame(width: 8, height: 8)
                     .shadow(color: statusColor, radius: 4)
                 Text("CODE \(viewModel.session.code) · \(viewModel.session.mode.displayName.uppercased())")
-                    .font(ADATheme.telemetryFont(size: 13))
+                    .tacticalFont(.telemetry, size: 13)
                     .foregroundColor(.white)
             }
             Text(viewModel.isHost ? "YOU'RE HOSTING" : "WAITING FOR HOST TO START")
-                .font(ADATheme.telemetryFont(size: 10))
+                .tacticalFont(.telemetry, size: 10)
                 .foregroundColor(.white.opacity(0.4))
                 .tracking(2)
         }
@@ -158,22 +158,30 @@ struct GameLobbyView: View {
     private var rosterSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("PLAYERS · \(socket.players.count)")
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
                 .foregroundColor(.white.opacity(0.4))
                 .padding(.leading, 4)
 
-            VStack(spacing: 6) {
+            // One glass list, hairlines between rows — not a card per player.
+            VStack(spacing: 0) {
                 ForEach(socket.players) { p in
+                    if p.id != socket.players.first?.id {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.07))
+                            .frame(height: 0.5)
+                            .padding(.leading, 32)
+                    }
                     HStack(spacing: 10) {
                         Circle()
                             .fill(ADATheme.accent(for: p.role))
                             .frame(width: 8, height: 8)
+                            .shadow(color: ADATheme.accent(for: p.role).opacity(0.7), radius: 3)
                         Text(p.username.uppercased())
-                            .font(ADATheme.uiFont(size: 13, weight: .semibold))
+                            .tacticalFont(.ui, size: 13, weight: .semibold)
                             .foregroundColor(.white)
                         if let squad = p.squad, !squad.isEmpty {
                             Text(squad.uppercased())
-                                .font(ADATheme.telemetryFont(size: 9))
+                                .tacticalFont(.telemetry, size: 9)
                                 .foregroundColor(ADATheme.spatialCyan.opacity(0.8))
                         }
                         Spacer()
@@ -192,22 +200,24 @@ struct GameLobbyView: View {
                                 HStack(spacing: 3) {
                                     Text(p.role.displayName.uppercased())
                                     Image(systemName: "chevron.up.chevron.down")
-                                        .font(.system(size: 8, weight: .bold))
+                                        .tacticalFont(.symbol, size: 8, weight: .bold)
                                 }
                                 .foregroundColor(ADATheme.spatialCyan)
                             }
-                            .font(ADATheme.telemetryFont(size: 10))
+                            .tacticalFont(.telemetry, size: 10)
                         } else {
                             Text(p.role.displayName.uppercased())
-                                .font(ADATheme.telemetryFont(size: 10))
+                                .tacticalFont(.telemetry, size: 10)
                                 .foregroundColor(.white.opacity(0.4))
                         }
                     }
                     .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .glassCard(cornerRadius: ADATheme.controlCornerRadius)
+                    .padding(.vertical, 11)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
+            .padding(.vertical, 2)
+            .glassCard(cornerRadius: ADATheme.cardCornerRadius)
         }
         .padding(.horizontal)
         .animation(ADATheme.controlSpring, value: socket.players.map(\.id))
@@ -219,7 +229,7 @@ struct GameLobbyView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("MATCH SETTINGS")
-                    .font(ADATheme.telemetryFont(size: 11))
+                    .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(.white.opacity(0.4))
                 if viewModel.isHost {
                     Spacer()
@@ -232,7 +242,7 @@ struct GameLobbyView: View {
                     } label: {
                         HStack(spacing: 4) { Image(systemName: "gearshape.fill"); Text("SETTINGS") }
                     }
-                    .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                    .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
                 }
             }
             .padding(.leading, 4)
@@ -267,11 +277,11 @@ struct GameLobbyView: View {
     private func settingsRow(icon: String, text: String, tint: Color = ADATheme.spatialCyan) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .semibold))
+                .tacticalFont(.symbol, size: 12, weight: .semibold)
                 .foregroundColor(tint)
                 .frame(width: 18)
             Text(text)
-                .font(ADATheme.uiFont(size: 13, weight: .medium))
+                .tacticalFont(.ui, size: 13, weight: .medium)
                 .foregroundColor(.white.opacity(0.8))
         }
     }
@@ -285,7 +295,7 @@ struct GameLobbyView: View {
             } label: {
                 HStack { Image(systemName: "person.2.fill"); Text("INVITE FRIENDS") }
             }
-            .buttonStyle(GlassButtonStyle(tint: .white))
+            .buttonStyle(TacticalGhostButtonStyle(tint: .white))
 
             if viewModel.isHost {
                 Button {
@@ -303,7 +313,7 @@ struct GameLobbyView: View {
 
                 if !viewModel.isReadyToStart {
                     Text("Draw the play area in Settings before starting.")
-                        .font(ADATheme.telemetryFont(size: 11))
+                        .tacticalFont(.telemetry, size: 11)
                         .foregroundColor(ADATheme.tacticalAmber.opacity(0.8))
                         .multilineTextAlignment(.center)
                 }
@@ -332,7 +342,7 @@ private struct LobbySetupSheet: View {
                 VStack(spacing: 14) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("GAME MODE")
-                            .font(ADATheme.telemetryFont(size: 12))
+                            .tacticalFont(.telemetry, size: 12)
                             .foregroundColor(.white.opacity(0.7))
 
                         Picker("Mode", selection: $viewModel.selectedMode.animation(ADATheme.controlSpring)) {
@@ -349,7 +359,7 @@ private struct LobbySetupSheet: View {
                         // than letting the host discover it mid-match.
                         if viewModel.selectedMode == .squad && playersMissingSquad {
                             Text("Players already in this lobby didn't pick a squad when they joined, and squad mode only lets you tag other squads — they'll need to rejoin before they can catch anyone.")
-                                .font(ADATheme.uiFont(size: 11, weight: .medium))
+                                .tacticalFont(.ui, size: 11, weight: .medium)
                                 .foregroundColor(ADATheme.tacticalAmber.opacity(0.9))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -363,7 +373,7 @@ private struct LobbySetupSheet: View {
                         Slider(value: $viewModel.durationMinutes, in: 10...180, step: 5)
                             .tint(ADATheme.spatialCyan)
                     }
-                    .font(ADATheme.telemetryFont(size: 12))
+                    .tacticalFont(.telemetry, size: 12)
                     .foregroundColor(.white.opacity(0.7))
                     .padding(16)
                     .glassCard(cornerRadius: ADATheme.cardCornerRadius)
@@ -374,11 +384,11 @@ private struct LobbySetupSheet: View {
                             HStack(spacing: 8) {
                                 Image(systemName: "checkmark.seal.fill").foregroundColor(ADATheme.runnerGreen)
                                 Text("Play area is set. Redrawing it re-scatters power-ups inside the new shape.")
-                                    .font(ADATheme.uiFont(size: 12, weight: .medium))
+                                    .tacticalFont(.ui, size: 12, weight: .medium)
                                     .foregroundColor(.white.opacity(0.6))
                             }
                             Button("REDRAW PLAY AREA") { viewModel.beginRedrawBoundary() }
-                                .buttonStyle(GlassButtonStyle(tint: ADATheme.tacticalAmber))
+                                .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.tacticalAmber))
                         }
                         .padding(16)
                         .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: ADATheme.runnerGreen)
@@ -387,7 +397,7 @@ private struct LobbySetupSheet: View {
                         Text(viewModel.isRedrawingBoundary
                              ? "Tap the map to redraw the play-area boundary (min. 3 points)."
                              : "Tap the map to draw the public play-area boundary (min. 3 points).")
-                            .font(ADATheme.uiFont(size: 12, weight: .medium))
+                            .tacticalFont(.ui, size: 12, weight: .medium)
                             .foregroundColor(.white.opacity(0.45))
                             .padding(.horizontal)
 
@@ -406,17 +416,17 @@ private struct LobbySetupSheet: View {
 
                         HStack {
                             Button("CLEAR") { viewModel.boundaryPoints.removeAll() }
-                                .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+                                .buttonStyle(TacticalGhostButtonStyle(tint: .white.opacity(0.6)))
                             if viewModel.isRedrawingBoundary {
                                 Button("CANCEL") {
                                     viewModel.isRedrawingBoundary = false
                                     viewModel.boundaryPoints = viewModel.session.settings.boundsPolygon
                                 }
-                                .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+                                .buttonStyle(TacticalGhostButtonStyle(tint: .white.opacity(0.6)))
                             }
                             Spacer()
                             Text("\(viewModel.boundaryPoints.count) POINTS")
-                                .font(ADATheme.telemetryFont(size: 12))
+                                .tacticalFont(.telemetry, size: 12)
                                 .foregroundColor(.white.opacity(0.4))
                         }
                         .padding(.horizontal)
@@ -448,10 +458,10 @@ private struct LobbySetupSheet: View {
 
                         HStack {
                             Button("CLEAR") { viewModel.jailPoints.removeAll() }
-                                .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+                                .buttonStyle(TacticalGhostButtonStyle(tint: .white.opacity(0.6)))
                             Spacer()
                             Text("\(viewModel.jailPoints.count) POINTS")
-                                .font(ADATheme.telemetryFont(size: 12))
+                                .tacticalFont(.telemetry, size: 12)
                                 .foregroundColor(.white.opacity(0.4))
                         }
                         .padding(.horizontal)
@@ -462,7 +472,7 @@ private struct LobbySetupSheet: View {
                                 Slider(value: $viewModel.jailArrivalSeconds, in: 30...600, step: 15)
                                     .tint(ADATheme.hunterRed)
                                 Text("How long a caught runner has to walk to the jail before they're disqualified.")
-                                    .font(ADATheme.uiFont(size: 11, weight: .medium))
+                                    .tacticalFont(.ui, size: 11, weight: .medium)
                                     .foregroundColor(.white.opacity(0.4))
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -472,12 +482,12 @@ private struct LobbySetupSheet: View {
                                 Slider(value: $viewModel.bailOutSeconds, in: 5...300, step: 5)
                                     .tint(ADATheme.runnerGreen)
                                 Text("How long a free runner must stand in the jail to release everyone in it. Costs them a heart, and every hunter one too.")
-                                    .font(ADATheme.uiFont(size: 11, weight: .medium))
+                                    .tacticalFont(.ui, size: 11, weight: .medium)
                                     .foregroundColor(.white.opacity(0.4))
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
-                        .font(ADATheme.telemetryFont(size: 12))
+                        .tacticalFont(.telemetry, size: 12)
                         .foregroundColor(.white.opacity(0.7))
                         .padding(16)
                         .glassCard(cornerRadius: ADATheme.cardCornerRadius)
@@ -509,7 +519,7 @@ private struct LobbySetupSheet: View {
 
                     if let error = viewModel.errorMessage {
                         Text(error)
-                            .font(ADATheme.telemetryFont(size: 12))
+                            .tacticalFont(.telemetry, size: 12)
                             .foregroundColor(ADATheme.hunterRed)
                             .padding(.horizontal)
                     }

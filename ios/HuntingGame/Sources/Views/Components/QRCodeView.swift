@@ -20,7 +20,7 @@ struct QRCodeView: View {
                     .scaledToFit()
             } else {
                 Image(systemName: "qrcode")
-                    .font(.system(size: size * 0.5))
+                    .tacticalFont(.symbol, size: size * 0.5, weight: .regular)
                     .foregroundColor(.black.opacity(0.3))
             }
         }

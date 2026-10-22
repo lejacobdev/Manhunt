@@ -20,7 +20,7 @@ struct BlockedUsersView: View {
                         ProgressView().tint(ADATheme.spatialCyan).padding(.top, 40)
                     } else if blocked.isEmpty {
                         Text("You haven't blocked anyone.")
-                            .font(ADATheme.uiFont(size: 13, weight: .medium))
+                            .tacticalFont(.ui, size: 13, weight: .medium)
                             .foregroundColor(.white.opacity(0.35))
                             .padding(.top, 40)
                     } else {
@@ -31,11 +31,11 @@ struct BlockedUsersView: View {
                                     .frame(width: 28, height: 28)
                                     .overlay(
                                         Text(user.username.prefix(1).uppercased())
-                                            .font(ADATheme.telemetryFont(size: 11))
+                                            .tacticalFont(.telemetry, size: 11)
                                             .foregroundColor(.white.opacity(0.6))
                                     )
                                 Text(user.tagLabel)
-                                    .font(ADATheme.uiFont(size: 13))
+                                    .tacticalFont(.ui, size: 13)
                                     .foregroundColor(.white)
                                 Spacer()
                                 Button {
@@ -47,7 +47,7 @@ struct BlockedUsersView: View {
                                         Text("UNBLOCK")
                                     }
                                 }
-                                .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                                .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
                                 .disabled(unblockingId != nil)
                             }
                             .padding(12)
@@ -58,7 +58,7 @@ struct BlockedUsersView: View {
 
                     if let errorMessage {
                         Text(errorMessage)
-                            .font(ADATheme.telemetryFont(size: 12))
+                            .tacticalFont(.telemetry, size: 12)
                             .foregroundColor(ADATheme.hunterRed)
                     }
                 }

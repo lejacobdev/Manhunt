@@ -16,17 +16,20 @@ struct DisclosureHeader: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .bold))
+                    .tacticalFont(.symbol, size: 12, weight: .bold)
                 Text(title)
-                    .font(ADATheme.telemetryFont(size: 12))
+                    .tacticalFont(.telemetry, size: 12)
                 Spacer()
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .bold))
+                    .tacticalFont(.symbol, size: 11, weight: .bold)
                     .rotationEffect(.degrees(isExpanded ? 0 : -90))
             }
             .foregroundColor(tint)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title.capitalized)
+        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
+        .accessibilityHint(isExpanded ? "Collapses this panel" : "Expands this panel")
     }
 }

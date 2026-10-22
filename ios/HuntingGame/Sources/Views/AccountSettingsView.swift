@@ -14,7 +14,7 @@ struct AccountSettingsView: View {
         ScrollView {
             VStack(spacing: 18) {
                 Text("Account")
-                    .font(ADATheme.displayFont(size: 20))
+                    .tacticalFont(.display, size: 20)
                     .foregroundColor(.white)
                     .padding(.top, 8)
 
@@ -30,7 +30,7 @@ struct AccountSettingsView: View {
 
                 if let error = viewModel.errorMessage {
                     Text(error)
-                        .font(ADATheme.telemetryFont(size: 12))
+                        .tacticalFont(.telemetry, size: 12)
                         .foregroundColor(ADATheme.hunterRed)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -38,7 +38,7 @@ struct AccountSettingsView: View {
 
                 if let success = viewModel.successMessage {
                     Text(success)
-                        .font(ADATheme.telemetryFont(size: 12))
+                        .tacticalFont(.telemetry, size: 12)
                         .foregroundColor(ADATheme.runnerGreen)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
@@ -62,7 +62,7 @@ struct AccountSettingsView: View {
             sectionHeader("NAME & TAG", icon: "person.text.rectangle")
 
             Text("Other players find you by your name and tag together, so both can change.")
-                .font(ADATheme.uiFont(size: 12))
+                .tacticalFont(.ui, size: 12)
                 .foregroundColor(.white.opacity(0.5))
 
             ADATextField(placeholder: "Username", text: $viewModel.username)
@@ -81,25 +81,25 @@ struct AccountSettingsView: View {
                         Image(systemName: "die.face.5")
                         Text("Random")
                     }
-                    .font(ADATheme.uiFont(size: 13))
+                    .tacticalFont(.ui, size: 13)
                 }
-                .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+                .buttonStyle(TacticalGhostButtonStyle(tint: .white.opacity(0.6)))
                 .disabled(viewModel.isLoading || viewModel.overview?.isNameChangeOnCooldown == true)
             }
 
             if let problem = viewModel.localNameProblem, viewModel.isDirty {
                 Text(problem)
-                    .font(ADATheme.telemetryFont(size: 11))
+                    .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(ADATheme.tacticalAmber)
             }
 
             if let notice = viewModel.cooldownNotice {
                 Label(notice, systemImage: "clock")
-                    .font(ADATheme.telemetryFont(size: 11))
+                    .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(ADATheme.tacticalAmber)
             } else if let days = viewModel.overview?.nameChangeCooldownDays {
                 Text("You can change this once every \(days) days.")
-                    .font(ADATheme.telemetryFont(size: 10))
+                    .tacticalFont(.telemetry, size: 10)
                     .foregroundColor(.white.opacity(0.3))
             }
 
@@ -118,7 +118,7 @@ struct AccountSettingsView: View {
 
                 if viewModel.isDirty {
                     Button("Undo") { viewModel.resetEdits() }
-                        .font(ADATheme.uiFont(size: 13))
+                        .tacticalFont(.ui, size: 13)
                         .foregroundColor(.white.opacity(0.45))
                 }
             }
@@ -135,7 +135,7 @@ struct AccountSettingsView: View {
             sectionHeader("SIGN-IN METHODS", icon: "key.horizontal")
 
             Text("Add Apple or Game Center to sign in without typing your name and password.")
-                .font(ADATheme.uiFont(size: 12))
+                .tacticalFont(.ui, size: 12)
                 .foregroundColor(.white.opacity(0.5))
 
             ForEach(AccountProvider.allCases) { provider in
@@ -158,16 +158,16 @@ struct AccountSettingsView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 Image(systemName: provider.icon)
-                    .font(.system(size: 16))
+                    .tacticalFont(.symbol, size: 16, weight: .regular)
                     .foregroundColor(isLinked ? ADATheme.runnerGreen : .white.opacity(0.5))
                     .frame(width: 22)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(provider.title)
-                        .font(ADATheme.uiFont(size: 15))
+                        .tacticalFont(.ui, size: 15)
                         .foregroundColor(.white)
                     Text(isLinked ? "Connected" : "Not connected")
-                        .font(ADATheme.telemetryFont(size: 10))
+                        .tacticalFont(.telemetry, size: 10)
                         .foregroundColor(isLinked ? ADATheme.runnerGreen.opacity(0.8) : .white.opacity(0.35))
                 }
 
@@ -177,7 +177,7 @@ struct AccountSettingsView: View {
                     ProgressView().tint(.white)
                 } else if isLinked {
                     Button("Unlink") { Task { await viewModel.unlink(provider) } }
-                        .font(ADATheme.uiFont(size: 13))
+                        .tacticalFont(.ui, size: 13)
                         .foregroundColor(viewModel.isOnlyWayIn(provider) ? .white.opacity(0.25) : ADATheme.hunterRed)
                         .disabled(viewModel.isOnlyWayIn(provider))
                 } else if provider == .apple {
@@ -192,14 +192,14 @@ struct AccountSettingsView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 } else {
                     Button("Link") { viewModel.linkGameCenter() }
-                        .font(ADATheme.uiFont(size: 13))
+                        .tacticalFont(.ui, size: 13)
                         .foregroundColor(ADATheme.spatialCyan)
                 }
             }
 
             if isLinked && viewModel.isOnlyWayIn(provider) {
                 Text("This is the only way into your account. Set a password first to unlink it.")
-                    .font(ADATheme.telemetryFont(size: 10))
+                    .tacticalFont(.telemetry, size: 10)
                     .foregroundColor(.white.opacity(0.35))
             }
         }
@@ -216,7 +216,7 @@ struct AccountSettingsView: View {
             Text(hasPassword
                  ? "You can sign in with your name, tag and password."
                  : "This account has no password yet — it signs in with Apple or Game Center. Add one as a backup.")
-                .font(ADATheme.uiFont(size: 12))
+                .tacticalFont(.ui, size: 12)
                 .foregroundColor(.white.opacity(0.5))
 
             Button {
@@ -227,7 +227,7 @@ struct AccountSettingsView: View {
                     Text(hasPassword ? "CHANGE PASSWORD" : "SET A PASSWORD")
                 }
             }
-            .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+            .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
         }
         .padding(16)
         .glassCard(cornerRadius: ADATheme.cardCornerRadius)
@@ -237,10 +237,10 @@ struct AccountSettingsView: View {
     private func sectionHeader(_ title: String, icon: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .tacticalFont(.symbol, size: 12, weight: .regular)
                 .foregroundColor(ADATheme.spatialCyan)
             Text(title)
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
                 .foregroundColor(.white.opacity(0.45))
                 .tracking(1.5)
         }
@@ -279,14 +279,14 @@ private struct PasswordSheet: View {
 
                         if let problem, !newPassword.isEmpty || !current.isEmpty {
                             Text(problem)
-                                .font(ADATheme.telemetryFont(size: 11))
+                                .tacticalFont(.telemetry, size: 11)
                                 .foregroundColor(ADATheme.tacticalAmber)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
                         if let error = viewModel.errorMessage {
                             Text(error)
-                                .font(ADATheme.telemetryFont(size: 12))
+                                .tacticalFont(.telemetry, size: 12)
                                 .foregroundColor(ADATheme.hunterRed)
                                 .multilineTextAlignment(.center)
                         }

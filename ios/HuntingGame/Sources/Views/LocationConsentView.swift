@@ -77,23 +77,23 @@ struct LocationConsentView: View {
                 Spacer()
 
                 Image(systemName: purpose.icon)
-                    .font(.system(size: 40, weight: .semibold))
+                    .tacticalFont(.symbol, size: 40, weight: .semibold)
                     .foregroundColor(purpose.accent)
                     .shadow(color: purpose.accent.opacity(0.6), radius: 16)
 
                 Text(purpose.title)
-                    .font(ADATheme.displayFont(size: 20))
+                    .tacticalFont(.display, size: 20)
                     .foregroundColor(.white)
 
                 Text(purpose.explanation)
-                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                    .tacticalFont(.ui, size: 13, weight: .medium)
                     .foregroundColor(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 30)
 
                 Text(purpose.declineNote)
-                    .font(ADATheme.uiFont(size: 12, weight: .medium))
+                    .tacticalFont(.ui, size: 12, weight: .medium)
                     .foregroundColor(.white.opacity(0.4))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -101,7 +101,7 @@ struct LocationConsentView: View {
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(ADATheme.telemetryFont(size: 12))
+                        .tacticalFont(.telemetry, size: 12)
                         .foregroundColor(ADATheme.hunterRed)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 30)

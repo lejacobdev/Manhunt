@@ -41,19 +41,19 @@ struct ChooseUsernameView: View {
                     VStack(spacing: 18) {
                         VStack(spacing: 8) {
                             Image(systemName: "person.badge.plus")
-                                .font(.system(size: 34, weight: .semibold))
+                                .tacticalFont(.symbol, size: 34, weight: .semibold)
                                 .foregroundColor(ADATheme.runnerGreen)
                                 .shadow(color: ADATheme.runnerGreen.opacity(0.5), radius: 14)
 
                             Text("PICK YOUR NAME")
-                                .font(ADATheme.telemetryFont(size: 12))
+                                .tacticalFont(.telemetry, size: 12)
                                 .foregroundColor(.white.opacity(0.4))
                                 .tracking(2)
                         }
                         .padding(.top, 8)
 
                         Text("This is how other players see you. We'll add a 4-digit tag so several people can share a name.")
-                            .font(ADATheme.uiFont(size: 13))
+                            .tacticalFont(.ui, size: 13)
                             .foregroundColor(.white.opacity(0.6))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 24)
@@ -68,7 +68,7 @@ struct ChooseUsernameView: View {
 
                             if let problem = localProblem {
                                 Text(problem)
-                                    .font(ADATheme.telemetryFont(size: 11))
+                                    .tacticalFont(.telemetry, size: 11)
                                     .foregroundColor(ADATheme.tacticalAmber)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -80,7 +80,7 @@ struct ChooseUsernameView: View {
 
                         if let error = viewModel.errorMessage {
                             Text(error)
-                                .font(ADATheme.telemetryFont(size: 12))
+                                .tacticalFont(.telemetry, size: 12)
                                 .foregroundColor(ADATheme.hunterRed)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
@@ -98,7 +98,7 @@ struct ChooseUsernameView: View {
                         .disabled(!canSubmit)
 
                         Button("Cancel") { viewModel.cancelSignUp() }
-                            .font(ADATheme.uiFont(size: 13))
+                            .tacticalFont(.ui, size: 13)
                             .foregroundColor(.white.opacity(0.45))
                             .disabled(viewModel.isLoading)
                     }

@@ -56,7 +56,7 @@ struct AuthView: View {
                             .shadow(color: ADATheme.runnerGreen.opacity(0.5), radius: 16)
 
                         Text("REAL-WORLD GPS MANHUNT")
-                            .font(ADATheme.telemetryFont(size: 12))
+                            .tacticalFont(.telemetry, size: 12)
                             .foregroundColor(.white.opacity(0.4))
                             .tracking(2)
 
@@ -68,7 +68,7 @@ struct AuthView: View {
                                 .frame(width: 6, height: 6)
                                 .shadow(color: ADATheme.runnerGreen, radius: 4)
                             Text(isRegisterMode ? "NEW OPERATIVE" : "AWAITING CREDENTIALS")
-                                .font(ADATheme.telemetryFont(size: 10))
+                                .tacticalFont(.telemetry, size: 10)
                                 .foregroundColor(.white.opacity(0.35))
                                 .tracking(1.5)
                         }
@@ -105,7 +105,7 @@ struct AuthView: View {
 
                     if let error = viewModel.errorMessage {
                         Text(error)
-                            .font(ADATheme.telemetryFont(size: 12))
+                            .tacticalFont(.telemetry, size: 12)
                             .foregroundColor(ADATheme.hunterRed)
                             .padding(.horizontal)
                             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -145,7 +145,7 @@ struct AuthView: View {
             HStack(spacing: 10) {
                 dividerLine
                 Text("OR")
-                    .font(ADATheme.telemetryFont(size: 10))
+                    .tacticalFont(.telemetry, size: 10)
                     .foregroundColor(.white.opacity(0.35))
                     .tracking(1.5)
                 dividerLine
@@ -175,12 +175,12 @@ struct AuthView: View {
                     Text("Continue with Game Center")
                 }
             }
-            .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+            .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
             .padding(.horizontal)
             .disabled(viewModel.busyProvider != nil)
 
             Text("Signing in with Apple or Game Center never posts anything for you, and we never see your email address.")
-                .font(ADATheme.telemetryFont(size: 10))
+                .tacticalFont(.telemetry, size: 10)
                 .foregroundColor(.white.opacity(0.3))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
@@ -215,7 +215,7 @@ struct ADATextField: View {
 
     var body: some View {
         TextField("", text: $text, prompt: Text(placeholder).foregroundColor(FieldSurface.placeholderColor))
-            .font(ADATheme.uiFont(size: 15))
+            .tacticalFont(.ui, size: 15)
             .foregroundColor(FieldSurface.textColor)
             .padding()
             .background(FieldSurface())
@@ -228,7 +228,7 @@ struct ADASecureField: View {
 
     var body: some View {
         SecureField("", text: $text, prompt: Text(placeholder).foregroundColor(FieldSurface.placeholderColor))
-            .font(ADATheme.uiFont(size: 15))
+            .tacticalFont(.ui, size: 15)
             .foregroundColor(FieldSurface.textColor)
             .padding()
             .background(FieldSurface())

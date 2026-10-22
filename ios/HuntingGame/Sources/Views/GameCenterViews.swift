@@ -66,7 +66,7 @@ struct GameCenterCard: View {
                 Image(systemName: "gamecontroller.fill")
                     .foregroundColor(ADATheme.spatialCyan)
                 Text("GAME CENTER")
-                    .font(ADATheme.telemetryFont(size: 12))
+                    .tacticalFont(.telemetry, size: 12)
                     .tracking(1.5)
                     .foregroundColor(.white)
                 Spacer()
@@ -78,7 +78,7 @@ struct GameCenterCard: View {
             if manager.isConnected {
                 Toggle(isOn: $manager.isSharingEnabled) {
                     Text("Share my scores and achievements")
-                        .font(ADATheme.uiFont(size: 13, weight: .medium))
+                        .tacticalFont(.ui, size: 13, weight: .medium)
                         .foregroundColor(.white.opacity(0.85))
                 }
                 .tint(ADATheme.spatialCyan)
@@ -89,18 +89,18 @@ struct GameCenterCard: View {
                     } label: {
                         HStack { Image(systemName: "list.number"); Text("LEADERBOARDS") }
                     }
-                    .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                    .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
 
                     Button {
                         destination = .achievements
                     } label: {
                         HStack { Image(systemName: "rosette"); Text("ACHIEVEMENTS") }
                     }
-                    .buttonStyle(GlassButtonStyle(tint: ADATheme.tacticalAmber))
+                    .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.tacticalAmber))
                 }
 
                 Text("Your Game Center name and stats appear on the public leaderboards. Turn sharing off to stop posting new scores.")
-                    .font(ADATheme.uiFont(size: 11, weight: .medium))
+                    .tacticalFont(.ui, size: 11, weight: .medium)
                     .foregroundColor(.white.opacity(0.4))
                     .fixedSize(horizontal: false, vertical: true)
             } else if manager.status == .needsSignIn {
@@ -139,7 +139,7 @@ struct GameCenterCard: View {
 
     private func chip(_ text: String, _ tint: Color) -> some View {
         Text(text)
-            .font(ADATheme.telemetryFont(size: 9))
+            .tacticalFont(.telemetry, size: 9)
             .tracking(1.2)
             .foregroundColor(tint)
             .padding(.horizontal, 8)
@@ -152,22 +152,22 @@ struct GameCenterCard: View {
         switch manager.status {
         case .connected(let alias):
             Text("Signed in as " + alias + ". Your stats and achievements are kept in sync with Game Center.")
-                .font(ADATheme.uiFont(size: 12, weight: .medium))
+                .tacticalFont(.ui, size: 12, weight: .medium)
                 .foregroundColor(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
         case .needsSignIn:
             Text("Sign in to Game Center to compare your stats with players around the world and earn achievements.")
-                .font(ADATheme.uiFont(size: 12, weight: .medium))
+                .tacticalFont(.ui, size: 12, weight: .medium)
                 .foregroundColor(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
         case .signedOut:
             Text("You're not signed in to Game Center. Sign in from Settings, Game Center, then come back here.")
-                .font(ADATheme.uiFont(size: 12, weight: .medium))
+                .tacticalFont(.ui, size: 12, weight: .medium)
                 .foregroundColor(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
         case .restricted:
             Text("Game Center isn't available for this Apple Account, so nothing is shared.")
-                .font(ADATheme.uiFont(size: 12, weight: .medium))
+                .tacticalFont(.ui, size: 12, weight: .medium)
                 .foregroundColor(.white.opacity(0.55))
                 .fixedSize(horizontal: false, vertical: true)
         case .unknown:

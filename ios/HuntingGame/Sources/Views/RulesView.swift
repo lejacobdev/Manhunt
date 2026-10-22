@@ -20,10 +20,10 @@ struct RulesView: View {
                     if isGate {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("THE RULES")
-                                .font(ADATheme.displayFont(size: 24))
+                                .tacticalFont(.display, size: 24)
                                 .foregroundColor(.white)
                             Text("Everyone plays by the same ones. You'll need to accept these before hosting or joining a match.")
-                                .font(ADATheme.uiFont(size: 13, weight: .medium))
+                                .tacticalFont(.ui, size: 13, weight: .medium)
                                 .foregroundColor(.white.opacity(0.55))
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -112,7 +112,7 @@ struct RulesView: View {
                     )
 
                     Link("Read the full rules online", destination: URL(string: "https://huntinggame.lejacob.dev/rules.html")!)
-                        .font(ADATheme.uiFont(size: 12, weight: .semibold))
+                        .tacticalFont(.ui, size: 12, weight: .semibold)
                         .tint(ADATheme.spatialCyan)
 
                     if isGate {
@@ -121,7 +121,7 @@ struct RulesView: View {
                                 .buttonStyle(GlowButtonStyle(tint: ADATheme.runnerGreen))
 
                             Button("NOT RIGHT NOW") { onDecline?() }
-                                .font(ADATheme.telemetryFont(size: 11))
+                                .tacticalFont(.telemetry, size: 11)
                                 .foregroundColor(.white.opacity(0.4))
                                 .tracking(1.5)
                         }
@@ -145,10 +145,10 @@ struct RulesView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
                 Image(systemName: icon)
-                    .font(.system(size: 13, weight: .bold))
+                    .tacticalFont(.symbol, size: 13, weight: .bold)
                     .foregroundColor(tint)
                 Text(title)
-                    .font(ADATheme.telemetryFont(size: 11))
+                    .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(tint)
                     .tracking(1.5)
             }
@@ -160,7 +160,7 @@ struct RulesView: View {
                         .frame(width: 4, height: 4)
                         .padding(.top, 7)
                     Text(line)
-                        .font(ADATheme.uiFont(size: 13, weight: .medium))
+                        .tacticalFont(.ui, size: 13, weight: .medium)
                         .foregroundColor(.white.opacity(0.8))
                         .fixedSize(horizontal: false, vertical: true)
                 }

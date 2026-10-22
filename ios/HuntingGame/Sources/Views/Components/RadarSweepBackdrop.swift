@@ -9,6 +9,9 @@ struct RadarSweepBackdrop: View {
     var accent: Color = ADATheme.runnerGreen
     var center: UnitPoint = .center
 
+    /// Reduce Motion holds the sweep still; the rings and glow stay.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     /// Shared by every instance, fixed once for the life of the process — the sweep's
     /// angle is derived from elapsed real time against this single epoch rather than each
     /// instance animating its own `@State` from 0. That's what keeps it at the identical
@@ -26,7 +29,7 @@ struct RadarSweepBackdrop: View {
     }
 
     var body: some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: nil, paused: reduceMotion)) { timeline in
             let scanRotation = Self.rotationDegrees(at: timeline.date)
 
             GeometryReader { proxy in
@@ -79,5 +82,6 @@ struct RadarSweepBackdrop: View {
             }
         }
         .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

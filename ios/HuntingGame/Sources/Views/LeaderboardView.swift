@@ -13,7 +13,7 @@ struct LeaderboardView: View {
         VStack(spacing: 0) {
             ZStack {
                 Text("Leaderboard")
-                    .font(ADATheme.displayFont(size: 20))
+                    .tacticalFont(.display, size: 20)
                     .foregroundColor(.white)
 
                 // This screen ranks you against your own players; Game Center's board is the
@@ -25,7 +25,7 @@ struct LeaderboardView: View {
                             gameCenterDestination = .leaderboard(sort: viewModel.sort.rawValue)
                         } label: {
                             Image(systemName: "globe.americas.fill")
-                                .font(.system(size: 18, weight: .semibold))
+                                .tacticalFont(.symbol, size: 18, weight: .semibold)
                                 .foregroundColor(ADATheme.spatialCyan)
                                 .padding(8)
                         }
@@ -45,7 +45,7 @@ struct LeaderboardView: View {
             } else if let error = viewModel.errorMessage, viewModel.leaderboard == nil {
                 Spacer()
                 Text(error)
-                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                    .tacticalFont(.ui, size: 13, weight: .medium)
                     .foregroundColor(ADATheme.hunterRed)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -53,7 +53,7 @@ struct LeaderboardView: View {
             } else if let entries = viewModel.leaderboard?.entries, entries.isEmpty {
                 Spacer()
                 Text("No finished matches yet — play a game to get on the board.")
-                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                    .tacticalFont(.ui, size: 13, weight: .medium)
                     .foregroundColor(.white.opacity(0.4))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -83,30 +83,128 @@ struct LeaderboardView: View {
         .padding(.bottom, 8)
     }
 
+    /// Top three on a podium, everyone else as one glass list with hairline dividers (one
+    /// surface, not a card per row), and your own standing pinned to the bottom edge so you
+    /// never have to scroll to find yourself.
     private var list: some View {
-        ScrollView {
-            VStack(spacing: 6) {
-                if let entries = viewModel.leaderboard?.entries {
-                    ForEach(entries) { entry in
-                        row(entry, isMe: entry.user.id == authSession.currentUser?.id)
-                    }
+        let entries = viewModel.leaderboard?.entries ?? []
+        let podiumEntries = entries.count >= 3 ? Array(entries.prefix(3)) : []
+        let rest = podiumEntries.isEmpty ? entries : Array(entries.dropFirst(3))
+        let me = viewModel.leaderboard?.me
+
+        return ScrollView {
+            VStack(spacing: 14) {
+                if !podiumEntries.isEmpty {
+                    podium(podiumEntries)
                 }
 
-                // Only shown when the player's own standing didn't already appear in the
-                // top 100 above — otherwise this would just duplicate their own row.
-                if let me = viewModel.leaderboard?.me,
-                   viewModel.leaderboard?.entries.contains(where: { $0.user.id == me.user.id }) != true {
-                    Rectangle()
-                        .fill(Color.white.opacity(0.08))
-                        .frame(height: 1)
-                        .padding(.vertical, 6)
-                    row(me, isMe: true)
+                if !rest.isEmpty {
+                    VStack(spacing: 0) {
+                        ForEach(Array(rest.enumerated()), id: \.element.id) { index, entry in
+                            if index > 0 {
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.07))
+                                    .frame(height: 0.5)
+                                    .padding(.leading, 56)
+                            }
+                            row(entry, isMe: entry.user.id == authSession.currentUser?.id)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .glassCard()
                 }
             }
             .padding(.horizontal)
             .padding(.bottom, 20)
         }
+        .safeAreaInset(edge: .bottom) {
+            if let me {
+                myStanding(me)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+            }
+        }
         .animation(ADATheme.controlSpring, value: viewModel.sort)
+    }
+
+    private func podium(_ top: [LeaderboardEntry]) -> some View {
+        // Silver, gold, bronze — the winner in the middle and tallest.
+        HStack(alignment: .bottom, spacing: 10) {
+            podiumTile(top[1], height: 128)
+            podiumTile(top[0], height: 152)
+            podiumTile(top[2], height: 116)
+        }
+        .padding(.top, 4)
+    }
+
+    private func podiumTile(_ entry: LeaderboardEntry, height: CGFloat) -> some View {
+        let medal = medalColor(entry.rank)
+        let isMe = entry.user.id == authSession.currentUser?.id
+        return NavigationLink {
+            PublicProfileView(userId: entry.user.id, displayName: entry.user.tagLabel)
+        } label: {
+            VStack(spacing: 6) {
+                Image(systemName: "medal.fill")
+                    .tacticalFont(.symbol, size: entry.rank == 1 ? 26 : 21, weight: .regular)
+                    .foregroundColor(medal)
+                    .shadow(color: medal.opacity(0.55), radius: 8)
+                Text(entry.user.tagLabel)
+                    .tacticalFont(.ui, size: 12, weight: isMe ? .bold : .semibold)
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                Spacer(minLength: 0)
+                Text(entry.displayValue(for: viewModel.sort))
+                    .tacticalFont(.display, size: entry.rank == 1 ? 22 : 18)
+                    .foregroundColor(medal)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text(viewModel.sort.label)
+                    .tacticalFont(.telemetry, size: 8)
+                    .foregroundColor(.white.opacity(0.35))
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .frame(height: height)
+            .glassCard(tint: entry.rank == 1 ? ADATheme.tacticalAmber : (isMe ? ADATheme.tacticalAmber : .clear))
+        }
+        .buttonStyle(ScaleButtonStyle(scale: 0.96))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rank \(entry.rank), \(entry.user.tagLabel), \(entry.displayValue(for: viewModel.sort)) \(viewModel.sort.label)")
+    }
+
+    private func myStanding(_ me: LeaderboardEntry) -> some View {
+        HStack(spacing: 12) {
+            Text("#\(me.rank)")
+                .tacticalFont(.display, size: 18)
+                .foregroundColor(ADATheme.tacticalAmber)
+                .frame(minWidth: 44, alignment: .leading)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("YOUR RANK")
+                    .tacticalFont(.telemetry, size: 9)
+                    .foregroundColor(.white.opacity(0.45))
+                Text("\(me.matchesPlayed) matches · \(me.winRatePercent)% wins")
+                    .tacticalFont(.ui, size: 12, weight: .semibold)
+                    .foregroundColor(.white)
+            }
+            Spacer()
+            Text(me.displayValue(for: viewModel.sort))
+                .tacticalFont(.display, size: 16)
+                .foregroundColor(.white)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .tacticalGlass(in: Capsule(), tint: ADATheme.tacticalAmber)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func medalColor(_ rank: Int) -> Color {
+        switch rank {
+        case 1: return ADATheme.tacticalAmber
+        case 2: return Color(hex: "#C9D1DC")
+        default: return Color(hex: "#C98A5A")
+        }
     }
 
     private func row(_ entry: LeaderboardEntry, isMe: Bool) -> some View {
@@ -118,10 +216,10 @@ struct LeaderboardView: View {
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entry.user.tagLabel)
-                        .font(ADATheme.uiFont(size: 13, weight: isMe ? .bold : .semibold))
-                        .foregroundColor(.white)
+                        .tacticalFont(.ui, size: 13, weight: isMe ? .bold : .semibold)
+                        .foregroundColor(isMe ? ADATheme.tacticalAmber : .white)
                     Text("\(entry.matchesPlayed) matches · \(entry.winRatePercent)% wins")
-                        .font(ADATheme.telemetryFont(size: 9))
+                        .tacticalFont(.telemetry, size: 9)
                         .foregroundColor(.white.opacity(0.4))
                 }
 
@@ -129,18 +227,19 @@ struct LeaderboardView: View {
 
                 VStack(alignment: .trailing, spacing: 0) {
                     Text(entry.displayValue(for: viewModel.sort))
-                        .font(ADATheme.displayFont(size: viewModel.sort == .playtime ? 14 : 18))
+                        .tacticalFont(.display, size: viewModel.sort == .playtime ? 14 : 18)
                         .foregroundColor(ADATheme.tacticalAmber)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                     Text(viewModel.sort.label)
-                        .font(ADATheme.telemetryFont(size: 8))
+                        .tacticalFont(.telemetry, size: 8)
                         .foregroundColor(.white.opacity(0.3))
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: isMe ? ADATheme.tacticalAmber : .white)
+            .padding(.vertical, 11)
+            .background(isMe ? ADATheme.tacticalAmber.opacity(0.10) : Color.clear)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
@@ -150,12 +249,12 @@ struct LeaderboardView: View {
         return ZStack {
             if rank <= 3 {
                 Image(systemName: "medal.fill")
-                    .font(.system(size: 20))
+                    .tacticalFont(.symbol, size: 20, weight: .regular)
                     .foregroundColor(tint)
                     .shadow(color: rank == 1 ? tint.opacity(0.6) : .clear, radius: 6)
             } else {
                 Text("\(rank)")
-                    .font(ADATheme.telemetryFont(size: 13))
+                    .tacticalFont(.telemetry, size: 13)
                     .foregroundColor(tint)
             }
         }

@@ -51,30 +51,40 @@ enum AppTab: String, CaseIterable, Identifiable {
 /// to use unless deliberately tucked away. There's deliberately no separate "close" glyph:
 /// the circle always shows the current tab's own icon in both states, since the icon itself
 /// (plus the pill's absence) already communicates the collapsed state.
+///
+/// On iOS 26 the pill and the circle are two pieces of one Liquid Glass container sharing glass
+/// identities, so collapsing reads as the pill draining into the circle rather than sliding out,
+/// and the selected tab sits on a lens that glides between items.
 struct FloatingTabBar: View {
     @Binding var selection: AppTab
 
     @State private var isExpanded = true
+    @Namespace private var glassNamespace
+    @Namespace private var lensNamespace
 
     private let circleDiameter: CGFloat = 58
 
     var body: some View {
-        HStack(spacing: 10) {
-            if isExpanded {
-                pill
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .trailing).combined(with: .opacity)
-                    ))
-            } else {
-                Spacer(minLength: 0)
-            }
+        TacticalGlassContainer(spacing: 10) {
+            HStack(spacing: 10) {
+                if isExpanded {
+                    pill
+                        .transition(.tacticalGlassMorph(fallback: .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        )))
+                } else {
+                    Spacer(minLength: 0)
+                }
 
-            toggleCircle
+                toggleCircle
+            }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 6)
         .animation(ADATheme.controlSpring, value: isExpanded)
+        // The bar has a fixed height; past this size its labels would clip.
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
     }
 
     private var pill: some View {
@@ -85,43 +95,55 @@ struct FloatingTabBar: View {
                 } label: {
                     VStack(spacing: 3) {
                         Image(systemName: tab.icon)
-                            .font(.system(size: 17, weight: .semibold))
+                            .tacticalFont(.symbol, size: 17, weight: .semibold)
                         Text(tab.label)
-                            .font(ADATheme.telemetryFont(size: 9))
+                            .tacticalFont(.telemetry, size: 9)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
-                    .foregroundColor(selection == tab ? tab.accent : .white.opacity(0.4))
+                    .foregroundColor(selection == tab ? tab.accent : .white.opacity(0.45))
                     .frame(maxWidth: .infinity)
+                    .frame(height: circleDiameter - 10)
+                    .background {
+                        if selection == tab {
+                            Capsule()
+                                .fill(tab.accent.opacity(0.16))
+                                .overlay(Capsule().stroke(tab.accent.opacity(0.25), lineWidth: 0.5))
+                                .matchedGeometryEffect(id: "lens", in: lensNamespace)
+                        }
+                    }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(tab.label)
+                .accessibilityAddTraits(selection == tab ? .isSelected : [])
             }
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 5)
         .frame(height: circleDiameter)
         .frame(maxWidth: .infinity)
-        .glassCard(cornerRadius: circleDiameter / 2, tint: selection.accent)
+        .tacticalGlass(in: Capsule(), interactive: true)
+        .tacticalGlassID("pill", in: glassNamespace)
     }
 
     private var toggleCircle: some View {
         Button {
             withAnimation(ADATheme.controlSpring) { isExpanded.toggle() }
         } label: {
-            // Always the current tab's own icon — no separate "close" glyph, since
-            // collapsing is now automatic rather than something this button needs to spell
-            // out as an action of its own.
+            // Always the current tab's own icon — the pill's absence already says "collapsed".
             Image(systemName: selection.icon)
-                .font(.system(size: 19, weight: .bold))
+                .tacticalFont(.symbol, size: 19, weight: .bold)
                 .foregroundColor(selection.accent)
                 .frame(width: circleDiameter, height: circleDiameter)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .glassCard(cornerRadius: circleDiameter / 2, tint: selection.accent)
-        // A fixed identity across the expand/collapse transition — without this the glow/
-        // icon-swap reads as the circle itself being replaced rather than one button
-        // changing state, since its tint and glyph both change at the same moment the pill
-        // beside it does.
+        .tacticalGlass(in: Circle(), tint: selection.accent, interactive: true)
+        .tacticalGlassID("circle", in: glassNamespace)
+        // A fixed identity across expand/collapse, so the tint and glyph change reads as one
+        // button changing state rather than being replaced.
         .id("floating-tab-bar-toggle")
+        .accessibilityLabel(isExpanded ? "Hide tab bar" : "Show tab bar")
+        .accessibilityValue(selection.label)
     }
 }

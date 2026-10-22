@@ -13,15 +13,15 @@ struct InviteBannerView: View {
             ForEach(invites) { invite in
                 HStack(spacing: 10) {
                     Image(systemName: "envelope.badge.fill")
-                        .font(.system(size: 16, weight: .bold))
+                        .tacticalFont(.symbol, size: 16, weight: .bold)
                         .foregroundColor(ADATheme.tacticalAmber)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(invite.fromUsername.uppercased()) INVITED YOU")
-                            .font(ADATheme.telemetryFont(size: 12))
+                            .tacticalFont(.telemetry, size: 12)
                             .foregroundColor(.white)
                         Text("\(invite.mode.displayName) · CODE \(invite.sessionCode)")
-                            .font(ADATheme.uiFont(size: 11, weight: .medium))
+                            .tacticalFont(.ui, size: 11, weight: .medium)
                             .foregroundColor(.white.opacity(0.5))
                     }
 
@@ -33,10 +33,10 @@ struct InviteBannerView: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(ADATheme.hunterRed)
                     }
-                    .font(.system(size: 22))
+                    .tacticalFont(.symbol, size: 22, weight: .regular)
 
                     Button("JOIN") { onJoin(invite) }
-                        .buttonStyle(GlassButtonStyle(tint: ADATheme.tacticalAmber))
+                        .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.tacticalAmber))
                 }
                 .padding(12)
                 .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.tacticalAmber)
@@ -63,16 +63,16 @@ struct InviteJoinSheet: View {
             VStack(spacing: 20) {
                 VStack(spacing: 4) {
                     Text("JOIN \(invite.fromUsername.uppercased())'S GAME")
-                        .font(ADATheme.displayFont(size: 18))
+                        .tacticalFont(.display, size: 18)
                         .foregroundColor(.white)
                     Text("\(invite.mode.displayName.uppercased()) · CODE \(invite.sessionCode)")
-                        .font(ADATheme.telemetryFont(size: 11))
+                        .tacticalFont(.telemetry, size: 11)
                         .foregroundColor(.white.opacity(0.5))
                 }
                 .padding(.top, 24)
 
                 Text("You'll join as a runner — the host assigns hunters from the lobby.")
-                    .font(ADATheme.telemetryFont(size: 10))
+                    .tacticalFont(.telemetry, size: 10)
                     .foregroundColor(.white.opacity(0.4))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)

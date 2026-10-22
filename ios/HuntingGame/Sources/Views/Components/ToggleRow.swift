@@ -13,10 +13,10 @@ struct ToggleRow: View {
         HStack(alignment: .top, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
-                    .font(ADATheme.telemetryFont(size: 13))
+                    .tacticalFont(.telemetry, size: 13)
                     .foregroundColor(.white)
                 Text(subtitle)
-                    .font(ADATheme.uiFont(size: 11, weight: .medium))
+                    .tacticalFont(.ui, size: 11, weight: .medium)
                     .foregroundColor(.white.opacity(0.45))
             }
             Spacer(minLength: 8)

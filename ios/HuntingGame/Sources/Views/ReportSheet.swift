@@ -95,7 +95,7 @@ struct ReportSheet: View {
         ScrollView {
             VStack(spacing: 14) {
                 Text("What's going on?")
-                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                    .tacticalFont(.ui, size: 13, weight: .medium)
                     .foregroundColor(.white.opacity(0.5))
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -115,7 +115,7 @@ struct ReportSheet: View {
 
                 if let errorMessage {
                     Text(errorMessage)
-                        .font(ADATheme.telemetryFont(size: 12))
+                        .tacticalFont(.telemetry, size: 12)
                         .foregroundColor(ADATheme.hunterRed)
                         .multilineTextAlignment(.center)
                 }
@@ -135,7 +135,7 @@ struct ReportSheet: View {
                 .padding(.top, 4)
 
                 Text("Reports go to the Hunting Game team. If you also want them out of your friends list and unable to contact you, block them from their profile.")
-                    .font(ADATheme.uiFont(size: 11, weight: .medium))
+                    .tacticalFont(.ui, size: 11, weight: .medium)
                     .foregroundColor(.white.opacity(0.35))
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
@@ -159,16 +159,16 @@ struct ReportSheet: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: category.icon)
-                    .font(.system(size: 14, weight: .semibold))
+                    .tacticalFont(.symbol, size: 14, weight: .semibold)
                     .foregroundColor(isSelected ? ADATheme.hunterRed : .white.opacity(0.45))
                     .frame(width: 22)
                 Text(category.label)
-                    .font(ADATheme.uiFont(size: 14, weight: .medium))
+                    .tacticalFont(.ui, size: 14, weight: .medium)
                     .foregroundColor(.white.opacity(isSelected ? 1 : 0.75))
                     .multilineTextAlignment(.leading)
                 Spacer()
                 Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                    .font(.system(size: 15))
+                    .tacticalFont(.symbol, size: 15, weight: .regular)
                     .foregroundColor(isSelected ? ADATheme.hunterRed : .white.opacity(0.25))
             }
             .padding(.horizontal, 14)
@@ -185,16 +185,16 @@ struct ReportSheet: View {
     private var submittedState: some View {
         VStack(spacing: 14) {
             Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 42, weight: .semibold))
+                .tacticalFont(.symbol, size: 42, weight: .semibold)
                 .foregroundColor(ADATheme.runnerGreen)
                 .shadow(color: ADATheme.runnerGreen.opacity(0.5), radius: 14)
 
             Text("REPORT SENT")
-                .font(ADATheme.displayFont(size: 20))
+                .tacticalFont(.display, size: 20)
                 .foregroundColor(.white)
 
             Text("Thanks — we review every report. You won't hear back individually, but action is taken on accounts that break the rules.")
-                .font(ADATheme.uiFont(size: 13, weight: .medium))
+                .tacticalFont(.ui, size: 13, weight: .medium)
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)

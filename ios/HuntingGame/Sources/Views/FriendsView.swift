@@ -52,8 +52,9 @@ struct FriendsView: View {
                     }
 
                 if !viewModel.searchResults.isEmpty {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 0) {
                         ForEach(viewModel.searchResults) { user in
+                            if user.id != viewModel.searchResults.first?.id { listDivider }
                             // A search result opens the profile, same as a friend row does,
                             // so Report and Block are reachable for someone you haven't
                             // friended — which is precisely who you'd need them for. ADD is
@@ -67,28 +68,28 @@ struct FriendsView: View {
                                         .frame(width: 28, height: 28)
                                         .overlay(
                                             Text(user.username.prefix(1).uppercased())
-                                                .font(ADATheme.telemetryFont(size: 11))
+                                                .tacticalFont(.telemetry, size: 11)
                                                 .foregroundColor(ADATheme.spatialCyan)
                                         )
                                     Text(user.tagLabel)
-                                        .font(ADATheme.uiFont(size: 13))
+                                        .tacticalFont(.ui, size: 13)
                                         .foregroundColor(.white)
                                     Spacer()
                                     Color.clear.frame(width: 62, height: 28)
                                 }
                                 .padding(12)
-                                .glassCard(cornerRadius: ADATheme.controlCornerRadius)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .overlay(alignment: .trailing) {
                                 Button("ADD") { Task { await viewModel.sendRequest(to: user) } }
-                                    .buttonStyle(GlassButtonStyle(tint: ADATheme.runnerGreen))
+                                    .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.runnerGreen))
                                     .padding(.trailing, 12)
                             }
                             .transition(.scale.combined(with: .opacity))
                         }
                     }
+                    .glassCard(cornerRadius: ADATheme.cardCornerRadius)
                     .padding(.horizontal)
                     .animation(ADATheme.controlSpring, value: viewModel.searchResults.map(\.id))
                 }
@@ -99,7 +100,7 @@ struct FriendsView: View {
                 }
                 if let error = viewModel.errorMessage {
                     Text(error)
-                        .font(ADATheme.telemetryFont(size: 12))
+                        .tacticalFont(.telemetry, size: 12)
                         .foregroundColor(ADATheme.hunterRed)
                         .padding(.horizontal)
                 }
@@ -140,14 +141,14 @@ struct FriendsView: View {
                 showScanner = true
             } label: {
                 Image(systemName: "qrcode.viewfinder")
-                    .font(.system(size: 17, weight: .semibold))
+                    .tacticalFont(.symbol, size: 17, weight: .semibold)
             }
             .foregroundColor(ADATheme.spatialCyan)
 
             Spacer()
 
             Text("Friends")
-                .font(ADATheme.displayFont(size: 20))
+                .tacticalFont(.display, size: 20)
                 .foregroundColor(.white)
 
             Spacer()
@@ -165,7 +166,7 @@ struct FriendsView: View {
     private var requestsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("FRIEND REQUESTS")
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
                 .foregroundColor(.white.opacity(0.4))
                 .padding(.leading, 4)
 
@@ -176,11 +177,11 @@ struct FriendsView: View {
                         .frame(width: 28, height: 28)
                         .overlay(
                             Text(request.otherUser.username.prefix(1).uppercased())
-                                .font(ADATheme.telemetryFont(size: 11))
+                                .tacticalFont(.telemetry, size: 11)
                                 .foregroundColor(ADATheme.tacticalAmber)
                         )
                     Text(request.otherUser.tagLabel)
-                        .font(ADATheme.uiFont(size: 13))
+                        .tacticalFont(.ui, size: 13)
                         .foregroundColor(.white)
                     Spacer()
                     Button {
@@ -189,14 +190,16 @@ struct FriendsView: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(ADATheme.hunterRed)
                     }
+                    .accessibilityLabel("Decline request from \(request.otherUser.tagLabel)")
                     Button {
                         Task { await viewModel.accept(request) }
                     } label: {
                         Image(systemName: "checkmark.circle.fill")
                             .foregroundColor(ADATheme.runnerGreen)
                     }
+                    .accessibilityLabel("Accept request from \(request.otherUser.tagLabel)")
                 }
-                .font(.system(size: 22))
+                .tacticalFont(.symbol, size: 22, weight: .regular)
                 .padding(12)
                 .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.tacticalAmber)
                 .transition(.scale.combined(with: .opacity))
@@ -208,16 +211,18 @@ struct FriendsView: View {
     private var friendsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("YOUR FRIENDS")
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
                 .foregroundColor(.white.opacity(0.4))
                 .padding(.leading, 4)
 
             if viewModel.friends.isEmpty {
                 Text("No friends yet — search above to send a request.")
-                    .font(ADATheme.uiFont(size: 12, weight: .medium))
+                    .tacticalFont(.ui, size: 12, weight: .medium)
                     .foregroundColor(.white.opacity(0.35))
             } else {
+                VStack(spacing: 0) {
                 ForEach(viewModel.friends) { friend in
+                    if friend.id != viewModel.friends.first?.id { listDivider }
                     // The whole banner is the link — card, padding and all — rather than
                     // just the identity half, so tapping anywhere on the row opens the
                     // profile. Where an INVITE button is also needed it's overlaid *outside*
@@ -236,10 +241,10 @@ struct FriendsView: View {
                                 .shadow(color: isOnline(friend) ? ADATheme.runnerGreen : .clear, radius: 4)
                             VStack(alignment: .leading, spacing: 1) {
                                 Text(friend.tagLabel)
-                                    .font(ADATheme.uiFont(size: 13))
+                                    .tacticalFont(.ui, size: 13)
                                     .foregroundColor(.white)
                                 Text(isOnline(friend) ? "ONLINE" : "OFFLINE")
-                                    .font(ADATheme.telemetryFont(size: 9))
+                                    .tacticalFont(.telemetry, size: 9)
                                     .foregroundColor(isOnline(friend) ? ADATheme.runnerGreen : .white.opacity(0.3))
                             }
                             Spacer()
@@ -247,13 +252,12 @@ struct FriendsView: View {
                                 Color.clear.frame(width: 86, height: 28)
                             } else {
                                 Image(systemName: "chevron.right")
-                                    .font(.system(size: 11, weight: .semibold))
+                                    .tacticalFont(.symbol, size: 11, weight: .semibold)
                                     .foregroundColor(.white.opacity(0.25))
                             }
                         }
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 11)
                         .padding(.horizontal, 14)
-                        .glassCard(cornerRadius: ADATheme.controlCornerRadius)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -262,14 +266,25 @@ struct FriendsView: View {
                             Button("INVITE") {
                                 Task { await viewModel.invite(friend, toSessionCode: sessionCode) }
                             }
-                            .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                            .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
                             .padding(.trailing, 14)
                         }
                     }
+                    .accessibilityHint(isOnline(friend) ? "Online. Opens their profile." : "Offline. Opens their profile.")
                 }
+                }
+                .glassCard(cornerRadius: ADATheme.cardCornerRadius)
             }
         }
         .padding(.horizontal)
+    }
+
+    /// Hairline between rows of one glass list — the list is a single surface, not a card per row.
+    private var listDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.07))
+            .frame(height: 0.5)
+            .padding(.leading, 14)
     }
 
     private func isOnline(_ friend: AppUser) -> Bool {

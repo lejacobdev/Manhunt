@@ -34,7 +34,7 @@ struct CoinFlipView: View {
     var body: some View {
         VStack(spacing: 18) {
             Text(headerText)
-                .font(ADATheme.telemetryFont(size: 13))
+                .tacticalFont(.telemetry, size: 13)
                 .foregroundColor(.white.opacity(0.6))
                 .tracking(2)
 
@@ -43,24 +43,24 @@ struct CoinFlipView: View {
 
             if let myChoice, isFlipping {
                 Text("YOU CALLED \(myChoice.rawValue.uppercased())")
-                    .font(ADATheme.uiFont(size: 12, weight: .medium))
+                    .tacticalFont(.ui, size: 12, weight: .medium)
                     .foregroundColor(.white.opacity(0.5))
             }
 
             if let outcome {
                 Text(outcomeTitle(outcome))
-                    .font(ADATheme.displayFont(size: 18))
+                    .tacticalFont(.display, size: 18)
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
 
                 Text(outcomeSubtitle(outcome))
-                    .font(ADATheme.uiFont(size: 12, weight: .medium))
+                    .tacticalFont(.ui, size: 12, weight: .medium)
                     .foregroundColor(.white.opacity(0.5))
                     .multilineTextAlignment(.center)
 
                 if awaitingCall {
                     Text("CALL THE NEXT TOSS")
-                        .font(ADATheme.telemetryFont(size: 11))
+                        .tacticalFont(.telemetry, size: 11)
                         .foregroundColor(ADATheme.tacticalAmber)
                         .tracking(1.5)
                         .padding(.top, 2)
@@ -105,7 +105,7 @@ struct CoinFlipView: View {
                 .padding(9)
 
             Image(systemName: showingHeads ? "crown.fill" : "leaf.fill")
-                .font(.system(size: 38, weight: .bold))
+                .tacticalFont(.symbol, size: 38, weight: .bold)
                 .foregroundColor(faceColor)
                 // Counter-flips the glyph on the back face so it's never mirrored.
                 .rotation3DEffect(.degrees(showingHeads ? 0 : 180), axis: (x: 1, y: 0, z: 0))

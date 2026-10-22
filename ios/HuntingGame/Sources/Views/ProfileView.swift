@@ -16,7 +16,7 @@ struct ProfileView: View {
         ScrollView {
             VStack(spacing: 18) {
                 Text("Profile")
-                    .font(ADATheme.displayFont(size: 20))
+                    .tacticalFont(.display, size: 20)
                     .foregroundColor(.white)
                     .padding(.top, 8)
 
@@ -37,7 +37,7 @@ struct ProfileView: View {
                 } label: {
                     HStack { Image(systemName: "person.text.rectangle"); Text("NAME & SIGN-IN") }
                 }
-                .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
                 .padding(.horizontal)
 
                 GameCenterCard()
@@ -47,7 +47,7 @@ struct ProfileView: View {
                 } label: {
                     HStack { Image(systemName: "list.bullet.rectangle"); Text("GAME RULES") }
                 }
-                .buttonStyle(GlassButtonStyle(tint: ADATheme.tacticalAmber))
+                .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.tacticalAmber))
                 .padding(.horizontal)
 
                 NavigationLink {
@@ -55,7 +55,7 @@ struct ProfileView: View {
                 } label: {
                     HStack { Image(systemName: "hand.raised.fill"); Text("BLOCKED USERS") }
                 }
-                .buttonStyle(GlassButtonStyle(tint: .white.opacity(0.6)))
+                .buttonStyle(TacticalGhostButtonStyle(tint: .white.opacity(0.6)))
                 .padding(.horizontal)
 
                 Button("SIGN OUT") {
@@ -67,7 +67,7 @@ struct ProfileView: View {
                         authSession.signOut()
                     }
                 }
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
                 .foregroundColor(.white.opacity(0.3))
                 .tracking(1.5)
                 .padding(.top, 4)
@@ -81,7 +81,7 @@ struct ProfileView: View {
                         Text("DELETE ACCOUNT")
                     }
                 }
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
                 .foregroundColor(ADATheme.hunterRed.opacity(0.7))
                 .tracking(1.5)
                 .disabled(isDeletingAccount)
@@ -241,11 +241,21 @@ private struct ProfileBody: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            header
+            // The hero: identity and the headline numbers on one glass surface. The stat tiles
+            // inside it render as insets, never as glass on glass.
+            VStack(spacing: 16) {
+                header
+                if let profile = viewModel.profile {
+                    statTiles(profile.stats)
+                }
+            }
+            .padding(.vertical, 20)
+            .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.spatialCyan)
+            .padding(.horizontal)
 
             if let error = viewModel.errorMessage, viewModel.profile == nil {
                 Text(error)
-                    .font(ADATheme.telemetryFont(size: 12))
+                    .tacticalFont(.telemetry, size: 12)
                     .foregroundColor(ADATheme.hunterRed)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
@@ -256,7 +266,6 @@ private struct ProfileBody: View {
             }
 
             if let profile = viewModel.profile {
-                statTiles(profile.stats)
                 breakdown(profile.stats)
                 achievements(profile.achievements)
             }
@@ -277,7 +286,7 @@ private struct ProfileBody: View {
                     .frame(width: 84, height: 84)
                     .overlay(
                         Text(name.prefix(1).uppercased())
-                            .font(ADATheme.displayFont(size: 34))
+                            .tacticalFont(.display, size: 34)
                             .foregroundColor(ADATheme.spatialCyan)
                     )
                     .overlay(Circle().stroke(ADATheme.spatialCyan.opacity(0.4), lineWidth: 1))
@@ -292,12 +301,12 @@ private struct ProfileBody: View {
             }
 
             Text(label)
-                .font(ADATheme.displayFont(size: 20))
+                .tacticalFont(.display, size: 20)
                 .foregroundColor(.white)
 
             if let since = profileUser?.memberSinceLabel {
                 Text("PLAYING SINCE \(since.uppercased())")
-                    .font(ADATheme.telemetryFont(size: 10))
+                    .tacticalFont(.telemetry, size: 10)
                     .foregroundColor(.white.opacity(0.35))
                     .tracking(1.5)
             }
@@ -314,18 +323,18 @@ private struct ProfileBody: View {
             statTile("CATCHES", "\(stats.catchesMade)", ADATheme.hunterRed)
             statTile("PLAYTIME", stats.playtimeLabel, ADATheme.spatialCyan)
         }
-        .padding(.horizontal)
+        .padding(.horizontal, 14)
     }
 
     private func statTile(_ label: String, _ value: String, _ tint: Color) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(ADATheme.displayFont(size: 22))
+                .tacticalFont(.display, size: 22)
                 .foregroundColor(tint)
                 .minimumScaleFactor(0.5)
                 .lineLimit(1)
             Text(label)
-                .font(ADATheme.telemetryFont(size: 9))
+                .tacticalFont(.telemetry, size: 9)
                 .foregroundColor(.white.opacity(0.4))
                 .tracking(1)
                 .lineLimit(1)
@@ -334,12 +343,14 @@ private struct ProfileBody: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
         .glassCard(cornerRadius: ADATheme.controlCornerRadius)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label.capitalized): \(value)")
     }
 
     private func breakdown(_ stats: ProfileStats) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("CAREER")
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
                 .foregroundColor(.white.opacity(0.4))
                 .padding(.leading, 4)
 
@@ -361,15 +372,15 @@ private struct ProfileBody: View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
                 Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
+                    .tacticalFont(.symbol, size: 12, weight: .semibold)
                     .foregroundColor(ADATheme.spatialCyan)
                     .frame(width: 20)
                 Text(label)
-                    .font(ADATheme.uiFont(size: 13, weight: .medium))
+                    .tacticalFont(.ui, size: 13, weight: .medium)
                     .foregroundColor(.white.opacity(0.75))
                 Spacer()
                 Text(value)
-                    .font(ADATheme.telemetryFont(size: 13))
+                    .tacticalFont(.telemetry, size: 13)
                     .foregroundColor(.white)
             }
             .padding(.horizontal, 14)
@@ -391,11 +402,11 @@ private struct ProfileBody: View {
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("ACHIEVEMENTS")
-                    .font(ADATheme.telemetryFont(size: 11))
+                    .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(.white.opacity(0.4))
                 Spacer()
                 Text("\(unlocked)/\(list.count)")
-                    .font(ADATheme.telemetryFont(size: 11))
+                    .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(ADATheme.tacticalAmber)
             }
             .padding(.horizontal, 4)
@@ -414,55 +425,56 @@ private struct ProfileBody: View {
         return VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 Image(systemName: achievement.icon)
-                    .font(.system(size: 15, weight: .bold))
+                    .tacticalFont(.symbol, size: 15, weight: .bold)
                     .foregroundColor(tint)
                     .shadow(color: achievement.unlocked ? tint.opacity(0.6) : .clear, radius: 6)
                 Spacer()
-                if achievement.unlocked {
-                    Image(systemName: "checkmark.seal.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(ADATheme.tacticalAmber)
-                }
+                progressRing(achievement)
             }
 
             Text(achievement.title.uppercased())
-                .font(ADATheme.telemetryFont(size: 11))
+                .tacticalFont(.telemetry, size: 11)
                 .foregroundColor(achievement.unlocked ? .white : .white.opacity(0.55))
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
 
             Text(achievement.description)
-                .font(ADATheme.uiFont(size: 10, weight: .medium))
+                .tacticalFont(.ui, size: 10, weight: .medium)
                 .foregroundColor(.white.opacity(0.4))
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // Locked cards show how far along you are; unlocked ones don't need a bar
             // that's always full, so they get the earned total instead.
-            if achievement.unlocked {
-                Text("EARNED")
-                    .font(ADATheme.telemetryFont(size: 9))
-                    .foregroundColor(ADATheme.tacticalAmber.opacity(0.8))
-            } else {
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.08))
-                        Capsule()
-                            .fill(ADATheme.spatialCyan.opacity(0.7))
-                            .frame(width: proxy.size.width * achievement.fractionComplete)
-                    }
-                }
-                .frame(height: 4)
-
-                Text("\(achievement.progress)/\(achievement.goal)")
-                    .font(ADATheme.telemetryFont(size: 9))
-                    .foregroundColor(.white.opacity(0.35))
-            }
+            Text(achievement.unlocked ? "EARNED" : "\(achievement.progress)/\(achievement.goal)")
+                .tacticalFont(.telemetry, size: 9)
+                .foregroundColor(achievement.unlocked ? ADATheme.tacticalAmber.opacity(0.8) : .white.opacity(0.35))
         }
         .padding(12)
         .frame(maxWidth: .infinity, minHeight: 118, alignment: .topLeading)
-        .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: achievement.unlocked ? ADATheme.tacticalAmber : .white)
-        .opacity(achievement.unlocked ? 1 : 0.72)
+        .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: achievement.unlocked ? ADATheme.tacticalAmber : .clear)
+        .opacity(achievement.unlocked ? 1 : 0.78)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(achievement.title)
+        .accessibilityValue(achievement.unlocked ? "Earned. \(achievement.description)" : "\(achievement.progress) of \(achievement.goal). \(achievement.description)")
+    }
+
+    /// Locked achievements show how far along you are; earned ones a full ring with a check.
+    private func progressRing(_ achievement: Achievement) -> some View {
+        let tint = achievement.unlocked ? ADATheme.tacticalAmber : ADATheme.spatialCyan
+        return ZStack {
+            Circle().stroke(Color.white.opacity(0.08), lineWidth: 3)
+            Circle()
+                .trim(from: 0, to: achievement.unlocked ? 1 : achievement.fractionComplete)
+                .stroke(tint.opacity(0.85), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            if achievement.unlocked {
+                Image(systemName: "checkmark")
+                    .tacticalFont(.symbol, size: 9, weight: .heavy)
+                    .foregroundColor(tint)
+            }
+        }
+        .frame(width: 24, height: 24)
     }
 }
 
@@ -480,7 +492,7 @@ struct FriendCodeSheet: View {
         NavigationStack {
             VStack(spacing: 20) {
                 Text("SCAN TO ADD ME")
-                    .font(ADATheme.telemetryFont(size: 11))
+                    .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(.white.opacity(0.4))
                     .tracking(2)
                     .padding(.top, 20)
@@ -488,11 +500,11 @@ struct FriendCodeSheet: View {
                 QRCodeView(payload: shareURL)
 
                 Text("\(username)#\(userTag)")
-                    .font(ADATheme.displayFont(size: 22))
+                    .tacticalFont(.display, size: 22)
                     .foregroundColor(.white)
 
                 Text("Any camera app can scan this — it opens Hunting Game and sends the friend request.")
-                    .font(ADATheme.uiFont(size: 12, weight: .medium))
+                    .tacticalFont(.ui, size: 12, weight: .medium)
                     .foregroundColor(.white.opacity(0.4))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
@@ -500,7 +512,7 @@ struct FriendCodeSheet: View {
                 ShareLink(item: shareURL) {
                     HStack { Image(systemName: "square.and.arrow.up"); Text("SHARE LINK") }
                 }
-                .buttonStyle(GlassButtonStyle(tint: ADATheme.spatialCyan))
+                .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
 
                 Spacer()
             }

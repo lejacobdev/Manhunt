@@ -88,7 +88,7 @@ struct SpatialRadarView: View {
                 let isNearest = index == 0
                 VStack(spacing: 2 * scale) {
                     Image(systemName: "triangle.fill")
-                        .font(.system(size: (isNearest ? 16 : 9) * scale, weight: .bold))
+                        .tacticalFont(.symbol, size: (isNearest ? 16 : 9) * scale, weight: .bold)
                         .foregroundColor(isNearest ? accentColor : .white.opacity(0.45))
                         .shadow(color: isNearest ? accentColor : .clear, radius: isNearest ? 8 * scale : 0)
                         .scaleEffect(isNearest ? pulseScale : 1.0)
@@ -96,7 +96,7 @@ struct SpatialRadarView: View {
                         // Every non-nearest target still gets its own distance label — the
                         // big center readout only ever shows the closest one.
                         Text("\(target.distanceMeters)m")
-                            .font(ADATheme.telemetryFont(size: 8 * scale))
+                            .tacticalFont(.telemetry, size: 8 * scale)
                             .foregroundColor(.white.opacity(0.4))
                     }
                     Spacer()
@@ -108,7 +108,7 @@ struct SpatialRadarView: View {
 
             VStack(spacing: 2 * scale) {
                 Text(nearestDistance.map(String.init) ?? "--")
-                    .font(ADATheme.displayFont(size: 38 * scale))
+                    .tacticalFont(.display, size: 38 * scale)
                     .foregroundColor(.white)
                     .contentTransition(.numericText())
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: nearestDistance)
@@ -116,7 +116,7 @@ struct SpatialRadarView: View {
                     .lineLimit(1)
 
                 Text(hasSignal ? "METERS" : "ACQUIRING")
-                    .font(ADATheme.telemetryFont(size: 10 * scale))
+                    .tacticalFont(.telemetry, size: 10 * scale)
                     .foregroundColor(.white.opacity(0.6))
                     .tracking(2)
             }

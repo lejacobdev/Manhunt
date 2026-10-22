@@ -83,7 +83,7 @@ struct AddFriendSheet: View {
             VStack(spacing: 14) {
                 Spacer()
                 Text("POINT AT A FRIEND CODE")
-                    .font(ADATheme.telemetryFont(size: 11))
+                    .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(.white.opacity(0.8))
                     .tracking(2)
                     .padding(.horizontal, 18)
@@ -99,7 +99,7 @@ struct AddFriendSheet: View {
                     } label: {
                         HStack { Image(systemName: "qrcode"); Text("MY FRIEND CODE") }
                     }
-                    .buttonStyle(GlassButtonStyle(tint: ADATheme.tacticalAmber))
+                    .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.tacticalAmber))
                 }
             }
             .padding(.bottom, 44)
@@ -125,14 +125,14 @@ struct AddFriendSheet: View {
                         .frame(width: 72, height: 72)
                         .overlay(
                             Text(user.username.prefix(1).uppercased())
-                                .font(ADATheme.displayFont(size: 30))
+                                .tacticalFont(.display, size: 30)
                                 .foregroundColor(ADATheme.spatialCyan)
                         )
                     Text(user.tagLabel)
-                        .font(ADATheme.displayFont(size: 20))
+                        .tacticalFont(.display, size: 20)
                         .foregroundColor(.white)
                     Text("Send them a friend request?")
-                        .font(ADATheme.uiFont(size: 13, weight: .medium))
+                        .tacticalFont(.ui, size: 13, weight: .medium)
                         .foregroundColor(.white.opacity(0.5))
 
                     Button {
@@ -158,14 +158,14 @@ struct AddFriendSheet: View {
     private func statusCard(icon: String, tint: Color, title: String, detail: String) -> some View {
         VStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 34, weight: .bold))
+                .tacticalFont(.symbol, size: 34, weight: .bold)
                 .foregroundColor(tint)
                 .shadow(color: tint.opacity(0.6), radius: 10)
             Text(title)
-                .font(ADATheme.displayFont(size: 18))
+                .tacticalFont(.display, size: 18)
                 .foregroundColor(.white)
             Text(detail)
-                .font(ADATheme.uiFont(size: 13, weight: .medium))
+                .tacticalFont(.ui, size: 13, weight: .medium)
                 .foregroundColor(.white.opacity(0.55))
                 .multilineTextAlignment(.center)
         }

@@ -20,7 +20,7 @@ struct PowerUpDeckView: View {
                 Group {
                     if inventory.isEmpty {
                         Text("None collected — find a power-up spawn on the map.")
-                            .font(ADATheme.uiFont(size: 11, weight: .medium))
+                            .tacticalFont(.ui, size: 11, weight: .medium)
                             .foregroundColor(.white.opacity(0.35))
                     } else {
                         // Stacked vertically, sized to content rather than a fixed/scrolling
@@ -56,9 +56,9 @@ private struct PowerUpChip: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: item.iconName)
-                    .font(.system(size: 16, weight: .bold))
+                    .tacticalFont(.symbol, size: 16, weight: .bold)
                 Text(item.displayName.uppercased())
-                    .font(ADATheme.telemetryFont(size: 12))
+                    .tacticalFont(.telemetry, size: 12)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
@@ -66,15 +66,14 @@ private struct PowerUpChip: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity)
-            .background(tint.opacity(0.2))
             .foregroundColor(tint)
-            .overlay(
-                RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous)
-                    .stroke(tint.opacity(0.5), lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
+            // Inside the deck's own glass this renders as a tinted inset (never glass on glass);
+            // on its own it is interactive glass that flexes under the finger.
+            .tacticalGlass(cornerRadius: ADATheme.controlCornerRadius, tint: tint, strength: .strong, interactive: true)
         }
         .buttonStyle(ScaleButtonStyle())
+        .accessibilityLabel("Use \(item.displayName)")
     }
 
     private var tint: Color { ADATheme.accent(for: item) }

@@ -106,7 +106,7 @@ struct HuntingGameWordmark: View {
                 .padding(.horizontal, size * 0.055)
             Text("ME")
         }
-        .font(ADATheme.displayFont(size: size))
+        .tacticalFont(.display, size: size)
         .foregroundColor(.white)
     }
 }
