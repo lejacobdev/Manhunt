@@ -51,10 +51,10 @@ struct TermsGateView: View {
                                     .font(ADATheme.uiFont(size: 13, weight: .medium))
                                     .foregroundColor(.white.opacity(0.6))
                                 HStack(spacing: 4) {
-                                    Link("Terms of Use", destination: URL(string: "https://lejacob.dev/terms.html")!)
+                                    Link("Terms of Use", destination: URL(string: "https://huntinggame.lejacob.dev/terms.html")!)
                                     Text("and")
                                         .foregroundColor(.white.opacity(0.6))
-                                    Link("Privacy Policy", destination: URL(string: "https://lejacob.dev/privacy.html")!)
+                                    Link("Privacy Policy", destination: URL(string: "https://huntinggame.lejacob.dev/privacy.html")!)
                                 }
                                 .font(ADATheme.uiFont(size: 13, weight: .semibold))
                                 .tint(ADATheme.spatialCyan)

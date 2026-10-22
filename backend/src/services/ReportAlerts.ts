@@ -114,7 +114,7 @@ async function sendAlert(report: ReportRow): Promise<void> {
 
   const label = CATEGORY_LABELS[report.category] ?? report.category;
   const urgent = URGENT_CATEGORIES.has(report.category);
-  const adminUrl = process.env.ADMIN_URL ?? 'https://lejacob.dev/admin/';
+  const adminUrl = process.env.ADMIN_URL ?? 'https://huntinggame.lejacob.dev/admin/';
 
   const lines = [
     urgent

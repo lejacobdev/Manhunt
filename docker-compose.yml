@@ -55,7 +55,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASS: ${SMTP_PASS:-}
       REPORT_ALERT_TO: ${REPORT_ALERT_TO:-}
-      ADMIN_URL: ${ADMIN_URL:-https://lejacob.dev/admin/}
+      ADMIN_URL: ${ADMIN_URL:-https://huntinggame.lejacob.dev/admin/}
       # Where GET /u/:username/:tag sends someone who taps "Don't have the app?".
       APP_STORE_URL: ${APP_STORE_URL}
       NODE_ENV: production

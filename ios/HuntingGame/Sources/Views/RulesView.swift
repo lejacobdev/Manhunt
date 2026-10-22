@@ -111,7 +111,7 @@ struct RulesView: View {
                         ]
                     )
 
-                    Link("Read the full rules on lejacob.dev", destination: URL(string: "https://lejacob.dev/rules.html")!)
+                    Link("Read the full rules online", destination: URL(string: "https://huntinggame.lejacob.dev/rules.html")!)
                         .font(ADATheme.uiFont(size: 12, weight: .semibold))
                         .tint(ADATheme.spatialCyan)
 
