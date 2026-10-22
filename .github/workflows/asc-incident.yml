@@ -1,0 +1,46 @@
+name: ASC incident response
+
+# Read-only audit of App Store Connect after the October 2026 credential theft, and rotation of the
+# Apple Distribution certificate. Ubuntu, App Store Connect API only. Public repo, public logs:
+# emails are masked and nothing secret is printed. The CSR is public by nature; its private key
+# never leaves the machine that generated it.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "audit (read-only) or rotate-cert"
+        required: true
+        default: audit
+        type: choice
+        options: [audit, rotate-cert]
+      csr_b64:
+        description: "rotate-cert: base64 of the PEM CSR"
+        required: false
+        default: ""
+      revoke_ids:
+        description: "rotate-cert: comma-separated certificate ids to revoke after the new one exists"
+        required: false
+        default: ""
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: App Store Connect
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+          MODE: ${{ inputs.mode }}
+          CSR_B64: ${{ inputs.csr_b64 }}
+          REVOKE_IDS: ${{ inputs.revoke_ids }}
+        run: |
+          echo "$API_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          export KEY_PATH="$RUNNER_TEMP/AuthKey.p8"
+          if [ "$MODE" = "rotate-cert" ]; then
+            echo "$CSR_B64" | base64 --decode > "$RUNNER_TEMP/csr.pem"
+            node scripts/asc-incident.mjs rotate-cert "$RUNNER_TEMP/csr.pem" "$REVOKE_IDS"
+          else
+            node scripts/asc-incident.mjs audit
+          fi
