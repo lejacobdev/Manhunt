@@ -86,7 +86,13 @@ struct RulesView: View {
                         icon: "shippingbox.fill",
                         title: "POWER-UPS",
                         lines: [
-                            "Scattered around the play area and picked up by walking to them: invisibility, a decoy trail, a radar jammer, thermal vision, adrenaline, and a flare that makes a bubble where nobody can be caught.",
+                            "Scattered around the play area. Walk to one to pick it up, then use it from your equipment panel. You only see the ones your side can use.",
+                            "Invisibility (anyone, 60 s) — you vanish from the other side's radar or compass.",
+                            "Thermal Vision (hunters, 45 s) — see invisible runners within 300 m, with the radar updating every second. Decoys don't show up: they have no heat.",
+                            "Ghost Decoy (runners, 3 min) — a fake copy of you walks away from the direction you were heading. Hunters can't tell it from the real you until they reach it.",
+                            "EMP Jammer (runners, 60 s) — every hunter within 200 m of you loses their radar.",
+                            "Adrenaline (runners, 90 s) — two extra hearts, and a higher top speed for anti-cheat.",
+                            "Safe Zone Flare (anyone, 90 s) — a 30 m bubble around where you stood where nobody can be caught.",
                         ]
                     )
 

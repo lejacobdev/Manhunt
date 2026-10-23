@@ -4,6 +4,7 @@ import { AuthedRequest, requireAuth } from '../middleware/auth';
 import { prisma } from '../lib/prisma';
 import { overpassSpawner } from '../services/OverpassSpawner';
 import { zodErrorMessage } from '../utils/validation';
+import { PowerUpType, canUsePowerUp } from '../types';
 
 export const powerUpsRouter = Router();
 powerUpsRouter.use(requireAuth);
@@ -13,14 +14,14 @@ powerUpsRouter.get('/session/:sessionId', async (req: AuthedRequest, res) => {
     where: { sessionId: req.params.sessionId, isCollected: false, expiresAt: { gt: new Date() } },
   });
 
-  // ADRENALINE is a runner-only pickup (it grants hearts, which only matter for someone
-  // being hunted), so it's filtered out of the map feed for anyone else rather than shown
-  // and then rejected on collection — see the matching guard in collect_powerup.
+  // Power-ups that only help one side (POWER_UP_ROLES: Adrenaline, Ghost Decoy and EMP Jammer
+  // for runners, Thermal Vision for hunters) are filtered out of the other side's map feed
+  // rather than shown and then refused on collection — see the guard in collect_powerup.
   const me = await prisma.gamePlayer.findUnique({
     where: { sessionId_userId: { sessionId: req.params.sessionId, userId: req.user!.userId } },
     select: { role: true },
   });
-  const visible = me?.role === 'RUNNER' ? spawns : spawns.filter((s) => s.type !== 'ADRENALINE');
+  const visible = spawns.filter((s) => !me || canUsePowerUp(me.role, s.type as PowerUpType));
 
   return res.json({ spawns: visible });
 });

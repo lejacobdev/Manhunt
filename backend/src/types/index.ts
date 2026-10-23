@@ -74,6 +74,41 @@ export const CATCH_VERIFICATION_RADIUS_METERS = 15;
 export const POWER_UP_COLLECTION_RADIUS_METERS = 25;
 export const EMP_JAMMER_RADIUS_METERS = 200;
 export const GHOST_DECOY_SPEED_MPS = 1.4; // brisk walking pace for the simulated foot path
+/** Thermal Vision sees through Invisibility only this close — it is a heat camera, not a map. */
+export const THERMAL_VISION_RADIUS_METERS = 300;
+
+/**
+ * Who a power-up is for. A power-up whose whole effect only helps one side is restricted to that
+ * side: it is hidden from the other side's map feed, refused on pickup, and refused on use (which
+ * matters in Infection, where a runner holding one can become a hunter). Anything not listed works
+ * for both roles. Without this a hunter could pick up an EMP and jam their own team, or drop a
+ * Ghost Decoy that pulls the other hunters away from the real runners.
+ */
+export const POWER_UP_ROLES: Partial<Record<PowerUpType, PlayerRole[]>> = {
+  ADRENALINE: ['RUNNER'],
+  GHOST_DECOY: ['RUNNER'],
+  EMP_JAMMER: ['RUNNER'],
+  THERMAL_VISION: ['HUNTER'],
+};
+
+export function canUsePowerUp(role: PlayerRole, type: PowerUpType): boolean {
+  const allowed = POWER_UP_ROLES[type];
+  return !allowed || allowed.includes(role);
+}
+
+export function powerUpRoleMessage(type: PowerUpType): string {
+  const allowed = POWER_UP_ROLES[type] ?? [];
+  const who = allowed.includes('RUNNER') ? 'runners' : 'hunters';
+  const names: Record<PowerUpType, string> = {
+    INVISIBILITY_10MIN: 'Invisibility',
+    GHOST_DECOY: 'Ghost Decoy',
+    EMP_JAMMER: 'EMP Jammer',
+    THERMAL_VISION: 'Thermal Vision',
+    ADRENALINE: 'Adrenaline',
+    SAFE_ZONE_FLARE: 'Safe Zone Flare',
+  };
+  return `Only ${who} can use ${names[type]}.`;
+}
 
 /** Location updates worse than this horizontal accuracy are rejected server-side (GPS spoofing/signal guard). */
 export const MAX_ACCURACY_METERS = 30;

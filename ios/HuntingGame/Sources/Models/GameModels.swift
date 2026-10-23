@@ -253,8 +253,11 @@ struct HunterBearing: Codable, Identifiable {
 struct CompassUpdate: Codable {
     /// The nearest hunter's distance/bearing — kept alongside `hunters` (equal to its
     /// first, closest entry) for the Watch app and Live Activity, which only ever show one.
-    let distanceMeters: Int
-    let bearingDegrees: Double
+    /// Nil when no hunter is visible at all (every hunter invisible, out, or without a fix):
+    /// the server sends that explicitly so the compass clears instead of freezing on the last
+    /// hunter it saw.
+    let distanceMeters: Int?
+    let bearingDegrees: Double?
     /// Every currently-visible hunter, nearest first. Absent decodes as empty rather than
     /// failing — a defensive fallback, not an expected shape from this server.
     let hunters: [HunterBearing]
@@ -263,8 +266,8 @@ struct CompassUpdate: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        distanceMeters = try container.decode(Int.self, forKey: .distanceMeters)
-        bearingDegrees = try container.decode(Double.self, forKey: .bearingDegrees)
+        distanceMeters = try container.decodeIfPresent(Int.self, forKey: .distanceMeters)
+        bearingDegrees = try container.decodeIfPresent(Double.self, forKey: .bearingDegrees)
         hunters = try container.decodeIfPresent([HunterBearing].self, forKey: .hunters) ?? []
     }
 }

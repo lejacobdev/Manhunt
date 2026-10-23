@@ -394,7 +394,11 @@ struct GameView: View {
                         )
                     }
                     if viewModel.isRadarJammed {
-                        StatusBadge(icon: "bolt.slash.fill", text: "JAMMED", tint: ADATheme.tacticalAmber)
+                        StatusBadge(
+                            icon: "bolt.slash.fill",
+                            text: viewModel.jammedRemainingSec > 0 ? "JAMMED \(viewModel.jammedRemainingSec)s" : "JAMMED",
+                            tint: ADATheme.tacticalAmber
+                        )
                     }
                 }
                 Button {

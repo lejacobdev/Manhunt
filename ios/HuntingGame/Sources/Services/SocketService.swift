@@ -19,6 +19,15 @@ final class SocketService: ObservableObject {
     @Published var lastErrorMessage: String?
     @Published var lastAntiCheatWarning: String?
     @Published var inventory: [PowerUpType] = []
+    /// This player's own active buffs and when each runs out, as the server's clock has them
+    /// (`buffs_update`). The HUD's countdown badges are driven from this, so a power-up the
+    /// server refused never shows as running, and one that ran out early disappears on time.
+    @Published var buffExpiries: [PowerUpType: Date] = [:]
+    /// Power-ups whose effect isn't a buff on the caster (a Ghost Decoy walking off, an EMP
+    /// that jammed other players), from the server's `powerup_activated` confirmation.
+    @Published var castExpiries: [PowerUpType: Date] = [:]
+    /// One-line result of the last power-up this player used ("EMP jammed 2 hunters").
+    @Published var lastPowerUpNotice: String?
     @Published var isConnected: Bool = false
     @Published var gameOverReason: String?
     /// The runner's own incoming "did you get caught?" popup.
@@ -141,6 +150,9 @@ final class SocketService: ObservableObject {
         lastErrorMessage = nil
         lastAntiCheatWarning = nil
         inventory = []
+        buffExpiries = [:]
+        castExpiries = [:]
+        lastPowerUpNotice = nil
         gameOverReason = nil
         incomingCatchRequest = nil
         pendingDenyConfirm = nil
@@ -252,6 +264,43 @@ final class SocketService: ObservableObject {
         socket.on("radar_broadcast") { [weak self] data, _ in
             guard let self, let raw = data.first else { return }
             self.radar = Self.decode(raw)
+        }
+
+        socket.on("buffs_update") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any], let buffs = dict["buffs"] as? [String: Any] else { return }
+            var next: [PowerUpType: Date] = [:]
+            for (raw, value) in buffs {
+                guard let type = PowerUpType(rawValue: raw), let ms = (value as? NSNumber)?.doubleValue else { continue }
+                next[type] = Date(timeIntervalSince1970: ms / 1000)
+            }
+            self.buffExpiries = next
+        }
+
+        socket.on("powerup_activated") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any],
+                  let raw = dict["type"] as? String, let type = PowerUpType(rawValue: raw) else { return }
+            if let ms = (dict["expiresAt"] as? NSNumber)?.doubleValue {
+                let expiry = Date(timeIntervalSince1970: ms / 1000)
+                switch type {
+                case .ghostDecoy, .empJammer: self.castExpiries[type] = expiry
+                default: self.buffExpiries[type] = expiry
+                }
+            }
+            switch type {
+            case .empJammer:
+                let jammed = (dict["jammedCount"] as? NSNumber)?.intValue ?? 0
+                self.lastPowerUpNotice = jammed == 0
+                    ? "EMP fired — no hunters were within 200 m."
+                    : "EMP jammed \(jammed) hunter\(jammed == 1 ? "" : "s") for 60 seconds."
+            case .ghostDecoy:
+                self.lastPowerUpNotice = "Ghost Decoy is walking away from you on the hunters' radar."
+            case .invisibility:
+                self.lastPowerUpNotice = "You're off the radar for 60 seconds."
+            case .thermalVision:
+                self.lastPowerUpNotice = "Thermal Vision: invisible runners within 300 m show up."
+            default:
+                break
+            }
         }
 
         socket.on("game_started") { [weak self] data, _ in

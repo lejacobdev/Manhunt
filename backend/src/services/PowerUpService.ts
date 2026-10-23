@@ -8,7 +8,10 @@ import {
   SAFE_ZONE_RADIUS_METERS,
   Point2D,
   GHOST_DECOY_SPEED_MPS,
+  canUsePowerUp,
+  powerUpRoleMessage,
 } from '../types';
+import { randomUUID } from 'crypto';
 
 export interface PowerUpUseResult {
   ok: boolean;
@@ -20,7 +23,11 @@ export interface PowerUpUseResult {
 }
 
 export interface DecoyRecord {
+  /** Shown to hunters as the runner id of a fake radar contact: `decoy:<uuid>`. */
+  id: string;
   sessionOwnerId: string;
+  /** The caster's name, so the fake contact is indistinguishable from the real one. */
+  ownerUsername: string;
   originLat: number;
   originLng: number;
   bearingDegrees: number;
@@ -40,7 +47,11 @@ export type DecoyMap = Map<string, DecoyRecord[]>;
  *  - EMP_JAMMER: a runner-cast AOE that blinds every hunter within 200m at
  *    the moment of casting for 60 seconds (their radar + compass go dark).
  *  - THERMAL_VISION: a hunter buff that pierces INVISIBILITY_10MIN for
- *    runners within 300m and forces 1-second radar refresh, for 45 seconds.
+ *    runners within 300m, hides ghost decoys (they have no heat), and forces a
+ *    1-second radar refresh, for 45 seconds.
+ *
+ * Role-restricted power-ups (see POWER_UP_ROLES) are refused here without being
+ * consumed, so a runner who became a hunter in Infection keeps the item.
  *  - ADRENALINE: grants +2 permanent hearts (which count as gamble stakes like
  *    any other heart) and temporarily raises the runner's permitted sprint-speed
  *    ceiling for anti-cheat purposes. Runner-only: see the collect_powerup guard.
@@ -52,7 +63,8 @@ export function usePowerUp(
   type: PowerUpType,
   decoys: DecoyMap,
   sessionCode: string,
-  runnerBearingDegrees?: number
+  runnerBearingDegrees?: number,
+  boundsPolygon?: Point2D[]
 ): PowerUpUseResult {
   const player = session.get(playerId);
   if (!player) return { ok: false, error: 'Player not found in session.' };
@@ -61,6 +73,9 @@ export function usePowerUp(
   }
   if (player.isCaught || player.isOut) {
     return { ok: false, error: 'Caught players cannot use power-ups.' };
+  }
+  if (!canUsePowerUp(player.role, type)) {
+    return { ok: false, error: powerUpRoleMessage(type) };
   }
 
   // Consume from inventory
@@ -121,10 +136,13 @@ export function usePowerUp(
       // Walks off in the direction opposite the runner's own recent bearing
       // (falling back to a random heading if we don't have one yet), so a
       // hunter chasing the decoy is drawn away from the real runner.
-      const bearing = ((runnerBearingDegrees ?? Math.random() * 360) + 180) % 360;
+      const away = ((runnerBearingDegrees ?? Math.random() * 360) + 180) % 360;
+      const bearing = decoyBearingInsideBounds(player, away, POWER_UP_DURATIONS_MS.GHOST_DECOY, boundsPolygon);
       const list = decoys.get(sessionCode) ?? [];
       list.push({
+        id: `decoy:${randomUUID()}`,
         sessionOwnerId: playerId,
+        ownerUsername: player.username,
         originLat: player.lat,
         originLng: player.lng,
         bearingDegrees: bearing,
@@ -164,6 +182,28 @@ export function usePowerUp(
     default:
       return { ok: false, error: `Unknown power-up type: ${type}` };
   }
+}
+
+/**
+ * A decoy that walks out of the play area gives itself away — no real runner would. Starting
+ * from the "away from the runner" heading, try headings fanning out 30° at a time until one keeps
+ * the whole walk inside the boundary; with no boundary, or none that fits, keep the first choice.
+ */
+function decoyBearingInsideBounds(origin: Point2D, preferred: number, durationMs: number, bounds?: Point2D[]): number {
+  if (!bounds || bounds.length < 3) return preferred;
+  const ring = bounds.map((p) => [p.lng, p.lat]);
+  if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) ring.push(ring[0]);
+  const polygon = turf.polygon([ring]);
+  const totalKm = (GHOST_DECOY_SPEED_MPS * durationMs) / 1000 / 1000;
+  const fits = (bearing: number) =>
+    [0.25, 0.5, 0.75, 1].every((f) =>
+      turf.booleanPointInPolygon(turf.destination([origin.lng, origin.lat], totalKm * f, bearing, { units: 'kilometers' }), polygon)
+    );
+  for (const offset of [0, 30, -30, 60, -60, 90, -90, 120, -120, 150, -150, 180]) {
+    const bearing = (preferred + offset + 360) % 360;
+    if (fits(bearing)) return bearing;
+  }
+  return preferred;
 }
 
 export function grantPowerUp(player: PlayerState, type: PowerUpType): void {

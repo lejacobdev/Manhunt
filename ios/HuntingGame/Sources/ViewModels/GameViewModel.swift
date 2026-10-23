@@ -19,6 +19,8 @@ final class GameViewModel: ObservableObject {
     /// the HUD badges for buffs whose effect is otherwise invisible to their own caster
     /// (thermal vision, adrenaline, a dropped flare).
     @Published var activeBuffRemainingSec: [PowerUpType: Int] = [:]
+    /// Seconds left on an EMP that jammed this hunter's radar.
+    @Published var jammedRemainingSec: Int = 0
     @Published var catchTargetId: String?
     @Published var catchCodeEntry: String = ""
     @Published var showCatchFailure: String?
@@ -387,7 +389,10 @@ final class GameViewModel: ObservableObject {
             .compactMap { $0 }
             .receive(on: DispatchQueue.main)
             .sink { update in
-                LiveActivityManager.shared.update(distanceMeters: update.distanceMeters, bearingDegrees: update.bearingDegrees)
+                // No visible hunter (all invisible or out): leave the Live Activity on its last
+                // reading rather than inventing a distance.
+                guard let distance = update.distanceMeters, let bearing = update.bearingDegrees else { return }
+                LiveActivityManager.shared.update(distanceMeters: distance, bearingDegrees: bearing)
             }
             .store(in: &cancellables)
 
@@ -407,6 +412,23 @@ final class GameViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] spawnId in
                 self?.powerUpSpawns.removeAll { $0.id == spawnId }
+            }
+            .store(in: &cancellables)
+
+        Publishers.CombineLatest(socket.$buffExpiries, socket.$castExpiries)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _, _ in
+                // Published values arrive before the property changes; read on the next turn.
+                DispatchQueue.main.async { self?.startBuffTickerIfNeeded() }
+            }
+            .store(in: &cancellables)
+
+        socket.$lastPowerUpNotice
+            .compactMap { $0 }
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] notice in
+                self?.showCatchFailure = notice
+                self?.socket.lastPowerUpNotice = nil
             }
             .store(in: &cancellables)
 
@@ -641,39 +663,44 @@ final class GameViewModel: ObservableObject {
     func usePowerUp(_ type: PowerUpType) {
         socket.usePowerUp(type)
         HapticsEngine.shared.powerUpActivated()
-
-        // Every buff gets a live countdown badge, not just invisibility — thermal vision,
-        // adrenaline and a dropped flare all used to activate with no on-screen sign that
-        // anything had happened beyond the inventory slot emptying.
-        activeBuffRemainingSec[type] = type.durationSeconds
-        if type == .invisibility {
-            isInvisible = true
-            invisibilityRemainingSec = type.durationSeconds
-        }
-        startBuffTickerIfNeeded()
+        // No optimistic countdown: the badge starts when the server confirms
+        // (`powerup_activated` / `buffs_update`), so a refused power-up — wrong role, already
+        // caught — never shows as running.
     }
 
-    /// One shared 1s ticker driving every active buff countdown, started lazily and stopped
-    /// as soon as the last buff expires.
+    /// Recomputes every countdown badge from the server's expiry times, once a second while
+    /// anything is running. An EMP_JAMMER "buff" on a hunter means they were jammed by a runner;
+    /// that is shown by the JAMMED badge, not as a power-up of their own.
+    private func recomputeBuffBadges() {
+        let now = Date()
+        var remaining: [PowerUpType: Int] = [:]
+        for (type, expiry) in socket.buffExpiries where expiry > now {
+            if type == .empJammer && role == .hunter { continue }
+            remaining[type] = Int(expiry.timeIntervalSince(now).rounded(.up))
+        }
+        for (type, expiry) in socket.castExpiries where expiry > now {
+            remaining[type] = Int(expiry.timeIntervalSince(now).rounded(.up))
+        }
+        if remaining != activeBuffRemainingSec { activeBuffRemainingSec = remaining }
+        let invisible = remaining[.invisibility] ?? 0
+        if invisibilityRemainingSec != invisible { invisibilityRemainingSec = invisible }
+        if isInvisible != (invisible > 0) { isInvisible = invisible > 0 }
+        jammedRemainingSec = role == .hunter
+            ? socket.buffExpiries[.empJammer].map { max(0, Int($0.timeIntervalSince(now).rounded(.up))) } ?? 0
+            : 0
+        if remaining.isEmpty && jammedRemainingSec == 0 {
+            invisibilityTimer?.invalidate()
+            invisibilityTimer = nil
+        }
+    }
+
     private func startBuffTickerIfNeeded() {
-        guard invisibilityTimer == nil else { return }
+        recomputeBuffBadges()
+        guard invisibilityTimer == nil, !(activeBuffRemainingSec.isEmpty && jammedRemainingSec == 0) else { return }
         invisibilityTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] timer in
             Task { @MainActor in
                 guard let self else { timer.invalidate(); return }
-                for (type, remaining) in self.activeBuffRemainingSec {
-                    let next = remaining - 1
-                    if next <= 0 {
-                        self.activeBuffRemainingSec.removeValue(forKey: type)
-                        if type == .invisibility { self.isInvisible = false }
-                    } else {
-                        self.activeBuffRemainingSec[type] = next
-                    }
-                }
-                self.invisibilityRemainingSec = self.activeBuffRemainingSec[.invisibility] ?? 0
-                if self.activeBuffRemainingSec.isEmpty {
-                    timer.invalidate()
-                    self.invisibilityTimer = nil
-                }
+                self.recomputeBuffBadges()
             }
         }
     }

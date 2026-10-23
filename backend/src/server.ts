@@ -40,6 +40,9 @@ import {
   CATCH_REQUEST_TIMEOUT_MS,
   CATCH_VERIFICATION_RADIUS_METERS,
   POWER_UP_COLLECTION_RADIUS_METERS,
+  THERMAL_VISION_RADIUS_METERS,
+  canUsePowerUp,
+  powerUpRoleMessage,
   DEFAULT_BAIL_OUT_SECONDS,
   DEFAULT_JAIL_ARRIVAL_SECONDS,
   GameMode,
@@ -233,6 +236,13 @@ const activeGambles: Map<string, Map<string, { hunterId: string; round: number; 
 const sessionHostCache: Map<string, string> = new Map();
 // gamePlayerId -> last accepted fix, used for teleport detection and ghost-decoy bearing
 const lastFix: Map<string, { lat: number; lng: number; timestamp: number }> = new Map();
+// gamePlayerId -> the previous position at least 5 m back, for the Ghost Decoy's heading
+const headingFrom: Map<string, { lat: number; lng: number }> = new Map();
+// roomCode -> fingerprint of every visibility-changing buff, so the 1 s ticker can push a fresh
+// radar and compass to everyone the moment one starts or runs out
+const visibilityFingerprint: Map<string, string> = new Map();
+// gamePlayerId -> fingerprint of that player's own active buffs, for buffs_update
+const buffFingerprint: Map<string, string> = new Map();
 // gamePlayerId -> pending location log entries flushed to Postgres periodically
 const pendingLogs: Map<string, { playerId: string; lat: number; lng: number; accuracy: number; speed?: number }[]> = new Map();
 
@@ -488,6 +498,12 @@ io.on('connection', (socket: Socket) => {
         lastFix.set(gamePlayerId, { lat, lng, timestamp: now });
       }
 
+      // Where this player was walking from, for the Ghost Decoy's "away from me" heading.
+      // Tracked on every fix: it used to come from the anti-cheat's lastFix, which only exists
+      // when the host turns anti-cheat on, so decoys otherwise walked off in a random direction.
+      if (p.accuracy < 9999 && turf.distance(turf.point([p.lng, p.lat]), turf.point([lng, lat]), { units: 'meters' }) >= 5) {
+        headingFrom.set(gamePlayerId, { lat: p.lat, lng: p.lng });
+      }
       p.lat = lat;
       p.lng = lng;
       p.speed = speed ?? 0;
@@ -560,7 +576,9 @@ io.on('connection', (socket: Socket) => {
         pushRadarToHunter(roomCode, p, runners);
       } else if (p.role === 'RUNNER') {
         pushCompassToRunner(p, hunters);
-        for (const hunter of hunters) pushRadarToHunter(roomCode, hunter, runners);
+        // Every hunter — an invisible one is hidden from runners, not blind; filtering this
+        // loop by `hunters` froze an invisible hunter's own radar for the whole minute.
+        for (const hunter of visionSides(session).allHunters) pushRadarToHunter(roomCode, hunter, runners);
       }
 
       io.to(`${roomCode}_observers`).emit('roster_update', publicRoster(session));
@@ -655,6 +673,15 @@ io.on('connection', (socket: Socket) => {
     const mode = sessionModes.get(roomCode) ?? 'STANDARD';
 
     if (!hunter) return;
+
+    // A Ghost Decoy is a radar contact with no player behind it. Reaching one busts it.
+    if (runnerId?.startsWith('decoy:')) {
+      const list = decoys.get(roomCode) ?? [];
+      decoys.set(roomCode, list.filter((d) => d.id !== runnerId));
+      socket.emit('catch_failed', { reason: 'That was a Ghost Decoy. The runner is somewhere else.' });
+      refreshRoomVision(roomCode);
+      return;
+    }
 
     if (mode === 'SQUAD') {
       if (!hunter.squad || !runner?.squad || hunter.squad === runner.squad) {
@@ -981,8 +1008,10 @@ io.on('connection', (socket: Socket) => {
     // ADRENALINE's whole effect is bonus hearts, which only mean anything to someone who
     // can be caught — so it's a runner-only pickup, and the map feed hides it from anyone
     // else too (see routes/powerups.ts) rather than letting them walk to it and be refused.
-    if (spawn.type === 'ADRENALINE' && player.role !== 'RUNNER') {
-      socket.emit('error_event', { reason: 'Only runners can pick up Adrenaline.' });
+    // Same for every power-up that only helps one side (POWER_UP_ROLES): hidden from the other
+    // side's map feed, and refused here if they reach it anyway.
+    if (!canUsePowerUp(player.role, spawn.type as PowerUpType)) {
+      socket.emit('error_event', { reason: powerUpRoleMessage(spawn.type as PowerUpType).replace('use', 'pick up') });
       return;
     }
 
@@ -1003,14 +1032,22 @@ io.on('connection', (socket: Socket) => {
 
     let runnerBearingDegrees: number | undefined;
     if (powerUpType === 'GHOST_DECOY') {
-      const prevFix = lastFix.get(gamePlayerId);
+      const from = headingFrom.get(gamePlayerId);
       const player = session.get(gamePlayerId);
-      if (prevFix && player && (prevFix.lat !== player.lat || prevFix.lng !== player.lng)) {
-        runnerBearingDegrees = turf.bearing(turf.point([prevFix.lng, prevFix.lat]), turf.point([player.lng, player.lat]));
+      if (from && player) {
+        runnerBearingDegrees = turf.bearing(turf.point([from.lng, from.lat]), turf.point([player.lng, player.lat]));
       }
     }
 
-    const result = usePowerUp(session, gamePlayerId, powerUpType, decoys, roomCode, runnerBearingDegrees);
+    const result = usePowerUp(
+      session,
+      gamePlayerId,
+      powerUpType,
+      decoys,
+      roomCode,
+      runnerBearingDegrees,
+      sessionSettingsCache.get(roomCode)?.boundsPolygon
+    );
     if (!result.ok) {
       socket.emit('error_event', { reason: result.error });
       return;
@@ -1038,6 +1075,17 @@ io.on('connection', (socket: Socket) => {
     if (result.broadcastEvent) {
       io.to(roomCode).emit(result.broadcastEvent.type, result.broadcastEvent.payload);
     }
+
+    // The caster's confirmation, with the real expiry — the app starts its countdown from
+    // this rather than optimistically, so a refused power-up never shows as running.
+    const payload = result.broadcastEvent?.payload ?? {};
+    socket.emit('powerup_activated', {
+      type: powerUpType,
+      expiresAt: payload.expiresAt,
+      jammedCount: Array.isArray(payload.jammedHunterIds) ? payload.jammedHunterIds.length : undefined,
+    });
+    // Every radar and compass reflects the change now, not on whoever's next GPS fix.
+    refreshRoomVision(roomCode);
   });
 
   socket.on('leave_room', () => cleanupSocket(socket));
@@ -1139,7 +1187,13 @@ function publicRoster(session: Map<string, PlayerState>): PlayerState[] {
  * until they personally moved enough to trigger their own send_location_update.
  */
 function pushCompassToRunner(runner: PlayerState, hunters: PlayerState[]) {
-  if (runner.isCaught || hunters.length === 0) return;
+  if (runner.isCaught) return;
+  if (hunters.length === 0) {
+    // Every hunter is invisible, out, or has no fix yet. Returning early here used to leave
+    // the runner's compass pointing at the last hunter it saw for as long as that lasted.
+    io.to(runner.id).emit('compass_update', { distanceMeters: null, bearingDegrees: null, hunters: [] });
+    return;
+  }
   const rPt = turf.point([runner.lng, runner.lat]);
   const bearings = hunters
     .map((h) => {
@@ -1171,28 +1225,111 @@ function pushRadarToHunter(roomCode: string, hunter: PlayerState, runners: Playe
   }
   const thermalActive = isBuffActive(hunter, 'THERMAL_VISION');
   const hunterPt = turf.point([hunter.lng, hunter.lat]);
-  // Thermal Vision pierces every invisible runner's cloak everywhere on the map, not just
-  // nearby ones — but only for the hunter who actually activated it; every other hunter's
-  // own radar keeps filtering invisible runners out normally.
-  const visibleRunners = runners.filter((r) => !isBuffActive(r, 'INVISIBILITY_10MIN') || thermalActive);
-  const runnerBearings = visibleRunners
-    .map((r) => {
-      const rPt = turf.point([r.lng, r.lat]);
-      return {
-        runnerId: r.id,
-        username: r.username,
-        distanceMeters: Math.round(turf.distance(hunterPt, rPt, { units: 'meters' })),
-        bearingDegrees: (turf.bearing(hunterPt, rPt) + 360) % 360,
-      };
-    })
+  const distanceTo = (lat: number, lng: number) => turf.distance(hunterPt, turf.point([lng, lat]), { units: 'meters' });
+
+  // Invisible runners are off the radar — except to a hunter running Thermal Vision, who sees
+  // through it within THERMAL_VISION_RADIUS_METERS (a heat camera, not a map of the town).
+  const visibleRunners = runners.filter(
+    (r) => !isBuffActive(r, 'INVISIBILITY_10MIN') || (thermalActive && distanceTo(r.lat, r.lng) <= THERMAL_VISION_RADIUS_METERS)
+  );
+  const contacts: PlayerState[] = [...visibleRunners];
+
+  // Ghost Decoys appear as ordinary runner contacts — same name as the runner who dropped
+  // them, same shape — so a hunter can't tell which one is real. They used to be sent in a
+  // separate, labelled `decoys` list that the app drew with its own icon, which gave every
+  // decoy away. Thermal Vision shows no decoys: they have no heat signature.
+  if (!thermalActive) {
+    pruneExpiredDecoys(decoys, roomCode);
+    const session = activeSessions.get(roomCode);
+    for (const d of decoys.get(roomCode) ?? []) {
+      const owner = session?.get(d.sessionOwnerId);
+      if (!owner || owner.isCaught || owner.isOut) continue;
+      const pos = currentDecoyPosition(d);
+      contacts.push({ ...owner, id: d.id, lat: pos.lat, lng: pos.lng, inventory: [], activeBuffs: {} });
+    }
+  }
+
+  const runnerBearings = contacts
+    .map((r) => ({
+      runnerId: r.id,
+      username: r.username,
+      distanceMeters: Math.round(distanceTo(r.lat, r.lng)),
+      bearingDegrees: (turf.bearing(hunterPt, turf.point([r.lng, r.lat])) + 360) % 360,
+    }))
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
-  pruneExpiredDecoys(decoys, roomCode);
-  const liveDecoys = (decoys.get(roomCode) ?? []).map((d) => {
-    const pos = currentDecoyPosition(d);
-    return { lat: pos.lat, lng: pos.lng, isDecoy: true };
-  });
-  io.to(hunter.id).emit('radar_broadcast', { runners: visibleRunners, runnerBearings, decoys: liveDecoys, jammed: false });
+  const order = new Map(runnerBearings.map((b, i) => [b.runnerId, i]));
+  contacts.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
+  io.to(hunter.id).emit('radar_broadcast', { runners: contacts, runnerBearings, decoys: [], jammed: false });
 }
+
+/** Who can see whom right now: the same filters the location handler uses. */
+function visionSides(session: Map<string, PlayerState>) {
+  const all = Array.from(session.values());
+  const hasFix = (x: PlayerState) => x.accuracy < 9999;
+  return {
+    hunters: all.filter((x) => x.role === 'HUNTER' && hasFix(x) && !x.isOut && !isBuffActive(x, 'INVISIBILITY_10MIN')),
+    allHunters: all.filter((x) => x.role === 'HUNTER' && hasFix(x) && !x.isOut),
+    runners: all.filter((x) => x.role === 'RUNNER' && !x.isCaught && !x.isOut && hasFix(x)),
+  };
+}
+
+/** Pushes a fresh radar to every hunter and compass to every runner in the room. */
+function refreshRoomVision(roomCode: string) {
+  const session = activeSessions.get(roomCode);
+  if (!session) return;
+  const { hunters, allHunters, runners } = visionSides(session);
+  for (const runner of runners) pushCompassToRunner(runner, hunters);
+  // Every hunter, including an invisible one: invisibility hides you from runners, not from
+  // your own radar.
+  for (const hunter of allHunters) pushRadarToHunter(roomCode, hunter, runners);
+}
+
+/** Each player's own active buffs and their expiry, so the app's badges follow the server. */
+function pushBuffs(p: PlayerState) {
+  const now = Date.now();
+  const buffs: Record<string, number> = {};
+  for (const [type, buff] of Object.entries(p.activeBuffs)) {
+    if (buff && buff.expiresAt > now) buffs[type] = buff.expiresAt;
+  }
+  const fingerprint = JSON.stringify(buffs);
+  if (buffFingerprint.get(p.id) === fingerprint) return;
+  buffFingerprint.set(p.id, fingerprint);
+  io.to(p.id).emit('buffs_update', { buffs });
+}
+
+/**
+ * The power-up clock, once a second per room. Buffs used to start and stop mattering only
+ * when someone's GPS fix happened to arrive: an EMP'd hunter kept a working radar until they
+ * moved, an expired Invisibility kept a runner hidden, and a Ghost Decoy stood still on the
+ * radar between fixes. Now:
+ *  - any change in who is invisible, jammed or on thermal pushes everyone a fresh view;
+ *  - live decoys walk on every hunter's radar every second;
+ *  - Thermal Vision refreshes its hunter's radar every second, as specified;
+ *  - each player's own buff badges are corrected from the server's clock.
+ */
+setInterval(() => {
+  for (const [roomCode, session] of activeSessions) {
+    if (!sessionStartedAtCache.has(roomCode)) continue;
+    for (const p of session.values()) {
+      pruneExpiredBuffs(p);
+      pushBuffs(p);
+    }
+    const fingerprint = Array.from(session.values())
+      .map((p) => `${p.id}:${['INVISIBILITY_10MIN', 'EMP_JAMMER', 'THERMAL_VISION'].filter((t) => isBuffActive(p, t as PowerUpType)).join(',')}`)
+      .join('|');
+    pruneExpiredDecoys(decoys, roomCode);
+    const liveDecoys = (decoys.get(roomCode) ?? []).length > 0;
+    if (visibilityFingerprint.get(roomCode) !== fingerprint || liveDecoys) {
+      visibilityFingerprint.set(roomCode, fingerprint);
+      refreshRoomVision(roomCode);
+      continue;
+    }
+    const { runners } = visionSides(session);
+    for (const hunter of session.values()) {
+      if (hunter.role === 'HUNTER' && isBuffActive(hunter, 'THERMAL_VISION')) pushRadarToHunter(roomCode, hunter, runners);
+    }
+  }
+}, 1000);
 
 // gamePlayerId -> check -> epoch ms of the last stored flag. A spoofing client trips a check on
 // every fix; one stored flag per check per minute is enough to see the pattern in the admin
