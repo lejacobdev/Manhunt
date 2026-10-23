@@ -148,6 +148,8 @@ struct CosmeticsView: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+            // The whole tile is the button, not just its text.
+            .contentShape(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous))
             .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: isEquipped ? ADATheme.runnerGreen : .clear)
             .opacity(item.owned ? 1 : 0.8)
         }
@@ -209,6 +211,10 @@ struct CosmeticsView: View {
                     if pack.id != packs.first?.id {
                         Rectangle().fill(Color.white.opacity(0.07)).frame(height: 0.5)
                     }
+                    // The whole row buys the pack, not just the price.
+                    Button {
+                        if !pack.owned { Task { await store.buy(pack.productId) } }
+                    } label: {
                     HStack(spacing: 12) {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(pack.name)
@@ -225,15 +231,20 @@ struct CosmeticsView: View {
                                 .tacticalFont(.telemetry, size: 10)
                                 .foregroundColor(ADATheme.runnerGreen)
                         } else {
-                            Button(store.products[pack.productId]?.displayPrice ?? "BUY") {
-                                Task { await store.buy(pack.productId) }
-                            }
-                            .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
-                            .disabled(store.isWorking)
-                            .accessibilityLabel("Buy \(pack.name)\(store.products[pack.productId].map { " for \($0.displayPrice)" } ?? "")")
+                            Text(store.products[pack.productId]?.displayPrice ?? "BUY")
+                                .tacticalFont(.telemetry, size: 13)
+                                .foregroundColor(ADATheme.spatialCyan)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .overlay(RoundedRectangle(cornerRadius: ADATheme.controlCornerRadius, style: .continuous).stroke(ADATheme.spatialCyan.opacity(0.5), lineWidth: 1))
                         }
                     }
                     .padding(14)
+                    .contentShape(Rectangle())
+                    }
+                    .buttonStyle(ScaleButtonStyle(scale: 0.98))
+                    .disabled(pack.owned || store.isWorking)
+                    .accessibilityLabel(pack.owned ? "\(pack.name), owned" : "Buy \(pack.name)\(store.products[pack.productId].map { " for \($0.displayPrice)" } ?? "")")
                 }
             }
             .glassCard()

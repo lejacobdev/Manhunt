@@ -35,7 +35,7 @@ enum ScreenshotScenario: String, CaseIterable {
             MatchSummaryView(sessionCode: "K7Q2", myUserId: "u-me", preloaded: Self.sampleSummary)
         case .cosmetics:
             NavigationStack { CosmeticsView(isPreview: true) }
-                .onAppear { CosmeticsStore.shared.loadPreview(Self.sampleCosmetics) }
+                .onAppear { Task { @MainActor in CosmeticsStore.shared.loadPreview(Self.sampleCosmetics) } }
         }
     }
 
