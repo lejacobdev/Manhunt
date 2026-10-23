@@ -63,6 +63,11 @@ final class CosmeticsStore: ObservableObject {
         Task { await refresh() }
     }
 
+    #if DEBUG
+    /// Simulator screenshot scenarios only.
+    func loadPreview(_ preview: CosmeticsSnapshot) { snapshot = preview }
+    #endif
+
     func refresh() async {
         do {
             snapshot = try await APIClient.shared.cosmetics()

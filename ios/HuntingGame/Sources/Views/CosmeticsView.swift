@@ -5,6 +5,8 @@ import StoreKit
 /// Some are free, some unlock by playing, some come in packs; Supporter includes every pack.
 struct CosmeticsView: View {
     @StateObject private var store = CosmeticsStore.shared
+    /// Simulator screenshot scenarios: show the sample snapshot instead of loading.
+    var isPreview = false
 
     private let sections: [(id: String, title: String, note: String)] = [
         ("mapStyle", "MAP STYLE", "Only you see it."),
@@ -42,7 +44,7 @@ struct CosmeticsView: View {
         .navigationTitle("Customize")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarColorScheme(.dark, for: .navigationBar)
-        .task { await store.refresh() }
+        .task { if !isPreview { await store.refresh() } }
         .alert("Customize", isPresented: Binding(get: { store.message != nil }, set: { if !$0 { store.message = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {

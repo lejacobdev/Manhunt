@@ -12,6 +12,7 @@ enum ScreenshotScenario: String, CaseIterable {
     case hudHunter = "hud-hunter"
     case hudRunner = "hud-runner"
     case summary
+    case cosmetics
 
     static var current: ScreenshotScenario? {
         let args = ProcessInfo.processInfo.arguments
@@ -32,6 +33,9 @@ enum ScreenshotScenario: String, CaseIterable {
             ScenarioGame(role: .runner)
         case .summary:
             MatchSummaryView(sessionCode: "K7Q2", myUserId: "u-me", preloaded: Self.sampleSummary)
+        case .cosmetics:
+            NavigationStack { CosmeticsView(isPreview: true) }
+                .onAppear { CosmeticsStore.shared.loadPreview(Self.sampleCosmetics) }
         }
     }
 

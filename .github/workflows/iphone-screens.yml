@@ -68,7 +68,7 @@ jobs:
           xcrun simctl install "$UDID" "$APP"
           xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
           shoot() {  # $1 = variant label
-            for S in auth rules hud-hunter hud-runner summary; do
+            for S in auth rules hud-hunter hud-runner summary cosmetics; do
               xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
               xcrun simctl launch "$UDID" "$BUNDLE" -UIScenario "$S" >/dev/null
               sleep 7
@@ -84,6 +84,17 @@ jobs:
           xcrun simctl ui "$UDID" increase_contrast enabled || true
           shoot increase-contrast
           ls -la "$OUT"
+
+      # The Customize screen doubles as the App Review screenshot of every cosmetic purchase.
+      - name: Upload the in-app purchase review screenshot
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+        run: |
+          test -f "$RUNNER_TEMP/shots/default_cosmetics.png" || { echo "no cosmetics screenshot"; exit 1; }
+          echo "$API_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8" node scripts/asc-iap-screenshot.mjs "$RUNNER_TEMP/shots/default_cosmetics.png"
 
       - uses: actions/upload-artifact@v4
         if: always()
