@@ -171,6 +171,7 @@ td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numer
 .btn.ghost { background: transparent; }
 .btn.small { padding: 6px 10px; font-size: 11px; border-radius: 10px; }
 .btn[disabled] { opacity: .45; pointer-events: none; }
+.btn svg { width: 16px; height: 16px; flex: none; }
 .btn kbd { font: 700 9.5px/1 var(--mono); opacity: .55; padding: 2px 4px; border: 1px solid currentColor; border-radius: 4px; }
 
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
