@@ -57,6 +57,15 @@ jobs:
             | tee "$RUNNER_TEMP/build.log" | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" "$RUNNER_TEMP/build.log"
 
+      # The app icon is a layered Liquid Glass .icon (Resources/AppIcon.icon). Show what actool
+      # produced from it: the icon entries in Info.plist and the icon renditions in Assets.car.
+      - name: Show the compiled app icon
+        run: |
+          APP=$(find "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name "*.app" | head -1)
+          plutil -p "$APP/Info.plist" | grep -A8 -i "CFBundleIcons" | head -20 || true
+          ls "$APP" | grep -i appicon || true
+          xcrun --sdk iphonesimulator assetutil --info "$APP/Assets.car" | grep -iE '"(Name|RenditionName|AssetType|Icon Image|Appearances)"' | grep -i -B1 -A1 icon | head -40 || true
+
       - name: Screenshot every scenario
         run: |
           UDID="${{ steps.sim.outputs.udid }}"
@@ -78,6 +87,14 @@ jobs:
           xcrun simctl ui "$UDID" content_size large
           xcrun simctl ui "$UDID" increase_contrast disabled || true
           shoot default
+          # The home screen, to see the Liquid Glass app icon itself, light and dark.
+          xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
+          for MODE in light dark; do
+            xcrun simctl ui "$UDID" appearance $MODE
+            sleep 3
+            xcrun simctl io "$UDID" screenshot "$OUT/home_${MODE}.png" || true
+          done
+          xcrun simctl ui "$UDID" appearance dark
           xcrun simctl ui "$UDID" content_size accessibility-extra-large
           shoot largest-text
           xcrun simctl ui "$UDID" content_size large
