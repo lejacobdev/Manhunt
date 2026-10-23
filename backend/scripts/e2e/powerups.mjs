@@ -102,10 +102,13 @@ check((await collect(H1, sessionId, 'THERMAL_VISION')) === null, 'thermal: hunte
 await use(H1, 'THERMAL_VISION');
 check(sees(H1, R1), 'thermal: hunter A sees invisible runner A at 100 m');
 check(!sees(H2, R1), 'thermal: hunter B (no thermal) still cannot see runner A');
+check((H1.radar?.heat ?? []).some((h) => h.id === R1.gp.id), 'thermal: runner A (100 m, invisible) shows as a heat signature on hunter A\'s map');
+check(!(H2.radar?.heat ?? []).length, 'thermal: no heat signatures for a hunter without thermal');
 // Runner B goes invisible at 400 m: outside thermal range.
 check((await collect(R2, sessionId, 'INVISIBILITY_10MIN')) === null, 'thermal: runner B picks up invisibility');
 await use(R2, 'INVISIBILITY_10MIN');
 check(!sees(H1, R2), 'thermal: invisible runner B at 400 m stays hidden even from thermal (300 m range)');
+check(!(H1.radar?.heat ?? []).some((h) => h.id === R2.gp.id), 'thermal: no heat signature beyond 300 m');
 const t0 = H1.radarAt; await sleep(1300);
 check(H1.radarAt > t0, 'thermal: radar refreshes every second with nobody moving');
 

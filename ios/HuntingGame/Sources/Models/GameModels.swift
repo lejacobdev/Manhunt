@@ -126,6 +126,27 @@ struct GameSettings: Codable, Equatable {
     /// accuracy/motion/speed/teleport checks are new enough that a false-positive
     /// rejection can look like a frozen radar, so it's opt-in rather than on by default.
     let antiCheatEnabled: Bool?
+    /// Seconds between radar/compass pings; 0 or absent is continuous.
+    var radarIntervalSeconds: Int? = nil
+}
+
+/// The ping intervals a host can pick, in seconds — 0 is a live, continuous radar.
+enum RadarPing {
+    static let steps: [Int] = [0, 10, 15, 30, 45, 60, 90, 120, 180, 300, 420, 600]
+
+    static func label(_ seconds: Int) -> String {
+        if seconds <= 0 { return "Live" }
+        if seconds < 60 { return "Every \(seconds) s" }
+        if seconds % 60 == 0 { return "Every \(seconds / 60) min" }
+        return "Every \(seconds / 60) min \(seconds % 60) s"
+    }
+}
+
+/// A runner's heat signature on a Thermal Vision hunter's map.
+struct HeatBlip: Codable, Identifiable, Equatable {
+    let id: String
+    let lat: Double
+    let lng: Double
 }
 
 struct GameSession: Codable, Identifiable {
@@ -187,6 +208,15 @@ struct CatchRequest: Identifiable, Equatable {
 }
 
 /// Hunter-side prompt shown after a runner taps "No, that wasn't a catch."
+/// A catch the runner denied and the hunter insisted on, waiting for this player (the host) to rule.
+struct CatchDispute: Identifiable, Equatable {
+    let disputeId: String
+    let hunterUsername: String
+    let runnerUsername: String
+    let distanceMeters: Int
+    var id: String { disputeId }
+}
+
 struct DenyConfirmRequest: Identifiable, Equatable {
     let requestId: String
     let runnerUsername: String
@@ -289,6 +319,12 @@ struct RadarBroadcast: Codable {
     let runnerBearings: [RunnerBearing]?
     let decoys: [DecoyBlip]?
     let jammed: Bool
+    /// Thermal Vision: runners within 300 m as heat signatures on the map.
+    var heat: [HeatBlip]? = nil
+    /// True when this radar is updating continuously (no ping interval, or Thermal Vision).
+    var live: Bool? = nil
+    /// Epoch ms of the next ping, when the match has a ping interval.
+    var nextPingAt: Double? = nil
 }
 
 struct PowerUpSpawn: Codable, Identifiable {

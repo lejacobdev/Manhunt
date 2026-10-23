@@ -36,6 +36,7 @@ struct RulesView: View {
                         lines: [
                             "Hunters chase runners down. Runners survive until the clock runs out.",
                             "Hunters win once every runner is caught, jailed or eliminated. Runners win if even one is still free at time — or if every hunter is eliminated.",
+                            "A match needs at least one hunter and one runner to start.",
                         ]
                     )
 
@@ -55,7 +56,8 @@ struct RulesView: View {
                         tint: ADATheme.hunterRed,
                         lines: [
                             "A hunter has to get within about 15 metres and send a catch request.",
-                            "You answer it on your own phone: yes, or no. Say no and the hunter is asked whether it was an accident. A genuine disagreement is the host's to settle.",
+                            "You answer it on your own phone within 20 seconds. No answer counts as caught.",
+                            "Say no and the hunter decides: their mistake (no catch), or they insist. If they insist, the host rules. If the host is one of the two players, or doesn't rule within 45 seconds, the catch stands.",
                             "Every catch costs the runner one heart. Lose your last one to a catch and no rescue can bring you back.",
                         ]
                     )
@@ -70,6 +72,8 @@ struct RulesView: View {
                             "Once you're there, leaving gives you 10 seconds to get back inside before you're disqualified.",
                             "A runner who is still free can stand in the jail to break everyone out at once. It costs them a heart, and takes a heart off every hunter.",
                             "That bail-out clock only runs while someone's actually in the jail, and it restarts if the rescuer steps outside.",
+                            "Freed runners are shielded for 30 seconds before they can be caught again.",
+                            "The jail never costs hearts — even once the shrinking zone has passed it. Safe Zone Flares don't work there.",
                         ]
                     )
 
@@ -79,6 +83,7 @@ struct RulesView: View {
                         lines: [
                             "The host draws the boundary, and a zone inside it shrinks as the match goes on.",
                             "Outside either one you get a warning, then lose a heart at a time — hunters and runners alike — until you're back inside.",
+                            "The host also sets the radar ping: live, or every 10 seconds up to every 10 minutes. With a ping, radar and compass only update on each ping.",
                         ]
                     )
 
@@ -88,9 +93,9 @@ struct RulesView: View {
                         lines: [
                             "Scattered around the play area. Walk to one to pick it up, then use it from your equipment panel. You only see the ones your side can use.",
                             "Invisibility (anyone, 60 s) — you vanish from the other side's radar or compass.",
-                            "Thermal Vision (hunters, 45 s) — see invisible runners within 300 m, with the radar updating every second. Decoys don't show up: they have no heat.",
+                            "Thermal Vision (hunters, 45 s) — every runner within 300 m shows on your map as a heat signature, invisible ones included, and your radar tracks live between pings. Decoys have no heat.",
                             "Ghost Decoy (runners, 3 min) — a fake copy of you walks away from the direction you were heading. Hunters can't tell it from the real you until they reach it.",
-                            "EMP Jammer (runners, 60 s) — every hunter within 200 m of you loses their radar.",
+                            "EMP Jammer (runners, 60 s) — every hunter within 200 m of you loses their radar at once and misses every ping until it wears off.",
                             "Adrenaline (runners, 90 s) — two extra hearts, and a higher top speed for anti-cheat.",
                             "Safe Zone Flare (anyone, 90 s) — a 30 m bubble around where you stood where nobody can be caught.",
                         ]
@@ -101,8 +106,9 @@ struct RulesView: View {
                         title: "MODES",
                         lines: [
                             "Standard — hunters versus runners.",
-                            "Infection — a caught runner switches sides and joins the hunt.",
-                            "Squad — teams. You can only tag other squads, and squadmates can revive each other. Pick your squad when you join.",
+                            "Infection — a caught runner switches sides and joins the hunt. The match ends when nobody is left running.",
+                            "Squad — teams, each with hunters and runners. You only chase other squads' runners, and your radar and compass only show the other squads. The last squad with a runner still free wins; at time, the squad with the most runners free. Pick your squad when you join.",
+                            "In Squad mode without jail, a free squadmate can revive a caught teammate by standing next to them. With jail on, you free your squad with a jailbreak instead — it only frees your squad, and only costs the other squads' hunters a heart.",
                         ]
                     )
 

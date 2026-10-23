@@ -28,10 +28,14 @@ export function computeZoneState(
   const ring = boundsPolygon.map((p) => [p.lng, p.lat]);
   ring.push([boundsPolygon[0].lng, boundsPolygon[0].lat]);
   const poly = turf.polygon([ring]);
-  const centroidFeature = turf.centroid(poly);
+  // The zone closes in on a point that is guaranteed to be inside the play area. The plain
+  // centroid of an L-shaped or crescent area lies outside it, which made the final circle sit
+  // outside the boundary and drained everyone's hearts at the end however well they played.
+  let centerFeature = turf.centroid(poly);
+  if (!turf.booleanPointInPolygon(centerFeature, poly)) centerFeature = turf.pointOnFeature(poly);
   const center: Point2D = {
-    lat: centroidFeature.geometry.coordinates[1],
-    lng: centroidFeature.geometry.coordinates[0],
+    lat: centerFeature.geometry.coordinates[1],
+    lng: centerFeature.geometry.coordinates[0],
   };
 
   let fullRadiusMeters = 0;

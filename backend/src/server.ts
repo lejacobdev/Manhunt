@@ -41,12 +41,15 @@ import {
   CATCH_VERIFICATION_RADIUS_METERS,
   POWER_UP_COLLECTION_RADIUS_METERS,
   THERMAL_VISION_RADIUS_METERS,
+  RELEASE_PROTECTION_MS,
+  CATCH_DISPUTE_TIMEOUT_MS,
   canUsePowerUp,
   powerUpRoleMessage,
   DEFAULT_BAIL_OUT_SECONDS,
   DEFAULT_JAIL_ARRIVAL_SECONDS,
   GameMode,
   JAIL_BUFFER_METERS,
+  SAFE_ZONE_RADIUS_METERS,
   JAIL_VIOLATION_COUNTDOWN_MS,
   PlayerState,
   PowerUpType,
@@ -220,7 +223,21 @@ const bailDwellSince: Map<string, Map<string, number>> = new Map();
 // roomCode -> runnerId -> the one pending catch request targeting them (a runner can only
 // be asked about one catch at a time; a hunter, however, may have requests out to several
 // runners at once, hence requestId to disambiguate which one a later deny-confirm is about).
-const pendingCatchRequests: Map<string, Map<string, { requestId: string; hunterId: string; hunterUsername: string; requestedAt: number }>> = new Map();
+const pendingCatchRequests: Map<
+  string,
+  Map<string, { requestId: string; hunterId: string; hunterUsername: string; requestedAt: number; deniedAt?: number }>
+> = new Map();
+// roomCode -> disputeId -> a catch the runner denied and the hunter insisted on; the host rules
+// on it, or the server does once CATCH_DISPUTE_TIMEOUT_MS passes.
+const pendingDisputes: Map<string, Map<string, { runnerId: string; hunterId: string; createdAt: number }>> = new Map();
+// roomCode -> index of the last radar ping sent (pings are every radarIntervalSeconds from the
+// match start, so the app can compute the same schedule for its countdown).
+const lastPingIndex: Map<string, number> = new Map();
+// hunter gamePlayerId -> whether their last radar push said "jammed", so the end of a jam can be
+// announced even between pings.
+const wasJammed: Map<string, boolean> = new Map();
+// roomCode -> playerId -> epoch ms until which a just-freed runner can't be caught again.
+const releaseProtection: Map<string, Map<string, number>> = new Map();
 // roomCode -> epoch ms of when the room's last connected player left. Only rooms with
 // nobody in them are in here; a rejoin removes the key. Drives the abandoned-session
 // sweep below, which closes a game everyone walked away from rather than leaving it
@@ -393,10 +410,11 @@ io.on('connection', (socket: Socket) => {
         arrestCode: gamePlayer.arrestCode,
         isCaught: gamePlayer.isCaught,
         isJailed: gamePlayer.isJailed,
-        // Anyone reconnecting mid-sentence is treated as already at the jail rather than
-        // handed a fresh arrival countdown they never saw start — the alternative punishes
-        // a dropped connection with a disqualification.
-        hasReachedJail: gamePlayer.isJailed,
+        // A prisoner who reconnects has to be back inside the jail like everyone else. They
+        // used to be marked as already there, which made reconnecting a way to skip the walk
+        // (and stand anywhere); instead they get a fresh, full arrival window below, so a
+        // dropped connection is never a disqualification either.
+        hasReachedJail: false,
         isOut: gamePlayer.isOut,
         hearts: gamePlayer.hearts,
         inventory: (gamePlayer.inventory as PowerUpType[]) ?? [],
@@ -414,7 +432,7 @@ io.on('connection', (socket: Socket) => {
         socket.join(`${roomCode}_observers`);
       }
 
-      io.to(roomCode).emit('player_joined', publicRoster(session));
+      emitRoster(roomCode, session);
 
       // A match that's already running has to hand the clock to whoever just walked in.
       // game_started is otherwise only emitted once, by the REST start route, to sockets
@@ -423,6 +441,14 @@ io.on('connection', (socket: Socket) => {
       // their "time left" readout stayed blank for the whole match.
       if (gamePlayer.session.startedAt) {
         socket.emit('game_started', { startedAt: gamePlayer.session.startedAt });
+      }
+      const jailSettings = sessionSettingsCache.get(roomCode);
+      if (state.isJailed && !state.isOut && jailSettings?.jailEnabled && jailSettings.jailPolygon) {
+        const arrivalMs = (jailSettings.jailArrivalSeconds ?? DEFAULT_JAIL_ARRIVAL_SECONDS) * 1000;
+        const deadlines = jailArrivalDeadline.get(roomCode) ?? new Map<string, number>();
+        jailArrivalDeadline.set(roomCode, deadlines);
+        deadlines.set(state.id, Date.now() + arrivalMs);
+        socket.emit('player_jailed', { runnerId: state.id, hunterId: '', arrivalDeadlineMs: arrivalMs, timestamp: new Date().toISOString() });
       }
       const zone = currentZone(roomCode);
       if (zone) socket.emit('zone_update', zone);
@@ -537,12 +563,12 @@ io.on('connection', (socket: Socket) => {
             await checkJailArrival(roomCode, gameSessionId, p, session);
           }
         } else if (!p.isCaught && !p.isOut) {
-          if (mode !== 'INFECTION') {
-            await checkContainment(roomCode, gameSessionId, p, session, mode);
-          }
-          await checkBailProgress(roomCode, gameSessionId, p, session, mode);
+          // The play area applies in Infection too: it used to be skipped there, so nobody
+          // in an Infection match was ever held to the boundary or the shrinking zone.
+          await checkContainment(roomCode, gameSessionId, p, session, mode);
+          if (mode !== 'INFECTION') await checkBailProgress(roomCode, gameSessionId, p, session, mode);
         }
-      } else if (p.role === 'HUNTER' && gameSessionId && mode !== 'INFECTION' && !p.isOut) {
+      } else if (p.role === 'HUNTER' && gameSessionId && !p.isOut) {
         await checkContainment(roomCode, gameSessionId, p, session, mode);
       }
 
@@ -572,87 +598,43 @@ io.on('connection', (socket: Socket) => {
       // changes every *other* relevant player's bearing to them, so it's pushed to all of
       // them now, not just reflected back to the mover.
       if (p.role === 'HUNTER') {
-        for (const runner of runners) pushCompassToRunner(runner, hunters);
+        for (const runner of runners) pushCompassToRunner(roomCode, runner, hunters);
         pushRadarToHunter(roomCode, p, runners);
       } else if (p.role === 'RUNNER') {
-        pushCompassToRunner(p, hunters);
+        pushCompassToRunner(roomCode, p, hunters);
         // Every hunter — an invisible one is hidden from runners, not blind; filtering this
         // loop by `hunters` froze an invisible hunter's own radar for the whole minute.
         for (const hunter of visionSides(session).allHunters) pushRadarToHunter(roomCode, hunter, runners);
       }
 
-      io.to(`${roomCode}_observers`).emit('roster_update', publicRoster(session));
+      io.to(`${roomCode}_observers`).emit('roster_update', publicRoster(session).map((x) => ({ ...x, arrestCode: '' })));
     }
   );
 
+  // The Watch's arrest-code catch. Same rules and the same outcome as a catch the runner
+  // accepts on their phone — it used to skip hearts, jail and the Infection win check.
   socket.on(
     'attempt_catch',
     async ({ runnerId, arrestCode }: { runnerId: string; arrestCode: string }) => {
       const roomCode = socket.data.roomCode as string | undefined;
       const hunterId = socket.data.gamePlayerId as string | undefined;
       if (!roomCode || !hunterId) return;
-
       const session = activeSessions.get(roomCode);
       if (!session) return;
       const hunter = session.get(hunterId);
       const runner = session.get(runnerId);
-      const mode = sessionModes.get(roomCode) ?? 'STANDARD';
-
       if (!hunter) return;
-
-      if (mode === 'SQUAD') {
-        if (!hunter.squad || !runner?.squad || hunter.squad === runner.squad) {
-          socket.emit('catch_failed', { reason: 'Squad mode: you can only tag members of other squads.' });
-          return;
-        }
-      } else if (hunter.role !== 'HUNTER') {
-        socket.emit('catch_failed', { reason: 'Only hunters may attempt a catch.' });
+      const blocked = catchBlockedReason(roomCode, session, hunter, runner);
+      if (blocked) {
+        socket.emit('catch_failed', { reason: blocked });
         return;
       }
-
-      if (!runner || runner.isCaught) {
-        socket.emit('catch_failed', { reason: 'Target is not an active runner.' });
-        return;
-      }
-      if (runner.arrestCode !== arrestCode) {
+      if (runner!.arrestCode !== arrestCode) {
         socket.emit('catch_failed', { reason: 'Invalid arrest code.' });
         return;
       }
-
-      const hPt = turf.point([hunter.lng, hunter.lat]);
-      const rPt = turf.point([runner.lng, runner.lat]);
-      const distance = turf.distance(hPt, rPt, { units: 'meters' });
-      if (distance > CATCH_VERIFICATION_RADIUS_METERS) {
-        socket.emit('catch_failed', { reason: `Physical distance (${Math.round(distance)}m) exceeds ${CATCH_VERIFICATION_RADIUS_METERS}m verification radius.` });
-        return;
-      }
-      if (isWithinAnySafeZone(session, { lat: runner.lat, lng: runner.lng })) {
-        socket.emit('catch_failed', { reason: 'Target is protected inside an active safe zone.' });
-        return;
-      }
-
-      const gameSessionId = await resolveSessionId(roomCode);
-      if (!gameSessionId) return;
-
-      if (mode === 'INFECTION') {
-        runner.role = 'HUNTER';
-        runner.isCaught = false;
-        await gameService.convertRunnerToHunter(gameSessionId, runner.id);
-        io.to(roomCode).emit('player_infected', {
-          runnerId: runner.id,
-          hunterId: hunter.id,
-          timestamp: new Date().toISOString(),
-        });
-      } else {
-        runner.isCaught = true;
-        await gameService.recordCatch(gameSessionId, hunter.id, runner.id);
-        io.to(roomCode).emit('player_caught', {
-          runnerId: runner.id,
-          hunterId: hunter.id,
-          timestamp: new Date().toISOString(),
-        });
-        await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
-      }
+      pendingCatchRequests.get(roomCode)?.delete(runner!.id);
+      await resolveCatch(roomCode, session, hunter, runner!);
     }
   );
 
@@ -683,34 +665,12 @@ io.on('connection', (socket: Socket) => {
       return;
     }
 
-    if (mode === 'SQUAD') {
-      if (!hunter.squad || !runner?.squad || hunter.squad === runner.squad) {
-        socket.emit('catch_failed', { reason: 'Squad mode: you can only tag members of other squads.' });
-        return;
-      }
-    } else if (hunter.role !== 'HUNTER') {
-      socket.emit('catch_failed', { reason: 'Only hunters may attempt a catch.' });
+    const blocked = catchBlockedReason(roomCode, session, hunter, runner);
+    if (blocked || !runner) {
+      socket.emit('catch_failed', { reason: blocked ?? 'Target is not an active runner.' });
       return;
     }
-
-    if (!runner || runner.isCaught || runner.isOut) {
-      socket.emit('catch_failed', { reason: 'Target is not an active runner.' });
-      return;
-    }
-
-    const distance = turf.distance(turf.point([hunter.lng, hunter.lat]), turf.point([runner.lng, runner.lat]), {
-      units: 'meters',
-    });
-    if (distance > CATCH_VERIFICATION_RADIUS_METERS) {
-      socket.emit('catch_failed', {
-        reason: `Physical distance (${Math.round(distance)}m) exceeds ${CATCH_VERIFICATION_RADIUS_METERS}m verification radius.`,
-      });
-      return;
-    }
-    if (isWithinAnySafeZone(session, { lat: runner.lat, lng: runner.lng })) {
-      socket.emit('catch_failed', { reason: 'Target is protected inside an active safe zone.' });
-      return;
-    }
+    void mode;
 
     const requests = pendingCatchRequests.get(roomCode) ?? new Map();
     pendingCatchRequests.set(roomCode, requests);
@@ -766,10 +726,11 @@ io.on('connection', (socket: Socket) => {
       if (!runner || !hunter) return;
 
       if (decision === 'deny') {
-        // Doesn't resolve anything — hands it to the hunter to confirm it was accidental.
-        // The pending entry stays exactly as it is; a genuine disagreement (the hunter
-        // won't confirm) just falls back to the host's existing host_override control,
-        // or the stale-request sweep eventually clears it.
+        // Hands it to the hunter: "my mistake" drops it, "I caught them" escalates it to the
+        // host as a dispute (catch_dispute). If the hunter says nothing, the runner's word
+        // stands when the request times out — just as the hunter's stands if the runner says
+        // nothing at all.
+        pending.deniedAt = Date.now();
         io.to(hunter.id).emit('catch_deny_confirm', { requestId: pending.requestId, runnerUsername: runner.username });
         return;
       }
@@ -781,23 +742,7 @@ io.on('connection', (socket: Socket) => {
       const mode = sessionModes.get(roomCode) ?? 'STANDARD';
 
       if (decision === 'accept') {
-        // INFECTION resolves a catch by turning the runner into a hunter rather than by
-        // taking them out, exactly as the code-entry attempt_catch above still does for the
-        // Watch — the request/respond popup is just a different way of agreeing a catch
-        // happened, so it has to end in the same place the code flow does.
-        if (mode === 'INFECTION') {
-          runner.role = 'HUNTER';
-          runner.isCaught = false;
-          await gameService.convertRunnerToHunter(gameSessionId, runner.id);
-          io.to(roomCode).emit('player_infected', {
-            runnerId: runner.id,
-            hunterId: hunter.id,
-            timestamp: new Date().toISOString(),
-          });
-          return;
-        }
-
-        await applyCatch(roomCode, gameSessionId, session, hunter, runner, mode);
+        await resolveCatch(roomCode, session, hunter, runner);
         return;
       }
 
@@ -855,6 +800,71 @@ io.on('connection', (socket: Socket) => {
     }
   });
 
+  /** The hunter insists on a catch the runner denied. The host rules on it; if the host is one
+   *  of the two players, or doesn't rule in time, the catch stands — the request already
+   *  proved the hunter was within catching distance. */
+  socket.on('catch_dispute', ({ requestId }: { requestId: string }) => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const hunterId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !hunterId) return;
+    const session = activeSessions.get(roomCode);
+    const requests = pendingCatchRequests.get(roomCode);
+    if (!session || !requests) return;
+    for (const [runnerId, req] of requests.entries()) {
+      if (req.requestId !== requestId || req.hunterId !== hunterId) continue;
+      requests.delete(runnerId);
+      const runner = session.get(runnerId);
+      const hunter = session.get(hunterId);
+      if (!runner || !hunter) return;
+      const hostUserId = sessionHostCache.get(roomCode);
+      const host = Array.from(session.values()).find((x) => x.userId === hostUserId);
+      if (!host || host.id === hunterId || host.id === runnerId) {
+        void resolveCatch(roomCode, session, hunter, runner, 'The host is part of this catch, so it stands.');
+        return;
+      }
+      const disputeId = randomUUID();
+      const disputes = pendingDisputes.get(roomCode) ?? new Map();
+      pendingDisputes.set(roomCode, disputes);
+      disputes.set(disputeId, { runnerId, hunterId, createdAt: Date.now() });
+      const distance = Math.round(turf.distance(turf.point([hunter.lng, hunter.lat]), turf.point([runner.lng, runner.lat]), { units: 'meters' }));
+      io.to(host.id).emit('catch_dispute', {
+        disputeId,
+        hunterUsername: hunter.username,
+        runnerUsername: runner.username,
+        distanceMeters: distance,
+        timeoutMs: CATCH_DISPUTE_TIMEOUT_MS,
+      });
+      io.to(hunterId).emit('catch_dispute_pending', { runnerUsername: runner.username });
+      io.to(runnerId).emit('catch_dispute_pending', { hunterUsername: hunter.username });
+      return;
+    }
+  });
+
+  /** The host's ruling on a disputed catch. */
+  socket.on('resolve_dispute', async ({ disputeId, catchStands }: { disputeId: string; catchStands: boolean }) => {
+    const roomCode = socket.data.roomCode as string | undefined;
+    const callerId = socket.data.gamePlayerId as string | undefined;
+    if (!roomCode || !callerId) return;
+    const session = activeSessions.get(roomCode);
+    const caller = session?.get(callerId);
+    if (!session || !caller || !(await isSessionHost(roomCode, caller.userId))) {
+      socket.emit('error_event', { reason: 'Only the host can rule on a disputed catch.' });
+      return;
+    }
+    const dispute = pendingDisputes.get(roomCode)?.get(disputeId);
+    if (!dispute) return;
+    pendingDisputes.get(roomCode)!.delete(disputeId);
+    const hunter = session.get(dispute.hunterId);
+    const runner = session.get(dispute.runnerId);
+    if (!hunter || !runner) return;
+    if (catchStands) {
+      await resolveCatch(roomCode, session, hunter, runner, 'The host ruled it a catch.');
+    } else {
+      io.to(hunter.id).emit('catch_failed', { reason: `The host ruled that ${runner.username} wasn't caught.` });
+      io.to(runner.id).emit('catch_request_cancelled', { hunterId: hunter.id });
+    }
+  });
+
   /** Squad mode: revive a caught teammate within arm's reach. */
   socket.on('revive_teammate', async ({ targetId }: { targetId: string }) => {
     const roomCode = socket.data.roomCode as string | undefined;
@@ -870,8 +880,20 @@ io.on('connection', (socket: Socket) => {
 
     const reviver = session.get(reviverId);
     const target = session.get(targetId);
-    if (!reviver || !target || !target.isCaught) {
+    // With jail on, the way to free a teammate is a jailbreak — a free revive would make the
+    // jail (and the heart a jailbreak costs) pointless, and used to leave the revived player
+    // half-jailed.
+    const reviveSettings = sessionSettingsCache.get(roomCode);
+    if (reviveSettings?.jailEnabled && reviveSettings.jailPolygon) {
+      socket.emit('error_event', { reason: 'With jail mode on, free your squad with a jailbreak instead.' });
+      return;
+    }
+    if (!reviver || !target || !target.isCaught || target.isOut) {
       socket.emit('error_event', { reason: 'Nothing to revive.' });
+      return;
+    }
+    if (reviver.isCaught || reviver.isOut) {
+      socket.emit('error_event', { reason: 'You have to be free yourself to revive a teammate.' });
       return;
     }
     if (!reviver.squad || reviver.squad !== target.squad) {
@@ -886,15 +908,7 @@ io.on('connection', (socket: Socket) => {
       return;
     }
 
-    target.isCaught = false;
-    const gameSessionId = await resolveSessionId(roomCode);
-    if (gameSessionId) await gameService.revivePlayer(gameSessionId, target.id, reviver.id);
-
-    io.to(roomCode).emit('player_revived', {
-      playerId: target.id,
-      revivedById: reviver.id,
-      timestamp: new Date().toISOString(),
-    });
+    await releaseRunner(roomCode, target, reviver.id);
   });
 
   /** Host admin override: force-resolve a disputed catch/status. Authorized by GameSession.hostId, not a role. */
@@ -915,15 +929,26 @@ io.on('connection', (socket: Socket) => {
       return;
     }
 
-    target.isCaught = isCaught;
+    if (target.role !== 'RUNNER' || target.isOut) {
+      socket.emit('error_event', { reason: 'Only a runner still in the match can be marked caught or free.' });
+      return;
+    }
+    // Through the same rules as any other catch or release: a heart, jail, Infection's switch
+    // of sides, and the win check. It used to flip a flag and nothing else, so an overridden
+    // catch cost no heart and could never end the match, and "free" left a prisoner jailed.
+    if (isCaught && !target.isCaught) {
+      pendingCatchRequests.get(roomCode)?.delete(target.id);
+      await resolveCatch(roomCode, session, caller, target, 'The host marked this catch.');
+    } else if (!isCaught && target.isCaught) {
+      await releaseRunner(roomCode, target, caller.id);
+    }
     const gameSessionId = await resolveSessionId(roomCode);
-    if (gameSessionId) await gameService.hostOverridePlayerStatus(gameSessionId, target.id, isCaught);
-
-    io.to(roomCode).emit('host_override_applied', {
-      playerId: target.id,
-      isCaught,
-      timestamp: new Date().toISOString(),
-    });
+    if (gameSessionId) {
+      await prisma.gameEvent.create({
+        data: { sessionId: gameSessionId, type: 'HOST_OVERRIDE', payload: { playerId: target.id, isCaught, timestamp: new Date().toISOString() } },
+      });
+    }
+    io.to(roomCode).emit('host_override_applied', { playerId: target.id, isCaught: target.isCaught, timestamp: new Date().toISOString() });
   });
 
   /** Host admin action: force-end the match immediately. Authorized by GameSession.hostId, not a role. */
@@ -972,7 +997,7 @@ io.on('connection', (socket: Socket) => {
     target.role = role;
     target.hearts = updated.hearts;
 
-    io.to(roomCode).emit('player_joined', publicRoster(session));
+    emitRoster(roomCode, session);
   });
 
   socket.on('collect_powerup', async ({ spawnId }: { spawnId: string }) => {
@@ -983,6 +1008,10 @@ io.on('connection', (socket: Socket) => {
     if (!session || !session.has(gamePlayerId)) return;
     const player = session.get(gamePlayerId)!;
 
+    if (player.isCaught || player.isOut) {
+      socket.emit('error_event', { reason: "You can't pick up power-ups while caught or out." });
+      return;
+    }
     const spawn = await prisma.powerUpSpawn.findUnique({ where: { id: spawnId } });
     if (!spawn || spawn.isCollected || spawn.expiresAt < new Date()) {
       socket.emit('error_event', { reason: 'Power-up is no longer available.' });
@@ -1029,6 +1058,17 @@ io.on('connection', (socket: Socket) => {
     if (!roomCode || !gamePlayerId) return;
     const session = activeSessions.get(roomCode);
     if (!session) return;
+
+    // A no-catch bubble over the jail would make every jailbreak risk-free.
+    if (powerUpType === 'SAFE_ZONE_FLARE') {
+      const caster = session.get(gamePlayerId);
+      const jailSettings = sessionSettingsCache.get(roomCode);
+      if (caster && jailSettings?.jailEnabled && jailSettings.jailPolygon &&
+          distanceOutsidePolygonMeters({ lat: caster.lat, lng: caster.lng }, jailSettings.jailPolygon) <= SAFE_ZONE_RADIUS_METERS + JAIL_BUFFER_METERS) {
+        socket.emit('error_event', { reason: "Safe Zone Flares don't work at the jail." });
+        return;
+      }
+    }
 
     let runnerBearingDegrees: number | undefined;
     if (powerUpType === 'GHOST_DECOY') {
@@ -1121,6 +1161,10 @@ function cleanupSocket(socket: Socket) {
       jailArrivalDeadline.delete(roomCode);
       bailDwellSince.delete(roomCode);
       pendingCatchRequests.delete(roomCode);
+      pendingDisputes.delete(roomCode);
+      releaseProtection.delete(roomCode);
+      lastPingIndex.delete(roomCode);
+      visibilityFingerprint.delete(roomCode);
       activeGambles.delete(roomCode);
     }
   }
@@ -1170,6 +1214,26 @@ function cleanupSocket(socket: Socket) {
  * elsewhere in this codebase for "no valid position", which the client already
  * needs to treat as un-plottable for that other reason.
  */
+/**
+ * The roster as one player is allowed to see it. Hosts and spectators get the observer view
+ * (publicRoster). Everyone else gets the other side's players without coordinates, and nobody's
+ * arrest code but their own: the whole point of the radar and compass is that finding the
+ * other side takes tracking, and the roster used to hand every hunter every runner's position.
+ */
+function rosterFor(roomCode: string, viewer: PlayerState, session: Map<string, PlayerState>): PlayerState[] {
+  const observer = viewer.role === 'SPECTATOR' || sessionHostCache.get(roomCode) === viewer.userId;
+  return publicRoster(session).map((p) => {
+    if (p.id === viewer.id) return p;
+    const hidePosition = !observer && p.role !== viewer.role;
+    return { ...p, arrestCode: '', ...(hidePosition ? { lat: 0, lng: 0 } : {}) };
+  });
+}
+
+/** Sends each player in the room their own view of the roster. */
+function emitRoster(roomCode: string, session: Map<string, PlayerState>) {
+  for (const viewer of session.values()) io.to(viewer.id).emit('player_joined', rosterFor(roomCode, viewer, session));
+}
+
 function publicRoster(session: Map<string, PlayerState>): PlayerState[] {
   return Array.from(session.values()).map((p) => {
     if (!isBuffActive(p, 'INVISIBILITY_10MIN')) return p;
@@ -1186,12 +1250,20 @@ function publicRoster(session: Map<string, PlayerState>): PlayerState[] {
  * still — this is also what made a just-reconnected player invisible to everyone else
  * until they personally moved enough to trigger their own send_location_update.
  */
-function pushCompassToRunner(runner: PlayerState, hunters: PlayerState[]) {
+function pushCompassToRunner(roomCode: string, runner: PlayerState, allHunters: PlayerState[], ping = false) {
   if (runner.isCaught) return;
+  // The compass follows the same ping interval as the hunters' radar — both sides get the
+  // same amount of information.
+  if (radarInterval(roomCode) > 0 && !ping) return;
+  const next = nextPingAt(roomCode);
+  // In Squad mode your own squad's hunters aren't a threat to you, so they aren't on it.
+  const hunters = (sessionModes.get(roomCode) ?? 'STANDARD') === 'SQUAD'
+    ? allHunters.filter((h) => h.squad !== runner.squad)
+    : allHunters;
   if (hunters.length === 0) {
     // Every hunter is invisible, out, or has no fix yet. Returning early here used to leave
     // the runner's compass pointing at the last hunter it saw for as long as that lasted.
-    io.to(runner.id).emit('compass_update', { distanceMeters: null, bearingDegrees: null, hunters: [] });
+    io.to(runner.id).emit('compass_update', { distanceMeters: null, bearingDegrees: null, hunters: [], nextPingAt: next });
     return;
   }
   const rPt = turf.point([runner.lng, runner.lat]);
@@ -1212,19 +1284,38 @@ function pushCompassToRunner(runner: PlayerState, hunters: PlayerState[]) {
     distanceMeters: bearings[0].distanceMeters,
     bearingDegrees: bearings[0].bearingDegrees,
     hunters: bearings,
+    nextPingAt: next,
   });
 }
 
 /** Mirrors `pushCompassToRunner` for a hunter's radar — pushed either from that hunter's
  *  own tick, or for every hunter in the room whenever a runner's tick lands, each
  *  respecting their own Thermal Vision/EMP Jammer buffs individually. */
-function pushRadarToHunter(roomCode: string, hunter: PlayerState, runners: PlayerState[]) {
+function pushRadarToHunter(roomCode: string, hunter: PlayerState, runners: PlayerState[], ping = false) {
+  const next = nextPingAt(roomCode);
   if (isBuffActive(hunter, 'EMP_JAMMER')) {
-    io.to(hunter.id).emit('radar_broadcast', { runners: [], runnerBearings: [], decoys: [], jammed: true });
+    // A jammed hunter's radar goes dark at once and misses every ping until the jam ends.
+    wasJammed.set(hunter.id, true);
+    io.to(hunter.id).emit('radar_broadcast', { runners: [], runnerBearings: [], decoys: [], heat: [], jammed: true, live: false, nextPingAt: next });
     return;
   }
   const thermalActive = isBuffActive(hunter, 'THERMAL_VISION');
+  // With a ping interval the radar only updates on each ping — except under Thermal Vision,
+  // which tracks live. Continuous matches (interval 0) update on every fix as before.
+  const live = radarInterval(roomCode) === 0 || thermalActive;
+  if (!live && !ping) {
+    if (wasJammed.get(hunter.id)) {
+      // The jam just ended between pings: clear the JAMMED state; contacts return at the next ping.
+      wasJammed.set(hunter.id, false);
+      io.to(hunter.id).emit('radar_broadcast', { runners: [], runnerBearings: [], decoys: [], heat: [], jammed: false, live: false, nextPingAt: next });
+    }
+    return;
+  }
+  wasJammed.set(hunter.id, false);
   const hunterPt = turf.point([hunter.lng, hunter.lat]);
+  // In Squad mode a hunter only chases other squads' runners, so their own squad's runners
+  // (whom they can't catch) aren't radar contacts.
+  if ((sessionModes.get(roomCode) ?? 'STANDARD') === 'SQUAD') runners = runners.filter((r) => r.squad !== hunter.squad);
   const distanceTo = (lat: number, lng: number) => turf.distance(hunterPt, turf.point([lng, lat]), { units: 'meters' });
 
   // Invisible runners are off the radar — except to a hunter running Thermal Vision, who sees
@@ -1244,6 +1335,7 @@ function pushRadarToHunter(roomCode: string, hunter: PlayerState, runners: Playe
     for (const d of decoys.get(roomCode) ?? []) {
       const owner = session?.get(d.sessionOwnerId);
       if (!owner || owner.isCaught || owner.isOut) continue;
+      if ((sessionModes.get(roomCode) ?? 'STANDARD') === 'SQUAD' && owner.squad === hunter.squad) continue;
       const pos = currentDecoyPosition(d);
       contacts.push({ ...owner, id: d.id, lat: pos.lat, lng: pos.lng, inventory: [], activeBuffs: {} });
     }
@@ -1259,7 +1351,33 @@ function pushRadarToHunter(roomCode: string, hunter: PlayerState, runners: Playe
     .sort((a, b) => a.distanceMeters - b.distanceMeters);
   const order = new Map(runnerBearings.map((b, i) => [b.runnerId, i]));
   contacts.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
-  io.to(hunter.id).emit('radar_broadcast', { runners: contacts, runnerBearings, decoys: [], jammed: false });
+  // Bearing and distance only: the contact list carries no coordinates or arrest codes. It used
+  // to ship every visible runner's exact position and code to the hunter's phone — never drawn,
+  // but readable by a modified app, and the privacy policy promises hunters only a bearing.
+  const sanitized = contacts.map((r) => ({ ...r, lat: 0, lng: 0, arrestCode: '', inventory: [], activeBuffs: {} }));
+  // Thermal Vision's visible effect: every runner within 300 m — invisible ones included, decoys
+  // not (no heat) — as a heat signature on the hunter's map. Before this, thermal only mattered
+  // when a runner nearby happened to be invisible, so in most matches it did nothing at all.
+  const heat = thermalActive
+    ? runners
+        .filter((r) => distanceTo(r.lat, r.lng) <= THERMAL_VISION_RADIUS_METERS)
+        .map((r) => ({ id: r.id, lat: r.lat, lng: r.lng }))
+    : [];
+  io.to(hunter.id).emit('radar_broadcast', { runners: sanitized, runnerBearings, decoys: [], heat, jammed: false, live, nextPingAt: next });
+}
+
+/** Seconds between pings for this room; 0 means continuous. */
+function radarInterval(roomCode: string): number {
+  return Math.max(0, Math.min(600, sessionSettingsCache.get(roomCode)?.radarIntervalSeconds ?? 0));
+}
+
+/** When the next ping lands, for the app's countdown; null when the radar is continuous. */
+function nextPingAt(roomCode: string): number | null {
+  const interval = radarInterval(roomCode);
+  const started = sessionStartedAtCache.get(roomCode);
+  if (!interval || !started) return null;
+  const k = Math.floor((Date.now() - started) / (interval * 1000)) + 1;
+  return started + k * interval * 1000;
 }
 
 /** Who can see whom right now: the same filters the location handler uses. */
@@ -1274,14 +1392,14 @@ function visionSides(session: Map<string, PlayerState>) {
 }
 
 /** Pushes a fresh radar to every hunter and compass to every runner in the room. */
-function refreshRoomVision(roomCode: string) {
+function refreshRoomVision(roomCode: string, ping = false) {
   const session = activeSessions.get(roomCode);
   if (!session) return;
   const { hunters, allHunters, runners } = visionSides(session);
-  for (const runner of runners) pushCompassToRunner(runner, hunters);
+  for (const runner of runners) pushCompassToRunner(roomCode, runner, hunters, ping);
   // Every hunter, including an invisible one: invisibility hides you from runners, not from
   // your own radar.
-  for (const hunter of allHunters) pushRadarToHunter(roomCode, hunter, runners);
+  for (const hunter of allHunters) pushRadarToHunter(roomCode, hunter, runners, ping);
 }
 
 /** Each player's own active buffs and their expiry, so the app's badges follow the server. */
@@ -1313,6 +1431,17 @@ setInterval(() => {
     for (const p of session.values()) {
       pruneExpiredBuffs(p);
       pushBuffs(p);
+    }
+    // Radar pings, every radarIntervalSeconds from the match start.
+    const interval = radarInterval(roomCode);
+    const startedAt = sessionStartedAtCache.get(roomCode)!;
+    if (interval > 0) {
+      const k = Math.floor((Date.now() - startedAt) / (interval * 1000));
+      if (k > (lastPingIndex.get(roomCode) ?? -1)) {
+        lastPingIndex.set(roomCode, k);
+        refreshRoomVision(roomCode, true);
+        io.to(roomCode).emit('radar_ping', { at: Date.now(), nextPingAt: nextPingAt(roomCode) });
+      }
     }
     const fingerprint = Array.from(session.values())
       .map((p) => `${p.id}:${['INVISIBILITY_10MIN', 'EMP_JAMMER', 'THERMAL_VISION'].filter((t) => isBuffActive(p, t as PowerUpType)).join(',')}`)
@@ -1447,10 +1576,12 @@ async function checkContainment(
 
   const point = { lat: player.lat, lng: player.lng };
   const zone = currentZone(roomCode);
-  const outsideBy = Math.max(
-    distanceOutsidePolygonMeters(point, settings.boundsPolygon),
-    zone ? distanceOutsideZone(point, zone) : 0
-  );
+  // The jail never drains hearts. The zone shrinks towards the middle and almost always ends
+  // up excluding the jail, which used to make a late jailbreak cost the rescuer more hearts
+  // than they have, and turned guarding prisoners into a slow death for hunters.
+  const outsideBy = isInsideJail(roomCode, point, player.accuracy)
+    ? 0
+    : Math.max(distanceOutsidePolygonMeters(point, settings.boundsPolygon), zone ? distanceOutsideZone(point, zone) : 0);
   const effectiveBuffer = Math.max(BOUNDARY_BUFFER_METERS, player.accuracy);
   const violations = boundaryViolationSince.get(roomCode) ?? new Map<string, number>();
   boundaryViolationSince.set(roomCode, violations);
@@ -1553,6 +1684,104 @@ async function checkJailContainment(
     timestamp: new Date().toISOString(),
   });
   await checkStandardWinCondition(roomCode, gameSessionId, session, sessionModes.get(roomCode) ?? 'STANDARD');
+}
+
+/** True when a point is inside the jail (plus its GPS buffer). */
+function isInsideJail(roomCode: string, point: { lat: number; lng: number }, accuracy = 0): boolean {
+  const settings = sessionSettingsCache.get(roomCode);
+  if (!settings?.jailEnabled || !settings.jailPolygon || settings.jailPolygon.length < 3) return false;
+  return distanceOutsidePolygonMeters(point, settings.jailPolygon) <= Math.max(JAIL_BUFFER_METERS, accuracy);
+}
+
+/**
+ * Every rule a catch has to pass, in one place, for the phone's request, the Watch's code entry
+ * and the host's override alike. Returns the sentence to show the hunter, or null.
+ */
+function catchBlockedReason(
+  roomCode: string,
+  session: Map<string, PlayerState>,
+  hunter: PlayerState,
+  runner: PlayerState | undefined
+): string | null {
+  const mode = sessionModes.get(roomCode) ?? 'STANDARD';
+  if (hunter.role !== 'HUNTER') return 'Only hunters can catch.';
+  // An eliminated hunter used to be able to keep catching from wherever they stood.
+  if (hunter.isOut) return "You're out of the match.";
+  if (!runner || runner.role !== 'RUNNER') return 'You can only catch runners.';
+  if (runner.isCaught || runner.isOut) return `${runner.username} isn't free to catch.`;
+  if (mode === 'SQUAD' && (!hunter.squad || !runner.squad || hunter.squad === runner.squad)) {
+    return "That's your own squad — you can only catch runners from other squads.";
+  }
+  const distance = turf.distance(turf.point([hunter.lng, hunter.lat]), turf.point([runner.lng, runner.lat]), { units: 'meters' });
+  if (distance > CATCH_VERIFICATION_RADIUS_METERS) {
+    return `Too far away — ${Math.round(distance)} m. Get within ${CATCH_VERIFICATION_RADIUS_METERS} m to catch.`;
+  }
+  // A Safe Zone Flare never protects the jail: a bubble there would make jailbreaks risk-free.
+  if (isWithinAnySafeZone(session, { lat: runner.lat, lng: runner.lng }) && !isInsideJail(roomCode, runner)) {
+    return `${runner.username} is inside a Safe Zone Flare.`;
+  }
+  const protectedUntil = releaseProtection.get(roomCode)?.get(runner.id) ?? 0;
+  if (protectedUntil > Date.now()) {
+    return `${runner.username} was just freed and can't be caught for another ${Math.ceil((protectedUntil - Date.now()) / 1000)} s.`;
+  }
+  return null;
+}
+
+/** Resolves an agreed catch: Infection switches the runner's side, every other mode applies a
+ *  catch (a heart, jail if it's on, elimination at zero) — then the win check. */
+async function resolveCatch(
+  roomCode: string,
+  session: Map<string, PlayerState>,
+  hunter: PlayerState,
+  runner: PlayerState,
+  note?: string
+) {
+  if (runner.isCaught || runner.isOut || runner.role !== 'RUNNER') return;
+  const gameSessionId = await resolveSessionId(roomCode);
+  if (!gameSessionId) return;
+  const mode = sessionModes.get(roomCode) ?? 'STANDARD';
+  if (note) {
+    io.to(runner.id).emit('catch_ruling', { message: note });
+    io.to(hunter.id).emit('catch_ruling', { message: note });
+  }
+  if (mode === 'INFECTION') {
+    runner.role = 'HUNTER';
+    runner.isCaught = false;
+    clearContainmentState(roomCode, runner);
+    await gameService.convertRunnerToHunter(gameSessionId, runner.id);
+    io.to(roomCode).emit('player_infected', { runnerId: runner.id, hunterId: hunter.id, timestamp: new Date().toISOString() });
+    // Infection used to have no win check at all, so a match where everyone had been turned
+    // kept running until the clock ran out.
+    await checkInfectionWinCondition(roomCode, gameSessionId, session);
+    refreshRoomVision(roomCode);
+    return;
+  }
+  await applyCatch(roomCode, gameSessionId, session, hunter, runner, mode);
+  refreshRoomVision(roomCode);
+}
+
+/** Frees a caught or jailed runner (a squad revive, or the host saying it wasn't a catch) —
+ *  every piece of jail state, with the same short protection a jailbreak gives. */
+async function releaseRunner(roomCode: string, runner: PlayerState, byId: string) {
+  runner.isCaught = false;
+  runner.isJailed = false;
+  runner.hasReachedJail = false;
+  jailArrivalDeadline.get(roomCode)?.delete(runner.id);
+  jailViolationSince.get(roomCode)?.delete(runner.id);
+  protect(roomCode, [runner.id]);
+  const gameSessionId = await resolveSessionId(roomCode);
+  if (gameSessionId) {
+    await prisma.gamePlayer.update({ where: { id: runner.id }, data: { isCaught: false, isJailed: false, caughtAt: null } });
+    await gameService.revivePlayer(gameSessionId, runner.id, byId);
+  }
+  io.to(roomCode).emit('player_revived', { playerId: runner.id, revivedById: byId, protectedMs: RELEASE_PROTECTION_MS, timestamp: new Date().toISOString() });
+  refreshRoomVision(roomCode);
+}
+
+function protect(roomCode: string, playerIds: string[]) {
+  const map = releaseProtection.get(roomCode) ?? new Map<string, number>();
+  releaseProtection.set(roomCode, map);
+  for (const id of playerIds) map.set(id, Date.now() + RELEASE_PROTECTION_MS);
 }
 
 /**
@@ -1696,7 +1925,10 @@ async function checkBailProgress(
   const inside = outsideBy <= Math.max(JAIL_BUFFER_METERS, runner.accuracy);
   // Only counts when there's someone to let out. Otherwise a runner could park in an empty
   // jail and drain every hunter's hearts for nothing.
-  const hasPrisoner = Array.from(session.values()).some((x) => x.isJailed && x.hasReachedJail);
+  // In Squad mode a jailbreak is for your own squad only.
+  const hasPrisoner = Array.from(session.values()).some(
+    (x) => x.isJailed && x.hasReachedJail && !x.isOut && (mode !== 'SQUAD' || x.squad === runner.squad)
+  );
   const requiredMs = (settings.bailOutSeconds ?? DEFAULT_BAIL_OUT_SECONDS) * 1000;
 
   if (!inside || !hasPrisoner) {
@@ -1738,7 +1970,10 @@ async function performBailOut(
 
   const arrivals = jailArrivalDeadline.get(roomCode);
   const violations = jailViolationSince.get(roomCode);
-  const freed = Array.from(session.values()).filter((x) => x.isJailed);
+  // Squad mode frees only the bailer's own squad, and only the other squads' hunters pay.
+  const freed = Array.from(session.values()).filter(
+    (x) => x.isJailed && !x.isOut && (mode !== 'SQUAD' || x.squad === bailer.squad)
+  );
   for (const prisoner of freed) {
     prisoner.isJailed = false;
     prisoner.isCaught = false;
@@ -1747,8 +1982,12 @@ async function performBailOut(
     violations?.delete(prisoner.id);
   }
 
-  const hunters = Array.from(session.values()).filter((x) => x.role === 'HUNTER' && !x.isOut);
+  const hunters = Array.from(session.values()).filter(
+    (x) => x.role === 'HUNTER' && !x.isOut && (mode !== 'SQUAD' || x.squad !== bailer.squad)
+  );
   const eliminated: PlayerState[] = [];
+  // A head start: without it the hunters guarding the jail re-caught everyone on the spot.
+  protect(roomCode, freed.map((f) => f.id));
 
   bailer.hearts = Math.max(0, bailer.hearts - 1);
   if (bailer.hearts <= 0) eliminated.push(bailer);
@@ -1770,8 +2009,10 @@ async function performBailOut(
     bailerId: bailer.id,
     bailerUsername: bailer.username,
     freedPlayerIds: freed.map((f) => f.id),
+    protectedMs: RELEASE_PROTECTION_MS,
     timestamp,
   });
+  refreshRoomVision(roomCode);
   for (const p of [bailer, ...hunters]) {
     io.to(roomCode).emit('hearts_update', { playerId: p.id, hearts: p.hearts, cause: 'BAILOUT' });
   }
@@ -1864,42 +2105,62 @@ async function resolveGambleRound(
   }
 }
 
+/** Squads that still have at least one runner free. */
+function squadsWithFreeRunners(session: Map<string, PlayerState>): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const p of session.values()) {
+    if (p.role === 'RUNNER' && !p.isCaught && !p.isOut && p.squad) out.set(p.squad, (out.get(p.squad) ?? 0) + 1);
+  }
+  return out;
+}
+
+async function finishMatch(roomCode: string, gameSessionId: string, payload: Record<string, unknown>) {
+  if (!sessionStartedAtCache.has(roomCode)) return; // already over
+  await gameService.endSession(gameSessionId);
+  sessionStartedAtCache.delete(roomCode);
+  io.to(roomCode).emit('game_over', payload);
+}
+
 async function checkStandardWinCondition(
   roomCode: string,
   gameSessionId: string,
   session: Map<string, PlayerState>,
   mode: GameMode
 ) {
-  // Widened from STANDARD-only: this previously silently no-op'd for SQUAD mode entirely
-  // (a pre-existing gap), which would leave SQUAD matches with the new hearts/jail system
-  // unable to ever end via elimination.
-  if (mode !== 'STANDARD' && mode !== 'SQUAD') return;
-  const activeRunners = Array.from(session.values()).filter(
-    (x) => x.role === 'RUNNER' && !x.isCaught && !x.isOut
-  );
-  if (activeRunners.length === 0) {
-    await gameService.endSession(gameSessionId);
-    sessionStartedAtCache.delete(roomCode);
-    io.to(roomCode).emit('game_over', { reason: 'ALL_RUNNERS_RESOLVED' });
+  if (mode === 'INFECTION') return checkInfectionWinCondition(roomCode, gameSessionId, session);
+  if (mode === 'SQUAD') {
+    // Squad mode is won by a squad, not by "the hunters": the last squad with a runner still
+    // free wins. It used to end only when every runner of every squad was caught, and then
+    // announce that the hunters had won.
+    const alive = squadsWithFreeRunners(session);
+    if (alive.size === 1) {
+      await finishMatch(roomCode, gameSessionId, { reason: 'SQUAD_WON', winningSquad: [...alive.keys()][0] });
+    } else if (alive.size === 0) {
+      await finishMatch(roomCode, gameSessionId, { reason: 'DRAW' });
+    }
+    return;
   }
+  const activeRunners = Array.from(session.values()).filter((x) => x.role === 'RUNNER' && !x.isCaught && !x.isOut);
+  if (activeRunners.length === 0) await finishMatch(roomCode, gameSessionId, { reason: 'ALL_RUNNERS_RESOLVED' });
 }
 
-/** New win condition: if every hunter has been eliminated — by containment damage, or by
- *  losing a gamble duel outright — the runners win early. Only ever called right after a
- *  hunter's isOut actually flips true. */
+/** Infection ends when nobody is left running: everyone has been turned or eliminated. */
+async function checkInfectionWinCondition(roomCode: string, gameSessionId: string, session: Map<string, PlayerState>) {
+  const runnersLeft = Array.from(session.values()).filter((x) => x.role === 'RUNNER' && !x.isOut);
+  if (runnersLeft.length === 0) await finishMatch(roomCode, gameSessionId, { reason: 'ALL_RUNNERS_RESOLVED' });
+}
+
+/** If every hunter has been eliminated — by containment damage, a jailbreak, or a lost gamble
+ *  — the runners win early. Squad mode is decided by squads instead. */
 async function checkHunterEliminationWinCondition(
   roomCode: string,
   gameSessionId: string,
   session: Map<string, PlayerState>,
   mode: GameMode
 ) {
-  if (mode === 'INFECTION') return;
+  if (mode === 'SQUAD') return;
   const activeHunters = Array.from(session.values()).filter((x) => x.role === 'HUNTER' && !x.isOut);
-  if (activeHunters.length === 0) {
-    await gameService.endSession(gameSessionId);
-    sessionStartedAtCache.delete(roomCode);
-    io.to(roomCode).emit('game_over', { reason: 'ALL_HUNTERS_ELIMINATED' });
-  }
+  if (activeHunters.length === 0) await finishMatch(roomCode, gameSessionId, { reason: 'ALL_HUNTERS_ELIMINATED' });
 }
 
 async function endMatch(roomCode: string, reason: string) {
@@ -1965,6 +2226,19 @@ async function endMatchIfExpired(roomCode: string): Promise<boolean> {
   const settings = sessionSettingsCache.get(roomCode);
   if (!startedAtMs || !settings) return false;
   if (Date.now() - startedAtMs < settings.durationMinutes * 60_000) return false;
+  const session = activeSessions.get(roomCode);
+  if ((sessionModes.get(roomCode) ?? 'STANDARD') === 'SQUAD' && session) {
+    // At the whistle, the squad with the most runners still free wins; a tie is a draw.
+    const alive = [...squadsWithFreeRunners(session).entries()].sort((a, b) => b[1] - a[1]);
+    const gameSessionId = await resolveSessionId(roomCode);
+    if (!gameSessionId) return false;
+    if (alive.length > 0 && (alive.length === 1 || alive[0][1] > alive[1][1])) {
+      await finishMatch(roomCode, gameSessionId, { reason: 'TIME_EXPIRED', winningSquad: alive[0][0] });
+    } else {
+      await finishMatch(roomCode, gameSessionId, { reason: 'TIME_EXPIRED_DRAW' });
+    }
+    return true;
+  }
   await endMatch(roomCode, 'TIME_EXPIRED');
   return true;
 }
@@ -2002,10 +2276,33 @@ setInterval(async () => {
 
   for (const [roomCode, requests] of pendingCatchRequests.entries()) {
     for (const [runnerId, req] of Array.from(requests.entries())) {
-      if (now - req.requestedAt >= CATCH_REQUEST_TIMEOUT_MS) {
-        requests.delete(runnerId);
-        io.to(req.hunterId).emit('catch_request_expired', { runnerId, requestId: req.requestId });
-        io.to(runnerId).emit('catch_request_cancelled', { hunterId: req.hunterId });
+      if (now - req.requestedAt < CATCH_REQUEST_TIMEOUT_MS) continue;
+      requests.delete(runnerId);
+      const session = activeSessions.get(roomCode);
+      const runner = session?.get(runnerId);
+      const hunter = session?.get(req.hunterId);
+      if (!req.deniedAt && session && runner && hunter && !hunter.isOut) {
+        // Silence isn't an escape: the request already proved the hunter was within catching
+        // distance, so a runner who never answers is caught. (Ignoring the popup used to
+        // cancel the catch outright.)
+        await resolveCatch(roomCode, session, hunter, runner, 'No answer in time — the catch stands.');
+        continue;
+      }
+      // The runner said no and the hunter never insisted: the runner's word stands.
+      io.to(req.hunterId).emit('catch_request_expired', { runnerId, requestId: req.requestId });
+      io.to(runnerId).emit('catch_request_cancelled', { hunterId: req.hunterId });
+    }
+  }
+
+  for (const [roomCode, disputes] of pendingDisputes.entries()) {
+    for (const [disputeId, d] of Array.from(disputes.entries())) {
+      if (now - d.createdAt < CATCH_DISPUTE_TIMEOUT_MS) continue;
+      disputes.delete(disputeId);
+      const session = activeSessions.get(roomCode);
+      const runner = session?.get(d.runnerId);
+      const hunter = session?.get(d.hunterId);
+      if (session && runner && hunter) {
+        await resolveCatch(roomCode, session, hunter, runner, "The host didn't rule in time, so the catch stands.");
       }
     }
   }

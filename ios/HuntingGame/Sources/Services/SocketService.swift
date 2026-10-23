@@ -28,6 +28,10 @@ final class SocketService: ObservableObject {
     @Published var castExpiries: [PowerUpType: Date] = [:]
     /// One-line result of the last power-up this player used ("EMP jammed 2 hunters").
     @Published var lastPowerUpNotice: String?
+    /// A disputed catch waiting for this player's ruling as host.
+    @Published var pendingDispute: CatchDispute?
+    /// The squad that won a Squad match, alongside `gameOverReason`.
+    @Published var winningSquad: String?
     @Published var isConnected: Bool = false
     @Published var gameOverReason: String?
     /// The runner's own incoming "did you get caught?" popup.
@@ -153,6 +157,8 @@ final class SocketService: ObservableObject {
         buffExpiries = [:]
         castExpiries = [:]
         lastPowerUpNotice = nil
+        pendingDispute = nil
+        winningSquad = nil
         gameOverReason = nil
         incomingCatchRequest = nil
         pendingDenyConfirm = nil
@@ -205,6 +211,17 @@ final class SocketService: ObservableObject {
     /// Hunter confirms a runner's "no, that wasn't a catch" really was accidental.
     func acknowledgeDenyWasAccidental(requestId: String) {
         socket?.emit("catch_deny_ack", ["requestId": requestId])
+    }
+
+    /// Hunter insists the runner was caught: the host rules on it.
+    func disputeDenial(requestId: String) {
+        socket?.emit("catch_dispute", ["requestId": requestId])
+    }
+
+    /// The host's ruling on a disputed catch.
+    func resolveDispute(disputeId: String, catchStands: Bool) {
+        socket?.emit("resolve_dispute", ["disputeId": disputeId, "catchStands": catchStands])
+        if pendingDispute?.disputeId == disputeId { pendingDispute = nil }
     }
 
     func collectPowerUp(spawnId: String) {
@@ -540,7 +557,35 @@ final class SocketService: ObservableObject {
 
         socket.on("game_over") { [weak self] data, _ in
             guard let dict = data.first as? [String: Any] else { return }
+            self?.winningSquad = dict["winningSquad"] as? String
             self?.gameOverReason = dict["reason"] as? String
+        }
+
+        socket.on("catch_dispute") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any],
+                  let disputeId = dict["disputeId"] as? String,
+                  let hunter = dict["hunterUsername"] as? String,
+                  let runner = dict["runnerUsername"] as? String else { return }
+            self.pendingDispute = CatchDispute(
+                disputeId: disputeId,
+                hunterUsername: hunter,
+                runnerUsername: runner,
+                distanceMeters: (dict["distanceMeters"] as? NSNumber)?.intValue ?? 0
+            )
+        }
+
+        socket.on("catch_dispute_pending") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any] else { return }
+            let other = (dict["runnerUsername"] ?? dict["hunterUsername"]) as? String ?? "the other player"
+            self.lastPowerUpNotice = "Disputed catch with \(other) — the host is deciding."
+            self.pendingDenyConfirm = nil
+        }
+
+        socket.on("catch_ruling") { [weak self] data, _ in
+            guard let self, let dict = data.first as? [String: Any], let message = dict["message"] as? String else { return }
+            self.lastPowerUpNotice = message
+            self.incomingCatchRequest = nil
+            self.pendingDenyConfirm = nil
         }
     }
 

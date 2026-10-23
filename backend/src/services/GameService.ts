@@ -50,6 +50,9 @@ export interface GameSettings {
   /** Absent means disabled — off by default. Still BETA: the accuracy/motion/speed/
    *  teleport checks are new enough to produce false positives, so it's opt-in. */
   antiCheatEnabled?: boolean;
+  /** Seconds between radar/compass pings. 0 (or absent) is continuous: every GPS fix updates
+   *  everyone's radar. Anything else and the radar and compass only update on each ping. */
+  radarIntervalSeconds?: number;
 }
 
 export class GameService {

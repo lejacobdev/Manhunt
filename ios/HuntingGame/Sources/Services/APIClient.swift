@@ -344,7 +344,7 @@ final class APIClient {
 
     /// Host-only lobby edit. `boundsPolygon`, when sent, always redraws the play area —
     /// re-scattering power-ups inside the new shape.
-    func updateSessionSettings(code: String, durationMinutes: Int?, boundsPolygon: [Coordinate]?, mode: GameMode?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, jailArrivalSeconds: Int?, bailOutSeconds: Int?, gamblingEnabled: Bool?, antiCheatEnabled: Bool?) async throws -> GameSession {
+    func updateSessionSettings(code: String, durationMinutes: Int?, boundsPolygon: [Coordinate]?, mode: GameMode?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, jailArrivalSeconds: Int?, bailOutSeconds: Int?, gamblingEnabled: Bool?, antiCheatEnabled: Bool?, radarIntervalSeconds: Int? = nil) async throws -> GameSession {
         struct Body: Encodable {
             let durationMinutes: Int?
             let boundsPolygon: [Coordinate]?
@@ -355,11 +355,12 @@ final class APIClient {
             let bailOutSeconds: Int?
             let gamblingEnabled: Bool?
             let antiCheatEnabled: Bool?
+            let radarIntervalSeconds: Int?
         }
         struct Response: Decodable { let session: GameSession }
         let resp: Response = try await patch(
             "/games/\(code)/settings",
-            body: Body(durationMinutes: durationMinutes, boundsPolygon: boundsPolygon, mode: mode?.rawValue, jailEnabled: jailEnabled, jailPolygon: jailPolygon, jailArrivalSeconds: jailArrivalSeconds, bailOutSeconds: bailOutSeconds, gamblingEnabled: gamblingEnabled, antiCheatEnabled: antiCheatEnabled)
+            body: Body(durationMinutes: durationMinutes, boundsPolygon: boundsPolygon, mode: mode?.rawValue, jailEnabled: jailEnabled, jailPolygon: jailPolygon, jailArrivalSeconds: jailArrivalSeconds, bailOutSeconds: bailOutSeconds, gamblingEnabled: gamblingEnabled, antiCheatEnabled: antiCheatEnabled, radarIntervalSeconds: radarIntervalSeconds)
         )
         return resp.session
     }

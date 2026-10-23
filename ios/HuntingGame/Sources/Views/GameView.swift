@@ -41,6 +41,7 @@ struct GameView: View {
                 zone: viewModel.zone,
                 safeZones: viewModel.activeSafeZones,
                 decoys: socket.radar?.decoys ?? [],
+                heat: viewModel.role == .hunter ? (socket.radar?.heat ?? []) : [],
                 powerUpSpawns: viewModel.powerUpSpawns,
                 onSelectSpawn: viewModel.collectPowerUp,
                 initialCenter: viewModel.currentLocation?.coordinate,
@@ -109,6 +110,12 @@ struct GameView: View {
             if let denyConfirm = viewModel.pendingDenyConfirm {
                 dimScrim
                 denyConfirmSheet(denyConfirm)
+                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+            }
+
+            if let dispute = socket.pendingDispute {
+                dimScrim
+                disputeRulingSheet(dispute)
                     .transition(.scale(scale: 0.85).combined(with: .opacity))
             }
 
@@ -367,6 +374,13 @@ struct GameView: View {
                         .animation(.default, value: remaining)
                         .foregroundColor(.white.opacity(0.5))
                 }
+                if let pingText = radarPingText {
+                    Text(pingText)
+                        .tacticalFont(.telemetry, size: 12)
+                        .foregroundColor(socket.radar?.live == true && viewModel.radarPingInterval > 0 ? ADATheme.hunterRed : .white.opacity(0.5))
+                        .tacticalNumericTransition(countsDown: true)
+                        .animation(.default, value: pingText)
+                }
                 if let zoneText = zoneRadiusText {
                     Text(zoneText)
                         .tacticalFont(.telemetry, size: 12)
@@ -380,6 +394,9 @@ struct GameView: View {
                 HStack(spacing: 8) {
                     if viewModel.isJailed {
                         StatusBadge(icon: "lock.fill", text: "JAILED", tint: ADATheme.tacticalAmber)
+                    }
+                    if let until = viewModel.protectedUntil, until > now {
+                        StatusBadge(icon: "shield.lefthalf.filled", text: "SHIELDED \(Int(until.timeIntervalSince(now).rounded(.up)))s", tint: ADATheme.runnerGreen)
                     }
                     if viewModel.isInvisible {
                         StatusBadge(icon: "eye.slash.fill", text: "STEALTH \(viewModel.invisibilityRemainingSec)s", tint: ADATheme.stealthPurple)
@@ -617,6 +634,7 @@ struct GameView: View {
     /// everything else has a real winning side, so the overlay can be colored/labeled
     /// to match instead of always reading as a neutral "match ended".
     private var gameOverWinner: PlayerRole? {
+        guard viewModel.mode != .squad else { return nil }
         switch socket.gameOverReason {
         case "TIME_EXPIRED", "ALL_HUNTERS_ELIMINATED": return .runner
         case "ALL_RUNNERS_RESOLVED": return .hunter
@@ -625,10 +643,17 @@ struct GameView: View {
     }
 
     private var gameOverTint: Color {
-        gameOverWinner.map { ADATheme.accent(for: $0) } ?? ADATheme.spatialCyan
+        if let squad = socket.winningSquad {
+            return squad == viewModel.mySquad ? ADATheme.runnerGreen : ADATheme.hunterRed
+        }
+        return gameOverWinner.map { ADATheme.accent(for: $0) } ?? ADATheme.spatialCyan
     }
 
     private var gameOverHeadline: String {
+        if let squad = socket.winningSquad {
+            return squad == viewModel.mySquad ? "YOUR SQUAD WINS" : "SQUAD \(squad.uppercased()) WINS"
+        }
+        if socket.gameOverReason == "DRAW" || socket.gameOverReason == "TIME_EXPIRED_DRAW" { return "DRAW" }
         switch gameOverWinner {
         case .hunter: return "HUNTERS WIN"
         case .runner: return "RUNNERS WIN"
@@ -638,10 +663,16 @@ struct GameView: View {
 
     private var gameOverReasonLabel: String {
         switch socket.gameOverReason {
+        case "TIME_EXPIRED" where socket.winningSquad != nil: return "Time's up — they had the most runners still free."
         case "TIME_EXPIRED": return "Time expired — the runners survived."
+        case "TIME_EXPIRED_DRAW": return "Time's up with the squads level."
+        case "SQUAD_WON": return "Every other squad's runners were caught."
+        case "DRAW": return "No squad has a runner left free."
+        case "ALL_RUNNERS_RESOLVED" where viewModel.mode == .infection: return "Everyone has been turned."
         case "ALL_RUNNERS_RESOLVED": return "All runners caught or eliminated."
         case "ALL_HUNTERS_ELIMINATED": return "All hunters were eliminated — the runners win!"
         case "HOST_ENDED": return "The host ended the match early."
+        case "ENDED_BY_ADMIN": return "A moderator ended this match."
         case "ABANDONED": return "Everyone had left — the match was closed automatically."
         default: return "The match has ended."
         }
@@ -711,6 +742,10 @@ struct GameView: View {
                 .tacticalFont(.telemetry, size: 15)
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
+            Text("Answer within 20 seconds — no answer counts as caught.")
+                .tacticalFont(.ui, size: 11, weight: .medium)
+                .foregroundColor(.white.opacity(0.5))
+                .multilineTextAlignment(.center)
 
             // GAMBLING — see the commented-out CoinFlipView overlay above.
             // if viewModel.sessionSettings.gamblingEnabled == true {
@@ -768,17 +803,56 @@ struct GameView: View {
                 .tacticalFont(.telemetry, size: 14)
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
-            Text("Was it an accident?")
+            Text("If you really caught them, the host decides. If you don't answer, their word stands.")
                 .tacticalFont(.ui, size: 12, weight: .medium)
                 .foregroundColor(.white.opacity(0.5))
-            Button("YES, IT WAS AN ACCIDENT") {
-                viewModel.confirmDenyWasAccidental()
+                .multilineTextAlignment(.center)
+            VStack(spacing: 10) {
+                Button {
+                    viewModel.disputeDenial()
+                } label: {
+                    HStack { Image(systemName: "hand.raised.fill"); Text("I DID CATCH THEM") }
+                }
+                .buttonStyle(GlowButtonStyle(tint: ADATheme.hunterRed))
+                Button("MY MISTAKE, NO CATCH") {
+                    viewModel.confirmDenyWasAccidental()
+                }
+                .buttonStyle(TacticalGhostButtonStyle(tint: .white.opacity(0.7)))
             }
-            .buttonStyle(GlowButtonStyle(tint: ADATheme.tacticalAmber))
         }
         .padding(24)
         .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.tacticalAmber, strength: .strong)
         .padding(.horizontal, 30)
+    }
+
+    /// The host's ruling on a catch the runner denied and the hunter insisted on.
+    private func disputeRulingSheet(_ dispute: CatchDispute) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "scale.3d")
+                .tacticalFont(.symbol, size: 30, weight: .bold)
+                .foregroundColor(ADATheme.tacticalAmber)
+            Text("DISPUTED CATCH")
+                .tacticalFont(.display, size: 20)
+                .foregroundColor(.white)
+            Text("\(dispute.hunterUsername) says they caught \(dispute.runnerUsername). \(dispute.runnerUsername) says they didn't. They're \(dispute.distanceMeters) m apart right now. If you don't decide in 45 seconds, the catch stands.")
+                .tacticalFont(.ui, size: 13, weight: .medium)
+                .foregroundColor(.white.opacity(0.65))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 10) {
+                Button {
+                    viewModel.ruleOnDispute(catchStands: true)
+                } label: {
+                    HStack { Image(systemName: "checkmark.seal.fill"); Text("IT'S A CATCH") }
+                }
+                .buttonStyle(GlowButtonStyle(tint: ADATheme.hunterRed))
+                Button("NOT A CATCH") { viewModel.ruleOnDispute(catchStands: false) }
+                    .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.runnerGreen))
+            }
+        }
+        .padding(24)
+        .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.tacticalAmber, strength: .strong)
+        .padding(.horizontal, 28)
     }
 
     /// A persistent (not auto-dismissing) warning for straying outside the play area or,
@@ -926,6 +1000,20 @@ struct GameView: View {
             .filter { $0.key != .invisibility }
             .map { (type: $0.key, remaining: $0.value) }
             .sorted { $0.type.rawValue < $1.type.rawValue }
+    }
+
+    /// "NEXT PING 0:23" in a match with a ping interval; "THERMAL: LIVE" while Thermal Vision
+    /// tracks between pings; nothing in a continuous match.
+    private var radarPingText: String? {
+        let interval = viewModel.radarPingInterval
+        guard interval > 0, let startedAt = socket.matchStartedAt,
+              viewModel.role == .hunter || viewModel.role == .runner else { return nil }
+        if viewModel.role == .hunter, socket.radar?.live == true, viewModel.activeBuffRemainingSec[.thermalVision] != nil {
+            return "THERMAL: LIVE"
+        }
+        let elapsed = max(0, now.timeIntervalSince(startedAt))
+        let remaining = Int(Double(interval) - elapsed.truncatingRemainder(dividingBy: Double(interval)))
+        return String(format: "NEXT PING: %d:%02d", remaining / 60, remaining % 60)
     }
 
     private var zoneRadiusText: String? {

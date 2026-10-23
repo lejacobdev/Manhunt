@@ -86,6 +86,9 @@ export const THERMAL_VISION_RADIUS_METERS = 300;
  */
 export const POWER_UP_ROLES: Partial<Record<PowerUpType, PlayerRole[]>> = {
   ADRENALINE: ['RUNNER'],
+  // A no-catch bubble only ever protects runners; a hunter dropping one shields the people
+  // they are chasing.
+  SAFE_ZONE_FLARE: ['RUNNER'],
   GHOST_DECOY: ['RUNNER'],
   EMP_JAMMER: ['RUNNER'],
   THERMAL_VISION: ['HUNTER'],
@@ -157,6 +160,12 @@ export const DEFAULT_BAIL_OUT_SECONDS = 30;
 /** A catch request a runner never answers (backgrounded app, etc.) auto-expires so it
  *  can't permanently block the hunter from requesting again. */
 export const CATCH_REQUEST_TIMEOUT_MS = 20_000;
+/** A runner freed from jail (or revived by a squadmate) can't be caught again for this long —
+ *  otherwise hunters guarding the jail re-catch everyone the moment a jailbreak lands, and the
+ *  rescue (which cost the rescuer a heart) bought nothing. */
+export const RELEASE_PROTECTION_MS = 30_000;
+/** How long a host has to rule on a disputed catch before the server decides it. */
+export const CATCH_DISPUTE_TIMEOUT_MS = 45_000;
 
 /** How long an unfinished session may sit with nobody connected to it before the server
  *  closes it on its own. Without this, a lobby someone opened and walked away from stays

@@ -73,6 +73,8 @@ final class GameViewModel: ObservableObject {
     @Published var bailRemainingSeconds: Int = 0
     /// The most recent jailbreak, cleared a few seconds after it lands.
     @Published var lastBailout: BailoutEvent?
+    /// After a jailbreak or a revive this runner can't be caught for 30 seconds.
+    @Published var protectedUntil: Date?
     /// Bumped every time this player actually loses a heart, whatever took it — zone or
     /// boundary damage, a catch, a jailbreak. Drives the full-screen damage flash. A
     /// counter rather than a flag so two hits in quick succession each register instead of
@@ -379,7 +381,15 @@ final class GameViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
                 guard let self, event.playerId == self.gamePlayerId else { return }
+                // Revived by a squadmate or freed by the host: every piece of jail state goes.
                 self.isCaught = false
+                self.isJailed = false
+                self.jailOutside = false
+                self.jailCountdownTimer?.invalidate()
+                self.jailCountdownRemaining = nil
+                self.jailArrivalTimer?.invalidate()
+                self.jailArrivalRemaining = nil
+                self.protectedUntil = Date().addingTimeInterval(30)
                 HapticsEngine.shared.powerUpActivated()
                 self.pushWatchSnapshot()
             }
@@ -567,6 +577,7 @@ final class GameViewModel: ObservableObject {
                 self.bailProgress = 0
                 // Whoever pulled it off, if this player was inside they're out now.
                 if event.freedPlayerIds.contains(self.gamePlayerId) {
+                    self.protectedUntil = Date().addingTimeInterval(30)
                     self.isCaught = false
                     self.isJailed = false
                     self.jailOutside = false
@@ -780,6 +791,18 @@ final class GameViewModel: ObservableObject {
         incomingCatchRequest = nil
     }
 
+    /// "I did catch them": hands the disagreement to the host.
+    func disputeDenial() {
+        guard let denyConfirm = pendingDenyConfirm else { return }
+        socket.disputeDenial(requestId: denyConfirm.requestId)
+        pendingDenyConfirm = nil
+    }
+
+    func ruleOnDispute(catchStands: Bool) {
+        guard let dispute = socket.pendingDispute else { return }
+        socket.resolveDispute(disputeId: dispute.disputeId, catchStands: catchStands)
+    }
+
     func confirmDenyWasAccidental() {
         guard let denyConfirm = pendingDenyConfirm else { return }
         socket.acknowledgeDenyWasAccidental(requestId: denyConfirm.requestId)
@@ -801,7 +824,9 @@ final class GameViewModel: ObservableObject {
 
     /// A caught squadmate this player is close enough (and same-squad) to attempt reviving.
     func revivableSquadmate() -> PlayerState? {
-        guard mode == .squad, let mySquad, let me = currentLocation else { return nil }
+        // With jail on, teammates are freed by a jailbreak, not a revive.
+        guard mode == .squad, sessionSettings.jailEnabled != true, !isCaught, !isOut,
+              let mySquad, let me = currentLocation else { return nil }
         return allPlayers.first { candidate in
             guard candidate.id != gamePlayerId, candidate.isCaught, candidate.squad == mySquad else { return false }
             let distance = me.distance(from: CLLocation(latitude: candidate.lat, longitude: candidate.lng))
@@ -841,6 +866,9 @@ final class GameViewModel: ObservableObject {
     var visibleRunners: [PlayerState] { socket.radar?.runners ?? [] }
     var visibleRunnerBearings: [RunnerBearing] { socket.radar?.runnerBearings ?? [] }
     var isRadarJammed: Bool { socket.radar?.jammed ?? false }
+    /// Seconds between radar pings for this match (0 = continuous). The lobby can change it up
+    /// to the start, so the latest settings broadcast wins over the session this view opened with.
+    var radarPingInterval: Int { (socket.latestSettings ?? sessionSettings).radarIntervalSeconds ?? 0 }
     var allPlayers: [PlayerState] { socket.players }
     var inventory: [PowerUpType] { socket.inventory }
 }

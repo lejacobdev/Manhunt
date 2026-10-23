@@ -254,6 +254,7 @@ struct GameLobbyView: View {
                     tint: viewModel.isBoundarySet ? ADATheme.runnerGreen : ADATheme.tacticalAmber
                 )
                 settingsRow(icon: "clock.fill", text: "\(Int(viewModel.durationMinutes)) minute match")
+                settingsRow(icon: "dot.radiowaves.left.and.right", text: "Radar ping: \(RadarPing.label(viewModel.radarIntervalSeconds).lowercased())")
                 settingsRow(
                     icon: "lock.fill",
                     text: viewModel.jailEnabled
@@ -372,6 +373,24 @@ private struct LobbySetupSheet: View {
                         Text("DURATION: \(Int(viewModel.durationMinutes)) MIN")
                         Slider(value: $viewModel.durationMinutes, in: 10...180, step: 5)
                             .tint(ADATheme.spatialCyan)
+                    }
+                    .tacticalFont(.telemetry, size: 12)
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(16)
+                    .glassCard(cornerRadius: ADATheme.cardCornerRadius)
+                    .padding(.horizontal)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("RADAR PING: \(RadarPing.label(viewModel.radarIntervalSeconds).uppercased())")
+                        Slider(value: $viewModel.radarPingStep, in: 0...Double(RadarPing.steps.count - 1), step: 1)
+                            .tint(ADATheme.spatialCyan)
+                            .accessibilityValue(RadarPing.label(viewModel.radarIntervalSeconds))
+                        Text(viewModel.radarIntervalSeconds == 0
+                             ? "Radar and compass update continuously."
+                             : "Radar and compass only update on each ping. Thermal Vision tracks live between pings.")
+                            .tacticalFont(.ui, size: 11, weight: .medium)
+                            .foregroundColor(.white.opacity(0.45))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .tacticalFont(.telemetry, size: 12)
                     .foregroundColor(.white.opacity(0.7))

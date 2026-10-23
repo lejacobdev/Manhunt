@@ -134,6 +134,8 @@ const updateSettingsSchema = z.object({
   bailOutSeconds: z.number().min(5).max(300).optional(),
   gamblingEnabled: z.boolean().optional(),
   antiCheatEnabled: z.boolean().optional(),
+  // 0 = continuous; otherwise the radar and compass update once per ping, up to 10 minutes.
+  radarIntervalSeconds: z.number().int().min(0).max(600).optional(),
 });
 
 /**
@@ -219,6 +221,27 @@ gamesRouter.post('/:code/start', async (req: AuthedRequest, res) => {
   const settings = session.settings as unknown as GameSettings;
   if (settings.boundsPolygon.length < 3) {
     return res.status(409).json({ error: 'Draw the play area in Settings before starting.' });
+  }
+  if (session.status !== 'LOBBY') {
+    return res.status(409).json({ error: 'This match has already started.' });
+  }
+  // A match needs someone to chase and someone to be chased. Without a runner it could only
+  // ever end at the time limit, announced as a runners' win with no runners in it.
+  const players = await prisma.gamePlayer.findMany({ where: { sessionId: session.id }, select: { role: true, squad: true } });
+  const hunters = players.filter((p) => p.role === 'HUNTER');
+  const runners = players.filter((p) => p.role === 'RUNNER');
+  if (hunters.length === 0 || runners.length === 0) {
+    return res.status(409).json({ error: 'A match needs at least one hunter and one runner. Assign roles in the player list.' });
+  }
+  if (session.mode === 'SQUAD') {
+    if (players.some((p) => p.role !== 'SPECTATOR' && !p.squad)) {
+      return res.status(409).json({ error: 'Everyone needs a squad in Squad mode. Players without one have to leave and rejoin with a squad name.' });
+    }
+    const runnerSquads = new Set(runners.map((p) => p.squad));
+    const canChase = runners.some((r) => hunters.some((h) => h.squad !== r.squad));
+    if (runnerSquads.size < 2 || !canChase) {
+      return res.status(409).json({ error: 'Squad mode needs runners in at least two squads, and hunters who can chase another squad.' });
+    }
   }
   const started = await gameService.startSession(session.id);
   // Live-patch the socket layer's cache so already-connected sockets (and any that

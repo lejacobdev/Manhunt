@@ -27,6 +27,8 @@ struct GameMapView: UIViewRepresentable {
     /// Live safe-zone flares — a runner standing inside one can't be caught.
     var safeZones: [ActiveSafeZone] = []
     let decoys: [DecoyBlip]
+    /// Thermal Vision: runners within 300 m, drawn as unnamed heat signatures.
+    var heat: [HeatBlip] = []
     var powerUpSpawns: [PowerUpSpawn] = []
     /// Fires with the tapped spawn's id when its map pin is selected.
     var onSelectSpawn: ((String) -> Void)? = nil
@@ -77,6 +79,9 @@ struct GameMapView: UIViewRepresentable {
         }
         for decoy in decoys where decoy.isDecoy {
             desired["decoy:\(decoy.id)"] = (CLLocationCoordinate2D(latitude: decoy.lat, longitude: decoy.lng), .decoy)
+        }
+        for blip in heat {
+            desired["heat:\(blip.id)"] = (CLLocationCoordinate2D(latitude: blip.lat, longitude: blip.lng), .heat)
         }
         for spawn in powerUpSpawns {
             desired["spawn:\(spawn.id)"] = (CLLocationCoordinate2D(latitude: spawn.latitude, longitude: spawn.longitude), .powerUpSpawn(spawn.id, spawn.type))
@@ -270,6 +275,11 @@ struct GameMapView: UIViewRepresentable {
                 view.glyphImage = UIImage(systemName: role == .hunter ? "figure.run" : "figure.walk")
                 view.canShowCallout = false
                 Self.applyNameLabel(blip.username, to: view)
+            case .heat:
+                view.markerTintColor = UIColor(ADATheme.hunterRed)
+                view.glyphImage = UIImage(systemName: "thermometer.high")
+                view.canShowCallout = false
+                Self.applyNameLabel(nil, to: view)
             case .decoy:
                 view.markerTintColor = UIColor(ADATheme.spatialCyan)
                 view.glyphImage = UIImage(systemName: "person.fill.questionmark")
@@ -343,6 +353,7 @@ private final class BlipAnnotation: NSObject, MKAnnotation {
     enum Kind: Equatable {
         case player(PlayerRole)
         case decoy
+        case heat
         case powerUpSpawn(String, PowerUpType)
     }
 
