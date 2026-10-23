@@ -179,6 +179,7 @@ struct GameLobbyView: View {
                         Text(p.username.uppercased())
                             .tacticalFont(.ui, size: 13, weight: .semibold)
                             .foregroundColor(.white)
+                        CosmeticBadgeView(id: p.badge)
                         if let squad = p.squad, !squad.isEmpty {
                             Text(squad.uppercased())
                                 .tacticalFont(.telemetry, size: 9)

@@ -12,6 +12,8 @@ struct GameMapView: UIViewRepresentable {
         /// Shown as a small label under the pin — nil for your own blip (no need to label
         /// yourself) and always set for everyone else's.
         var username: String? = nil
+        /// Their equipped cosmetic marker (looks only).
+        var marker: String? = nil
     }
 
     let players: [Blip]
@@ -47,6 +49,8 @@ struct GameMapView: UIViewRepresentable {
     /// `focusPlayerId`, which only fires on an id *change*, this fires on every tap.
     var recenterRequest: Int = 0
     var recenterTargetId: String? = nil
+    /// The viewer's equipped map style (looks only).
+    var mapStyle: String? = nil
 
     /// Used only for the very first camera position, before `initialCenter` is known.
     private static let defaultFallbackCenter = CLLocationCoordinate2D(latitude: 37.7749, longitude: -122.4194)
@@ -60,6 +64,10 @@ struct GameMapView: UIViewRepresentable {
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
+        if context.coordinator.appliedMapStyle != (mapStyle ?? "map.standard") {
+            context.coordinator.appliedMapStyle = mapStyle ?? "map.standard"
+            mapView.preferredConfiguration = CosmeticStyle.mapConfiguration(mapStyle)
+        }
         if !context.coordinator.hasCentered, let initialCenter {
             mapView.setRegion(MKCoordinateRegion(center: initialCenter, latitudinalMeters: 600, longitudinalMeters: 600), animated: true)
             context.coordinator.hasCentered = true
@@ -74,7 +82,7 @@ struct GameMapView: UIViewRepresentable {
         var usernames: [String: String] = [:]
         for player in players {
             let key = "player:\(player.id)"
-            desired[key] = (player.coordinate, .player(player.kind))
+            desired[key] = (player.coordinate, .player(player.kind, player.marker))
             if let username = player.username { usernames[key] = username }
         }
         for decoy in decoys where decoy.isDecoy {
@@ -217,6 +225,7 @@ struct GameMapView: UIViewRepresentable {
 
     final class Coordinator: NSObject, MKMapViewDelegate {
         var hasCentered = false
+        var appliedMapStyle: String?
         var lastFocusedId: String?
         var lastRecenterRequest = 0
         var polygonsAdded = false
@@ -280,9 +289,9 @@ struct GameMapView: UIViewRepresentable {
             view.isAccessibilityElement = true
             view.accessibilityLabel = Self.accessibilityLabel(for: blip)
             switch blip.kind {
-            case .player(let role):
+            case .player(let role, let marker):
                 view.markerTintColor = UIColor(ADATheme.accent(for: role))
-                view.glyphImage = UIImage(systemName: role == .hunter ? "figure.run" : "figure.walk")
+                view.glyphImage = UIImage(systemName: CosmeticStyle.markerGlyph(marker, role: role))
                 view.canShowCallout = false
                 Self.applyNameLabel(blip.username, to: view)
             case .heat:
@@ -307,7 +316,7 @@ struct GameMapView: UIViewRepresentable {
 
         fileprivate static func accessibilityLabel(for blip: BlipAnnotation) -> String {
             switch blip.kind {
-            case .player(let role):
+            case .player(let role, _):
                 if let name = blip.username { return "\(role.displayName) \(name)" }
                 return "You, \(role.displayName.lowercased())"
             case .heat: return "Heat signature of a runner"
@@ -372,7 +381,7 @@ final class TaggedCircle: MKCircle {
 
 private final class BlipAnnotation: NSObject, MKAnnotation {
     enum Kind: Equatable {
-        case player(PlayerRole)
+        case player(PlayerRole, String?)
         case decoy
         case heat
         case powerUpSpawn(String, PowerUpType)

@@ -54,7 +54,8 @@ struct GameView: View {
                 initialCenter: viewModel.currentLocation?.coordinate,
                 focusPlayerId: focusedPlayerId,
                 recenterRequest: recenterRequestToken,
-                recenterTargetId: viewModel.gamePlayerId
+                recenterTargetId: viewModel.gamePlayerId,
+                mapStyle: CosmeticsStore.shared.equipped["mapStyle"]
             )
             .edgesIgnoringSafeArea(.all)
             // allowsHitTesting(false) is load-bearing: a plain Color overlay is opaque to
@@ -1010,10 +1011,10 @@ struct GameView: View {
         var blips = viewModel.allPlayers
             .filter { $0.id != viewModel.gamePlayerId && !($0.lat == 0 && $0.lng == 0) }
             .filter { viewModel.role == .spectator || $0.role == viewModel.role }
-            .map { GameMapView.Blip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role, username: $0.username) }
+            .map { GameMapView.Blip(id: $0.id, coordinate: CLLocationCoordinate2D(latitude: $0.lat, longitude: $0.lng), kind: $0.role, username: $0.username, marker: $0.marker) }
 
         if let selfCoordinate = viewModel.currentLocation?.coordinate {
-            blips.append(GameMapView.Blip(id: viewModel.gamePlayerId, coordinate: selfCoordinate, kind: viewModel.role))
+            blips.append(GameMapView.Blip(id: viewModel.gamePlayerId, coordinate: selfCoordinate, kind: viewModel.role, marker: CosmeticsStore.shared.equipped["marker"]))
         }
 
         return blips

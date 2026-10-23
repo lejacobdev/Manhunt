@@ -250,6 +250,12 @@ private struct ProfileBody: View {
     /// Shown while the real profile is still loading, so the header doesn't pop in blank
     /// on your own tab where the username is already known locally.
     let fallbackUser: AppUser?
+    @ObservedObject private var cosmetics = CosmeticsStore.shared
+
+    /// Your own profile shows what you just equipped; anyone else's shows what the server says.
+    private var isMine: Bool { fallbackUser != nil }
+    private var banner: String? { isMine ? cosmetics.equipped["banner"] ?? viewModel.profile?.user.banner : viewModel.profile?.user.banner }
+    private var badge: String? { isMine ? cosmetics.equipped["badge"] ?? viewModel.profile?.user.badge : viewModel.profile?.user.badge }
 
     var body: some View {
         VStack(spacing: 18) {
@@ -262,7 +268,14 @@ private struct ProfileBody: View {
                 }
             }
             .padding(.vertical, 20)
-            .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.spatialCyan)
+            .padding(.top, 6)
+            // The equipped banner: a gradient strip across the top of the card, and its tint.
+            .overlay(alignment: .top) {
+                LinearGradient(colors: CosmeticStyle.bannerColors(banner), startPoint: .leading, endPoint: .trailing)
+                    .frame(height: 6)
+                    .accessibilityHidden(true)
+            }
+            .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: CosmeticStyle.bannerTint(banner))
             .padding(.horizontal)
 
             if let error = viewModel.errorMessage, viewModel.profile == nil {
@@ -315,6 +328,8 @@ private struct ProfileBody: View {
             Text(label)
                 .tacticalFont(.display, size: 20)
                 .foregroundColor(.white)
+
+            CosmeticBadgeView(id: badge)
 
             if let since = profileUser?.memberSinceLabel {
                 Text("PLAYING SINCE \(since.uppercased())")
