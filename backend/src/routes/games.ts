@@ -36,6 +36,7 @@ const createSessionSchema = z
     // BETA: the accuracy/motion/speed/teleport checks are new enough that a false
     // positive can look exactly like a frozen radar, so hosts get an off switch.
     antiCheatEnabled: z.boolean().optional(),
+    headStartSeconds: z.number().int().min(0).max(300).optional(),
   })
   .superRefine((data, ctx) => {
     if (data.jailEnabled && (data.jailPolygon?.length ?? 0) < 3) {
@@ -66,6 +67,7 @@ gamesRouter.post('/', async (req: AuthedRequest, res) => {
     bailOutSeconds: parsed.data.bailOutSeconds,
     gamblingEnabled: parsed.data.gamblingEnabled,
     antiCheatEnabled: parsed.data.antiCheatEnabled,
+    headStartSeconds: parsed.data.headStartSeconds,
   });
   const player = await gameService.joinSession(session.id, req.user!.userId, parsed.data.role, parsed.data.squad);
   return res.status(201).json({ session, player });

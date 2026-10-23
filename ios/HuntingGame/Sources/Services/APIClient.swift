@@ -298,6 +298,8 @@ final class APIClient {
             let jailPolygon: [Coordinate]
             let gamblingEnabled: Bool
             let antiCheatEnabled: Bool
+            /// This app explains the head start, so it asks for the default one; 1.0.x apps don't.
+            let headStartSeconds = 60
         }
         struct Response: Decodable { let session: GameSession; let player: GamePlayer }
         let resp: Response = try await post(

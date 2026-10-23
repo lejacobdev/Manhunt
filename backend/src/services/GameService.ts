@@ -26,6 +26,7 @@ export interface CreateSessionInput {
   bailOutSeconds?: number;
   gamblingEnabled?: boolean;
   antiCheatEnabled?: boolean;
+  headStartSeconds?: number;
 }
 
 const POWER_UP_TYPES: PowerUpType[] = [
@@ -82,7 +83,9 @@ export class GameService {
       gamblingEnabled: input.gamblingEnabled ?? false,
       antiCheatEnabled: input.antiCheatEnabled ?? false,
       radarIntervalSeconds: 0,
-      headStartSeconds: DEFAULT_HEAD_START_SECONDS,
+      // Only apps that know about the head start ask for one; a match hosted from 1.0.x has none,
+      // so its players are never shown a dark radar the old app can't explain.
+      headStartSeconds: input.headStartSeconds ?? 0,
     };
 
     const session = await prisma.gameSession.create({

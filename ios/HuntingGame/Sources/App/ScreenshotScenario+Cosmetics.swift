@@ -4,8 +4,10 @@ import Foundation
 extension ScreenshotScenario {
     /// The Customize screen's sample store, for the simulator scenario and the in-app purchase
     /// review screenshot.
-    static var sampleCosmetics: CosmeticsSnapshot {
-        decode(#"""
+    static var sampleCosmetics: CosmeticsSnapshot { sampleCosmetics(mapStyle: "map.muted") }
+
+    static func sampleCosmetics(mapStyle: String) -> CosmeticsSnapshot {
+        decode((#"""
         {"items":[
           {"id":"map.standard","category":"mapStyle","name":"Standard","description":"The classic dark map.","unlock":"free","productId":null,"requirement":null,"progress":null,"goal":null,"owned":true},
           {"id":"map.muted","category":"mapStyle","name":"Night Ops","description":"A muted map.","unlock":"play","productId":null,"requirement":"Play 5 matches","progress":5,"goal":5,"owned":true},
@@ -29,7 +31,7 @@ extension ScreenshotScenario {
           {"productId":"com.huntinggame.app.pack.banners","name":"Banner Pack","description":"Ember, Ice and Aurora profile banners.","items":[],"owned":false},
           {"productId":"com.huntinggame.app.supporter","name":"Supporter","description":"Every pack, plus a Supporter badge, banner and radar. Keeps Hunting Game free and ad-free.","items":[],"owned":false}],
          "equipped":{"mapStyle":"map.muted","radarSkin":"radar.classic","marker":"marker.default","banner":"banner.default","badge":"badge.none"}}
-        """#)
+        """#).replacingOccurrences(of: "\"mapStyle\":\"map.muted\"", with: "\"mapStyle\":\"\(mapStyle)\""))
     }
 }
 #endif

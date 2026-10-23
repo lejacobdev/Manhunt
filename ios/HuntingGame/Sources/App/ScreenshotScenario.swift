@@ -45,7 +45,8 @@ enum ScreenshotScenario: String, CaseIterable {
         try! JSONDecoder().decode(T.self, from: Data(json.utf8))
     }
 
-    static let center = (lat: 50.9375, lng: 6.9603)
+    // The simulator's default location, so the sample players are on screen.
+    static let center = (lat: 37.7749, lng: -122.4194)
 
     static var sampleSummary: MatchSummary {
         decode("""
@@ -101,7 +102,7 @@ private struct ScenarioGame: View {
         let socket = SocketService.shared
         let c = ScreenshotScenario.center
         // Equipped cosmetics: the Night Ops map, and a teammate wearing the Flame marker.
-        CosmeticsStore.shared.loadPreview(ScreenshotScenario.sampleCosmetics)
+        CosmeticsStore.shared.loadPreview(ScreenshotScenario.sampleCosmetics(mapStyle: "map.hybrid"))
         socket.players = [ScreenshotScenario.decode("""
         {"id":"p-mate","userId":"u-mate","username":"kai","role":"\(role.rawValue)","squad":null,"lat":\(c.lat + 0.0012),"lng":\(c.lng - 0.0009),
          "speed":1.2,"accuracy":5,"battery":80,"isMovingOnFoot":true,"arrestCode":"","isCaught":false,"isJailed":false,"isOut":false,"hearts":3,
