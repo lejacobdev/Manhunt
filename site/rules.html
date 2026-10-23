@@ -2,172 +2,119 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Game Rules — Hunting Game</title>
+<meta name="description" content="The complete rules of Hunting Game: catches, jail, jailbreaks, the shrinking zone, power-ups, modes and winning.">
+<link rel="canonical" href="https://huntinggame.lejacob.dev/rules.html">
+<meta name="theme-color" content="#090B10">
+<meta name="color-scheme" content="dark">
+<meta name="apple-itunes-app" content="app-id=6809603844">
 <link rel="icon" href="/assets/favicon-32.png" sizes="32x32">
+<link rel="icon" href="/assets/favicon.png" sizes="64x64">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
-<meta name="theme-color" content="#090b10">
-<link rel="stylesheet" href="/assets/style.css?v=4">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Hunting Game">
+<meta property="og:title" content="Game Rules — Hunting Game">
+<meta property="og:description" content="The complete rules of Hunting Game: catches, jail, jailbreaks, the shrinking zone, power-ups, modes and winning.">
+<meta property="og:url" content="https://huntinggame.lejacob.dev/rules.html">
+<meta property="og:image" content="https://huntinggame.lejacob.dev/assets/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://huntinggame.lejacob.dev/assets/og-card.png">
+<link rel="stylesheet" href="/assets/site.css?v=11">
+
 </head>
 <body>
-
-<nav class="nav">
-  <a href="/" style="text-decoration:none;">
-    <span class="wordmark" style="font-size:17px">HUNTING G<svg viewBox="0 0 416 512" style="width:0.66em;height:0.74em"><g transform="matrix(1,0,0,-1,0,448)"><path d="M306.0 366.0Q292 352 272.0 352.0Q252 352 238.0 366.0Q224 380 224.0 400.0Q224 420 238.0 434.0Q252 448 272.0 448.0Q292 448 306.0 434.0Q320 420 320.0 400.0Q320 380 306.0 366.0ZM114 131Q126 103 152 88L162 82L154 61Q141 32 109 32H32Q19 32 9.5 41.5Q0 51 0.0 64.0Q0 77 9.5 86.5Q19 96 32 96H99ZM384 224Q397 224 406.5 214.5Q416 205 416.0 192.0Q416 179 406.5 169.5Q397 160 384 160H330Q300 160 287 187L267 228L235 150L297 114Q311 105 317.0 90.0Q323 75 318 60L287 -42Q280 -64 256 -64Q251 -64 246 -62Q234 -59 228.0 -47.0Q222 -35 225 -22L253 65L168 115Q147 128 139.5 151.0Q132 174 142 196L179 283L164 288Q151 291 139 281L99 251Q89 243 76.0 244.5Q63 246 55.0 256.5Q47 267 48.5 280.5Q50 294 61 302L100 332Q137 360 181 349L252 328Q294 317 314 277L340 224Z"/></g></svg>ME</span>
-  </a>
-  <div class="nav-links">
-    <a href="/#features">Features</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-    <a href="/legal.html">Legal</a>
-  </div>
-  <a class="nav-cta" href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener">App Store</a>
+<a class="skip" href="#main">Skip to content</a>
+<div class="radar-bg" aria-hidden="true"></div>
+<nav class="nav glass" aria-label="Main">
+  <a class="brand" href="/" aria-label="Hunting Game home"><img src="/assets/apple-touch-icon.png" alt="" width="30" height="30"><span style="font-size:17px"><span class="wordmark">HUNTING G<svg viewBox="0 0 416 512" style="width:.66em;height:.74em" aria-hidden="true"><g transform="matrix(1,0,0,-1,0,448)"><path d="M306.0 366.0Q292 352 272.0 352.0Q252 352 238.0 366.0Q224 380 224.0 400.0Q224 420 238.0 434.0Q252 448 272.0 448.0Q292 448 306.0 434.0Q320 420 320.0 400.0Q320 380 306.0 366.0ZM114 131Q126 103 152 88L162 82L154 61Q141 32 109 32H32Q19 32 9.5 41.5Q0 51 0.0 64.0Q0 77 9.5 86.5Q19 96 32 96H99ZM384 224Q397 224 406.5 214.5Q416 205 416.0 192.0Q416 179 406.5 169.5Q397 160 384 160H330Q300 160 287 187L267 228L235 150L297 114Q311 105 317.0 90.0Q323 75 318 60L287 -42Q280 -64 256 -64Q251 -64 246 -62Q234 -59 228.0 -47.0Q222 -35 225 -22L253 65L168 115Q147 128 139.5 151.0Q132 174 142 196L179 283L164 288Q151 291 139 281L99 251Q89 243 76.0 244.5Q63 246 55.0 256.5Q47 267 48.5 280.5Q50 294 61 302L100 332Q137 360 181 349L252 328Q294 317 314 277L340 224Z"/></g></svg>ME</span></span></a>
+  <div class="links" id="nav-links"><a href="/#how">How it plays</a><a href="/#power-ups">Power-ups</a><a href="/rules.html" aria-current="page">Rules</a><a href="/#safety">Safety</a><a href="/support.html">Support</a></div>
+  <a class="cta" href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener">App Store</a>
+  <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-links"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
 </nav>
+<main id="main">
 
-<div class="doc">
-  <h1 class="display">Game Rules</h1>
-  <span class="updated">HOW A MATCH ACTUALLY WORKS</span>
-
-  <p>
-    Hunting Game is real-world manhunt. One group hunts, the other runs, and everyone's
-    live GPS position drives the radar, the compass and every catch. This page explains
-    the whole thing — you'll be asked to accept these rules in the app before you can host
-    or join a match.
-  </p>
-
-  <h2>The short version</h2>
+<header class="wrap doc-head">
+  <div class="eyebrow">How a match works</div>
+  <h1>Game Rules</h1>
+  <div class="updated">Updated for version 1.1</div>
+  <p class="lead" style="margin-top:18px">You'll be asked to accept these in the app before you can host or join a match.</p>
+</header>
+<div class="wrap doc-layout">
+  <nav class="toc glass" aria-label="On this page"><h4>On this page</h4><a href="#before-the-match">Before the match</a><a href="#hearts">Hearts</a><a href="#getting-caught">Getting caught</a><a href="#jail-mode">Jail mode</a><a href="#the-play-area">The play area</a><a href="#power-ups">Power-ups</a><a href="#modes">Modes</a><a href="#winning">Winning</a><a href="#playing-fair-and-playing-safely">Playing fair, and playing safely</a><a href="#more">More</a></nav>
+  <article class="doc glass">
+  <div class="callout" style="--c:34, 197, 94"><strong>The short version.</strong> Hunters chase runners; runners survive until the clock runs out. Everyone has hearts — lose them all and you're out. Stay inside the play area. Hunters win when every runner is caught, jailed or eliminated; runners win if one is still free at time, or if every hunter is eliminated.</div>
+  <h2 id="before-the-match">Before the match</h2>
+  <p>The host draws the play area, picks the mode and the match length, and assigns everyone a role: hunter, runner or spectator. A match needs at least one hunter and one runner to start (in Squad mode, runners in at least two squads).</p>
+  <p>The host also sets the <strong>radar ping</strong>: live, or every 10 seconds up to every 10 minutes. On a live radar, every movement shows up straight away. With a ping, hunters' radar and runners' compass only update on each ping, and the screen counts down to the next one.</p>
+  <h2 id="hearts">Hearts</h2>
+  <p>Runners start with <strong>3 hearts</strong>, hunters with <strong>5</strong>. Nearly every rule below costs a heart or takes one from someone else. Reaching zero eliminates you for the rest of the match; you stay on as a spectator.</p>
+  <h2 id="getting-caught">Getting caught</h2>
   <ul>
-    <li><strong>Hunters</strong> chase down runners. <strong>Runners</strong> survive until the clock runs out.</li>
-    <li>Everyone has <strong>hearts</strong>. Lose them all and you're out of the match.</li>
-    <li>Stay inside the <strong>play area</strong>. Straying outside drains hearts.</li>
-    <li>Runners win if any runner is still free when time expires, or if every hunter is eliminated.</li>
-    <li>Hunters win when every runner is caught, jailed or eliminated.</li>
+    <li>A hunter has to get within about <strong>15 metres</strong> of a runner and send a catch request.</li>
+    <li>The runner answers on their own phone within <strong>20 seconds</strong>. <strong>No answer counts as caught</strong> — the request already proved the hunter was close enough.</li>
+    <li>If the runner says no, the hunter decides: <em>my mistake</em> (no catch), or they insist. If they insist, the <strong>host rules</strong>. If the host is one of the two players, or doesn't rule within 45 seconds, the catch stands. If the hunter doesn't answer, the runner's word stands.</li>
+    <li>Every catch costs the runner one heart. A runner who loses their last heart to a catch is out of the match.</li>
+    <li>Nobody can be caught inside a Safe Zone Flare, or within 30 seconds of being freed.</li>
   </ul>
-
-  <h2>Hearts</h2>
-  <p>
-    Runners start with <strong>3 hearts</strong>, hunters with <strong>5</strong>. Hearts
-    are the currency of the whole match — nearly every rule below either costs one or takes
-    one from someone else. Reaching zero eliminates you for the rest of the match; you stay
-    on as a spectator and can still watch it play out.
-  </p>
-
-  <h2>Getting caught</h2>
-  <p>
-    A hunter has to physically get within about 15 metres of a runner and send a catch
-    request. The runner sees a prompt on their own phone with two answers:
-  </p>
+  <h2 id="jail-mode">Jail mode</h2>
+  <p>If the host turned jail on, a caught runner isn't out — they're sentenced.</p>
   <ul>
-    <li><strong>Yes, I was caught</strong> — the catch stands.</li>
-    <li><strong>No, that wasn't a catch</strong> — the hunter is asked whether it was an
-      accident. If they confirm, nothing happens and they're free to try again. If the two
-      of you genuinely disagree, the host can settle it with their override control.</li>
+    <li><strong>Get to the jail.</strong> Walk there yourself within the time the host set. Not turning up is a disqualification. Reconnecting starts a fresh walk; it never skips it.</li>
+    <li><strong>Stay in the jail.</strong> Leaving gives you 10 seconds to get back inside, then you're disqualified.</li>
+    <li><strong>The jailbreak.</strong> A free runner who stands in the jail for the time the host set breaks every prisoner out at once. It costs the rescuer a heart and takes one from every hunter. The clock only runs while somebody's inside to free, and restarts if the rescuer steps out.</li>
+    <li><strong>A head start.</strong> Freed runners are shielded from catches for 30 seconds.</li>
+    <li><strong>Neutral ground.</strong> The jail never costs anyone hearts — not even after the shrinking zone has passed it. Safe Zone Flares don't work at the jail, so a jailbreak is always a real risk.</li>
   </ul>
-  <p>
-    Being caught costs the runner <strong>one heart</strong>, every time. A runner who loses
-    their last heart to a catch is out of the match, and no rescue can bring them back.
-  </p>
-
-  <h2>Jail mode</h2>
-  <p>
-    If the host enabled jail mode, a caught runner isn't eliminated — they're sentenced,
-    and the match keeps a way back in for them.
-  </p>
+  <h2 id="the-play-area">The play area</h2>
+  <p>The host draws the boundary, and a zone inside it shrinks steadily over the match towards a point inside the play area. Outside either one you get a warning and then lose a heart at a time — hunters and runners alike, in every mode — until you're back inside or eliminated. Your phone's GPS accuracy is taken into account, so a bad signal at the edge won't punish you.</p>
+  <h2 id="power-ups">Power-ups</h2>
+  <p>Scattered around the play area. Walk to one to pick it up, then use it from your equipment panel. You only see the ones your side can use, and you can't pick any up while caught.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Power-up</th><th>For</th><th>What it does</th></tr></thead>
+    <tbody>
+      <tr><td>Invisibility</td><td>Anyone</td><td>60 s off the other side's radar or compass.</td></tr>
+      <tr><td>Thermal Vision</td><td>Hunters</td><td>45 s: every runner within 300 m shows on your map as a heat signature, invisible ones included, and your radar tracks live between pings. Ghost Decoys have no heat.</td></tr>
+      <tr><td>Ghost Decoy</td><td>Runners</td><td>3 min: a fake copy of you walks away from the direction you were heading, staying inside the play area. Hunters can't tell it from you until they reach it — then it's gone.</td></tr>
+      <tr><td>EMP Jammer</td><td>Runners</td><td>Every hunter within 200 m loses their radar at once and misses every ping for 60 s.</td></tr>
+      <tr><td>Adrenaline</td><td>Runners</td><td>Two extra hearts, and a higher top speed for anti-cheat for 90 s.</td></tr>
+      <tr><td>Safe Zone Flare</td><td>Runners</td><td>90 s: a 30 m bubble where you stood. Nobody can be caught inside it. Doesn't work at the jail.</td></tr>
+    </tbody>
+  </table></div>
+  <h2 id="modes">Modes</h2>
   <ul>
-    <li>
-      <strong>Get to the jail.</strong> You have a set amount of time (the host picks it)
-      to walk to the jail area yourself. Not turning up in time is a disqualification.
-    </li>
-    <li>
-      <strong>Stay in the jail.</strong> Once you're there, leaving gives you a warning and
-      <strong>10 seconds</strong> to get back inside. Miss that and you're disqualified.
-    </li>
-    <li>
-      <strong>Getting bailed out.</strong> A runner who is still free can walk into the jail
-      area and stand there. If they hold it for the time the host set, <em>every prisoner in
-      the jail walks free at once</em> and is allowed to leave.
-    </li>
+    <li><strong>Standard</strong> — hunters against runners, as above.</li>
+    <li><strong>Infection</strong> — a caught runner switches sides and joins the hunt. Jail and hearts-on-catch don't apply. The match ends when nobody is left running.</li>
+    <li><strong>Squad</strong> — teams, each with hunters and runners. You only chase other squads' runners, and your radar and compass only show the other squads. Without jail, a free squadmate can revive a caught teammate by standing next to them; with jail, a jailbreak frees only your own squad and only costs the other squads' hunters a heart. Pick your squad when you join.</li>
   </ul>
-  <p>
-    A jailbreak isn't free. It costs the runner who pulled it off <strong>one heart</strong>,
-    and it takes <strong>one heart from every hunter</strong> still in the match. Standing in
-    the jail also means standing exactly where the hunters know to look, in the open, for as
-    long as it takes — so it's a real gamble, not a free reset.
-  </p>
-  <p>
-    The bail-out clock only runs while there's actually somebody in the jail to release, and
-    it's continuous — step outside the jail area and it starts over.
-  </p>
-
-  <h2>The play area</h2>
-  <p>
-    The host draws the play area before the match starts. A zone inside it shrinks steadily
-    over the match, pushing everyone closer together as time runs down. Being outside either
-    one gives you a short warning and then starts draining a heart at a time, for hunters and
-    runners alike, until you're back inside or eliminated. Your phone's GPS accuracy is taken
-    into account, so hovering near the edge won't punish you for a bad signal.
-  </p>
-
-  <h2>Power-ups</h2>
-  <p>
-    Power-ups are scattered around the play area and collected by walking to them:
-    invisibility, a ghost decoy that fakes a trail, an EMP that jams nearby radar, thermal
-    vision, adrenaline (which also grants bonus hearts), and a safe-zone flare that makes a
-    bubble where no catch can happen until it burns out.
-  </p>
-
-  <h2>Modes</h2>
-  <ul>
-    <li><strong>Standard</strong> — hunters versus runners, as described above.</li>
-    <li><strong>Infection</strong> — a caught runner becomes a hunter and joins the chase.
-      Jail mode and hearts-on-catch don't apply; the match ends when everyone's been turned.</li>
-    <li><strong>Squad</strong> — teams. You can only tag members of <em>other</em> squads,
-      and squadmates can revive each other. Your squad is chosen when you join, so join the
-      match with the squad you intend to play on.</li>
-  </ul>
-
-  <h2>Winning</h2>
+  <h2 id="winning">Winning</h2>
   <ul>
     <li><strong>Hunters win</strong> when every runner has been caught, jailed or eliminated.</li>
-    <li><strong>Runners win</strong> if at least one is still free when the clock hits zero.</li>
-    <li><strong>Runners also win</strong> if every hunter is eliminated — which bail-outs make
-      genuinely possible, since each one costs every hunter a heart.</li>
+    <li><strong>Runners win</strong> if at least one is still free when the clock hits zero, or if every hunter is eliminated.</li>
+    <li><strong>Infection</strong> ends when nobody is left running.</li>
+    <li><strong>Squad mode</strong> is won by the last squad with a runner still free. At time, the squad with the most runners free wins; a tie is a draw.</li>
   </ul>
-
-  <h2>Playing fair, and playing safely</h2>
-  <p>
-    This game moves you through real, physical, public places. Obey traffic laws and posted
-    rules, don't trespass, don't play in a way that puts you or anyone else in danger, and
-    never let the app pull your attention off your surroundings. Agree the boundaries with
-    the people you're playing with before you start.
-  </p>
-  <p>
-    Don't fake your GPS, don't travel by vehicle when the match is meant to be on foot, and
-    don't use the app's location features to follow anyone who isn't knowingly playing with
-    you. Hosts can turn on an anti-cheat check that rejects implausible movement. Every
-    player can be reported or blocked from their profile, and we act on reports.
-  </p>
-
-  <h2>More</h2>
-  <p>
-    See our <a href="/terms.html">Terms of Use</a> and
-    <a href="/privacy.html">Privacy Policy</a> for the legal side, including exactly what
-    location data is collected and when.
-  </p>
+  <h2 id="playing-fair-and-playing-safely">Playing fair, and playing safely</h2>
+  <p>This game moves you through real, public places. Obey traffic laws and posted rules, don't trespass, don't play in a way that puts you or anyone else in danger, and never let the app pull your attention off your surroundings. Agree the boundaries with the people you're playing with before you start.</p>
+  <p>Don't fake your GPS, don't travel by vehicle when the match is meant to be on foot, and don't use the app's location features to follow anyone who isn't knowingly playing with you. Hosts can turn on an anti-cheat check that rejects implausible movement. Every player can be reported or blocked from their profile, and we act on reports.</p>
+  <h2 id="more">More</h2>
+  <p>See our <a href="/terms.html">Terms of Use</a> and <a href="/privacy.html">Privacy Policy</a> for the legal side, including exactly what location data is collected and when.</p></article>
 </div>
-
+</main>
 <footer>
-  <div class="wrap footer-inner">
-    <span class="footer-note">© 2026 Hunting Game.</span>
-    <div class="footer-links">
-      <a href="/">Home</a>
-      <a href="/privacy.html">Privacy Policy</a>
-      <a href="/terms.html">Terms of Use</a>
-      <a href="/legal.html">Legal Notice</a>
-      <a href="/support.html">Support</a>
+  <div class="wrap foot">
+    <div>
+      <span style="font-size:18px"><span class="wordmark">HUNTING G<svg viewBox="0 0 416 512" style="width:.66em;height:.74em" aria-hidden="true"><g transform="matrix(1,0,0,-1,0,448)"><path d="M306.0 366.0Q292 352 272.0 352.0Q252 352 238.0 366.0Q224 380 224.0 400.0Q224 420 238.0 434.0Q252 448 272.0 448.0Q292 448 306.0 434.0Q320 420 320.0 400.0Q320 380 306.0 366.0ZM114 131Q126 103 152 88L162 82L154 61Q141 32 109 32H32Q19 32 9.5 41.5Q0 51 0.0 64.0Q0 77 9.5 86.5Q19 96 32 96H99ZM384 224Q397 224 406.5 214.5Q416 205 416.0 192.0Q416 179 406.5 169.5Q397 160 384 160H330Q300 160 287 187L267 228L235 150L297 114Q311 105 317.0 90.0Q323 75 318 60L287 -42Q280 -64 256 -64Q251 -64 246 -62Q234 -59 228.0 -47.0Q222 -35 225 -22L253 65L168 115Q147 128 139.5 151.0Q132 174 142 196L179 283L164 288Q151 291 139 281L99 251Q89 243 76.0 244.5Q63 246 55.0 256.5Q47 267 48.5 280.5Q50 294 61 302L100 332Q137 360 181 349L252 328Q294 317 314 277L340 224Z"/></g></svg>ME</span></span>
+      <p class="note">A real-world GPS manhunt for iPhone and Apple Watch. Built natively in SwiftUI.</p>
     </div>
+    <div><h4>Play</h4><a href="/#how">How it plays</a><a href="/#power-ups">Power-ups</a><a href="/rules.html">Game rules</a><a href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener">App Store</a></div>
+    <div><h4>Help</h4><a href="/support.html">Support</a><a href="/#faq">FAQ</a><a href="/#safety">Safety</a></div>
+    <div><h4>Legal</h4><a href="/privacy.html">Privacy Policy</a><a href="/terms.html">Terms of Use</a><a href="/legal.html">Legal Notice</a></div>
   </div>
+  <div class="wrap"><p class="note" style="margin-top:34px">© 2026 Hunting Game. Apple, the Apple logo, iPhone and Apple Watch are trademarks of Apple Inc.</p></div>
 </footer>
-
+<script src="/assets/site.js?v=11" defer></script>
 </body>
 </html>

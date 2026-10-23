@@ -2,182 +2,173 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Hunting Game — GPS Manhunt</title>
-<meta name="description" content="A real-world GPS manhunt: hunters vs. runners with live radar, power-ups, squads, and replay. iOS + Apple Watch.">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hunting Game — a real-world GPS manhunt for iPhone</title>
+<meta name="description" content="Hunters vs. runners in the real world: live radar and compass, six power-ups, jail, squads and an Apple Watch app. Free, no ads.">
+<link rel="canonical" href="https://huntinggame.lejacob.dev/">
+<meta name="theme-color" content="#090B10">
+<meta name="color-scheme" content="dark">
+<meta name="apple-itunes-app" content="app-id=6809603844">
 <link rel="icon" href="/assets/favicon-32.png" sizes="32x32">
 <link rel="icon" href="/assets/favicon.png" sizes="64x64">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
-<meta name="theme-color" content="#090b10">
-<meta property="og:title" content="Hunting Game — GPS Manhunt">
-<meta property="og:description" content="Hunters vs. runners with live radar, power-ups, squads, and replay.">
-<meta property="og:image" content="/assets/icon-1024.png">
 <meta property="og:type" content="website">
-<link rel="stylesheet" href="/assets/style.css?v=4">
+<meta property="og:site_name" content="Hunting Game">
+<meta property="og:title" content="Hunting Game — a real-world GPS manhunt for iPhone">
+<meta property="og:description" content="Hunters vs. runners in the real world: live radar and compass, six power-ups, jail, squads and an Apple Watch app. Free, no ads.">
+<meta property="og:url" content="https://huntinggame.lejacob.dev/">
+<meta property="og:image" content="https://huntinggame.lejacob.dev/assets/og-card.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://huntinggame.lejacob.dev/assets/og-card.png">
+<link rel="stylesheet" href="/assets/site.css?v=11">
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "MobileApplication", "name": "Hunting Game", "operatingSystem": "iOS 16.2 or later", "applicationCategory": "GameApplication", "description": "A real-world GPS manhunt: hunters versus runners with live radar, power-ups, jail, squads and an Apple Watch app.", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}, "installUrl": "https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844", "url": "https://huntinggame.lejacob.dev/", "image": "https://huntinggame.lejacob.dev/assets/icon-1024.png", "contentRating": "13+"}</script>
 </head>
 <body>
-
-<nav class="nav">
-  <span class="wordmark" style="font-size:19px">HUNTING G<svg viewBox="0 0 416 512" style="width:0.66em;height:0.74em" aria-hidden="true"><g transform="matrix(1,0,0,-1,0,448)"><path d="M306.0 366.0Q292 352 272.0 352.0Q252 352 238.0 366.0Q224 380 224.0 400.0Q224 420 238.0 434.0Q252 448 272.0 448.0Q292 448 306.0 434.0Q320 420 320.0 400.0Q320 380 306.0 366.0ZM114 131Q126 103 152 88L162 82L154 61Q141 32 109 32H32Q19 32 9.5 41.5Q0 51 0.0 64.0Q0 77 9.5 86.5Q19 96 32 96H99ZM384 224Q397 224 406.5 214.5Q416 205 416.0 192.0Q416 179 406.5 169.5Q397 160 384 160H330Q300 160 287 187L267 228L235 150L297 114Q311 105 317.0 90.0Q323 75 318 60L287 -42Q280 -64 256 -64Q251 -64 246 -62Q234 -59 228.0 -47.0Q222 -35 225 -22L253 65L168 115Q147 128 139.5 151.0Q132 174 142 196L179 283L164 288Q151 291 139 281L99 251Q89 243 76.0 244.5Q63 246 55.0 256.5Q47 267 48.5 280.5Q50 294 61 302L100 332Q137 360 181 349L252 328Q294 317 314 277L340 224Z"/></g></svg>ME</span>
-  <div class="nav-links">
-    <a href="#features">Features</a>
-    <a href="#showcase">Showcase</a>
-    <a href="/support.html">Support</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/legal.html">Legal</a>
-  </div>
-  <a class="nav-cta" href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener">App Store</a>
+<a class="skip" href="#main">Skip to content</a>
+<div class="radar-bg" aria-hidden="true"></div>
+<nav class="nav glass" aria-label="Main">
+  <a class="brand" href="/" aria-label="Hunting Game home"><img src="/assets/apple-touch-icon.png" alt="" width="30" height="30"><span style="font-size:17px"><span class="wordmark">HUNTING G<svg viewBox="0 0 416 512" style="width:.66em;height:.74em" aria-hidden="true"><g transform="matrix(1,0,0,-1,0,448)"><path d="M306.0 366.0Q292 352 272.0 352.0Q252 352 238.0 366.0Q224 380 224.0 400.0Q224 420 238.0 434.0Q252 448 272.0 448.0Q292 448 306.0 434.0Q320 420 320.0 400.0Q320 380 306.0 366.0ZM114 131Q126 103 152 88L162 82L154 61Q141 32 109 32H32Q19 32 9.5 41.5Q0 51 0.0 64.0Q0 77 9.5 86.5Q19 96 32 96H99ZM384 224Q397 224 406.5 214.5Q416 205 416.0 192.0Q416 179 406.5 169.5Q397 160 384 160H330Q300 160 287 187L267 228L235 150L297 114Q311 105 317.0 90.0Q323 75 318 60L287 -42Q280 -64 256 -64Q251 -64 246 -62Q234 -59 228.0 -47.0Q222 -35 225 -22L253 65L168 115Q147 128 139.5 151.0Q132 174 142 196L179 283L164 288Q151 291 139 281L99 251Q89 243 76.0 244.5Q63 246 55.0 256.5Q47 267 48.5 280.5Q50 294 61 302L100 332Q137 360 181 349L252 328Q294 317 314 277L340 224Z"/></g></svg>ME</span></span></a>
+  <div class="links" id="nav-links"><a href="/#how">How it plays</a><a href="/#power-ups">Power-ups</a><a href="/rules.html">Rules</a><a href="/#safety">Safety</a><a href="/support.html">Support</a></div>
+  <a class="cta" href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener">App Store</a>
+  <button class="menu-btn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="nav-links"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
 </nav>
+<main id="main">
 
-<section class="hero" style="padding-top:88px; padding-bottom:88px;">
-  <div class="radar" style="--accent-rgb: var(--runner-green-rgb)">
-    <div class="radar-glow"></div>
-    <div class="radar-ring r1"></div>
-    <div class="radar-ring r2"></div>
-    <div class="radar-ring r3"></div>
-    <div class="radar-cross"></div>
-    <div class="radar-sweep"></div>
-  </div>
-  <div class="wrap" style="position:relative; text-align:center;">
-    <div class="eyebrow" style="margin-bottom:18px;">GPS MANHUNT, REIMAGINED</div>
-    <div class="wordmark" style="font-size:clamp(34px,7vw,64px); justify-content:center; display:flex;">HUNTING G<svg viewBox="0 0 416 512" style="width:0.66em;height:0.74em" aria-hidden="true"><g transform="matrix(1,0,0,-1,0,448)"><path d="M306.0 366.0Q292 352 272.0 352.0Q252 352 238.0 366.0Q224 380 224.0 400.0Q224 420 238.0 434.0Q252 448 272.0 448.0Q292 448 306.0 434.0Q320 420 320.0 400.0Q320 380 306.0 366.0ZM114 131Q126 103 152 88L162 82L154 61Q141 32 109 32H32Q19 32 9.5 41.5Q0 51 0.0 64.0Q0 77 9.5 86.5Q19 96 32 96H99ZM384 224Q397 224 406.5 214.5Q416 205 416.0 192.0Q416 179 406.5 169.5Q397 160 384 160H330Q300 160 287 187L267 228L235 150L297 114Q311 105 317.0 90.0Q323 75 318 60L287 -42Q280 -64 256 -64Q251 -64 246 -62Q234 -59 228.0 -47.0Q222 -35 225 -22L253 65L168 115Q147 128 139.5 151.0Q132 174 142 196L179 283L164 288Q151 291 139 281L99 251Q89 243 76.0 244.5Q63 246 55.0 256.5Q47 267 48.5 280.5Q50 294 61 302L100 332Q137 360 181 349L252 328Q294 317 314 277L340 224Z"/></g></svg>ME</div>
-    <p style="max-width:520px; margin:22px auto 34px; font-size:17px; color:var(--text-dim);">
-      Hunters and runners, one live map, real streets. Track bearings on a spatial radar,
-      grab power-ups scattered across your city, and settle it in the open world — not a
-      lobby screen.
-    </p>
-    <div style="display:flex; gap:14px; justify-content:center; align-items:center; flex-wrap:wrap;">
-      <a href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener">
-        <img src="/assets/app-store-badge.png" alt="Download on the App Store" style="height:54px; width:auto;">
-      </a>
-      <a class="btn btn-glass" href="#showcase">SEE IT IN ACTION</a>
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="eyebrow reveal">GPS manhunt for iPhone</div>
+      <h1 class="reveal" style="margin-top:18px">Real streets.<br>Real chase.</h1>
+      <p class="lead reveal">Hunters track runners on a live radar, runners read the hunters on a compass, and power-ups scattered across your town turn the chase. All of it out in the real world, not on a screen.</p>
+      <div class="actions reveal"><a class="store" href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener"><img src="/assets/app-store-badge.png" alt="Download on the App Store" style="height:54px;width:auto" width="162" height="54"></a><a class="btn ghost" href="#how">How it plays</a></div>
+      <div class="chips reveal">
+        <span class="chip" style="--c:34, 197, 94">Free · no ads</span>
+        <span class="chip" style="--c:73, 212, 255">Apple Watch app</span>
+        <span class="chip" style="--c:245, 165, 36">Live Activities</span>
+        <span class="chip" style="--c:167, 139, 250">Liquid Glass</span>
+      </div>
     </div>
-    <div style="margin-top:34px; display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
-      <span class="badge green">iOS 16.2+</span>
-      <span class="badge cyan">Apple Watch companion</span>
-      <span class="badge amber">Live Activities</span>
+    <div class="hero-visual">
+      <div class="radar" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="phone tilt reveal"><picture><source srcset="/assets/web/live-hud.webp" type="image/webp"><img src="/assets/screenshots/live-hud.png" width="600" height="1301" alt="Hunting Game's live match screen: a runner on the map with the radar, hearts and nearby power-ups" fetchpriority="high"></picture></div>
+      <div class="float-card glass" style="--c:217, 58, 74;left:2%;top:18%"><span class="dot"></span>HUNTER · 42 m · NE</div>
+      <div class="float-card glass" style="--c:34, 197, 94;right:0;bottom:22%"><span class="dot"></span>NEXT PING 0:23</div>
     </div>
   </div>
 </section>
 
-<section id="features">
+<section class="section" id="how">
   <div class="wrap">
-    <div class="eyebrow" style="text-align:center;">CORE SYSTEMS</div>
-    <h2 class="display" style="text-align:center; font-size:clamp(24px,4vw,34px); margin:10px 0 48px;">
-      Everything a real-world manhunt needs
-    </h2>
-
-    <div class="grid grid-3">
-      <div class="glass glass-tint-cyan feature-card">
-        <div class="feature-icon" style="background:rgba(var(--spatial-cyan-rgb),.16);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--spatial-cyan)" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1" fill="var(--spatial-cyan)"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>
-        </div>
-        <h3>Live Radar &amp; Compass</h3>
-        <p>Every hunter and runner shows up as a bearing and a distance — a real spatial HUD, not a dot on a flat map.</p>
-      </div>
-
-      <div class="glass glass-tint-amber feature-card">
-        <div class="feature-icon" style="background:rgba(var(--tactical-amber-rgb),.16);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--tactical-amber)" stroke-width="2"><path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" stroke-linejoin="round"/></svg>
-        </div>
-        <h3>Six Power-Ups</h3>
-        <p>Invisibility, Ghost Decoy, EMP Jammer, Thermal Vision, Adrenaline, Safe Zone Flare — scattered across the real play area.</p>
-      </div>
-
-      <div class="glass glass-tint-purple feature-card">
-        <div class="feature-icon" style="background:rgba(var(--stealth-purple-rgb),.16);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--stealth-purple)" stroke-width="2"><rect x="3" y="4" width="7" height="7" rx="1.5"/><rect x="14" y="4" width="7" height="7" rx="1.5"/><rect x="3" y="15" width="7" height="7" rx="1.5"/><rect x="14" y="15" width="7" height="7" rx="1.5"/></svg>
-        </div>
-        <h3>Three Modes</h3>
-        <p>Standard Manhunt, Squad vs. Squad, and Infection — every runner caught in Infection joins the hunt.</p>
-      </div>
-
-      <div class="glass glass-tint-red feature-card">
-        <div class="feature-icon" style="background:rgba(var(--hunter-red-rgb),.16);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--hunter-red)" stroke-width="2"><circle cx="8" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M2.5 20c0-3.6 2.9-6 5.5-6s5.5 2.4 5.5 6M14 20c0-2.6 2-4.6 4.5-4.6s4.5 2 4.5 4.6"/></svg>
-        </div>
-        <h3>Friends &amp; Squads</h3>
-        <p>Add friends by QR code or handle, see who's online, and invite them straight into your lobby.</p>
-      </div>
-
-      <div class="glass glass-tint-green feature-card">
-        <div class="feature-icon" style="background:rgba(var(--runner-green-rgb),.16);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--runner-green)" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
-        </div>
-        <h3>Match History &amp; Replay</h3>
-        <p>Every match is scored and logged — watch the whole chase back, step by step, after it's over.</p>
-      </div>
-
-      <div class="glass glass-tint-cyan feature-card">
-        <div class="feature-icon" style="background:rgba(var(--spatial-cyan-rgb),.16);">
-          <svg viewBox="0 0 24 24" fill="none" stroke="var(--spatial-cyan)" stroke-width="2"><rect x="7" y="2" width="10" height="20" rx="4"/><path d="M9 6h6"/></svg>
-        </div>
-        <h3>Live Activities &amp; Watch</h3>
-        <p>A Dynamic Island countdown, Lock Screen radar, and a full Apple Watch companion app on your wrist.</p>
-      </div>
+    <div class="section-head reveal"><div class="eyebrow">How it plays</div><h2>Three steps to a manhunt</h2><p>Set it up in a minute, then put the phone in your pocket and run.</p></div>
+    <div class="grid three steps">
+      <article class="card glass tinted reveal" style="--c:73, 212, 255"><div class="step-num">01</div><h3>Draw the arena</h3><p>The host draws the play area on the map — and a jail if they want one — picks the mode, the match length and how often the radar pings.</p></article>
+      <article class="card glass tinted reveal" style="--c:217, 58, 74"><div class="step-num">02</div><h3>Split up and go</h3><p>Friends join with a code. The host makes some of you hunters and the rest runners, and the clock starts.</p></article>
+      <article class="card glass tinted reveal" style="--c:34, 197, 94"><div class="step-num">03</div><h3>Last one free wins</h3><p>Hunters win when every runner is caught. Runners win if anyone is still free when time runs out — or if every hunter runs out of hearts.</p></article>
     </div>
   </div>
 </section>
 
-<section id="showcase">
+<section class="section" id="roles" style="padding-top:20px">
   <div class="wrap">
-    <div class="eyebrow" style="text-align:center;">APP PREVIEW</div>
-    <h2 class="display" style="text-align:center; font-size:clamp(24px,4vw,34px); margin:10px 0 12px;">
-      Real screens, straight from the app
-    </h2>
-    <p style="text-align:center; color:var(--text-faint); font-size:13px; max-width:520px; margin:0 auto 40px;">
-      Actual on-device screenshots — not mockups.
-    </p>
-
-    <div class="showcase-row">
-      <figure class="showcase-item">
-        <img src="/assets/showcase/draw-your-arena.jpg" width="280" height="606"
-          alt="Draw Your Arena: drawing the play-area boundary on the map, with jail mode and gambling toggles">
-      </figure>
-      <figure class="showcase-item">
-        <img src="/assets/showcase/track-live.jpg" width="280" height="606"
-          alt="Track Live, radar and compass HUD: live match HUD showing the runner's radar, hearts, and nearby power-ups">
-      </figure>
-      <figure class="showcase-item">
-        <img src="/assets/showcase/easy-join.jpg" width="280" height="606"
-          alt="Easy Join, join games without much effort: Mission Control screen with join code, mode picker, and host button">
-      </figure>
-      <figure class="showcase-item">
-        <img src="/assets/showcase/play-with-friends.jpg" width="280" height="606"
-          alt="Play With Friends, invite friends and see their progress: Profile screen with match stats and career totals">
-      </figure>
+    <div class="section-head reveal"><div class="eyebrow">Two sides</div><h2>Hunt, or be hunted</h2></div>
+    <div class="grid two">
+      <article class="card glass tinted role reveal" style="--c:217, 58, 74">
+        <h3 style="color:#ff6b79"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4.5"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg> Hunter</h3>
+        <ul>
+          <li><b>You see</b> runners as bearings and distances on a radar</li>
+          <li><b>You catch</b> by getting within about 15 m and sending a request</li>
+          <li><b>You start</b> with <span class="hearts" aria-label="5 hearts">♥♥♥♥♥</span></li>
+          <li><b>Your edge</b> Thermal Vision shows runners nearby on the map</li>
+        </ul>
+      </article>
+      <article class="card glass tinted role reveal" style="--c:34, 197, 94">
+        <h3 style="color:var(--green)"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="14" cy="4.5" r="2"/><path d="M8 21l3-6 3 2v5M6 12l3-4 4 1 3 3h3"/></svg> Runner</h3>
+        <ul>
+          <li><b>You see</b> hunters as a compass pointing at the danger</li>
+          <li><b>You survive</b> by staying free until the clock runs out</li>
+          <li><b>You start</b> with <span class="hearts" aria-label="3 hearts">♥♥♥</span></li>
+          <li><b>Your edge</b> Ghost Decoys, EMPs, and jailbreaks to free your team</li>
+        </ul>
+      </article>
     </div>
   </div>
 </section>
 
-<section class="tight">
+<section class="section" id="power-ups">
   <div class="wrap">
-    <div class="glass glass-tint-cyan" style="padding:56px 32px; text-align:center;">
-      <h2 class="display" style="font-size:clamp(22px,4vw,30px); margin-bottom:12px;">Ready to hunt?</h2>
-      <p style="color:var(--text-dim); max-width:420px; margin:0 auto 26px;">
-        Hunting Game is available now on the App Store.
-      </p>
-      <a href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener">
-        <img src="/assets/app-store-badge.png" alt="Download on the App Store" style="height:54px; width:auto;">
-      </a>
+    <div class="section-head reveal"><div class="eyebrow">Power-ups</div><h2>Six ways to turn the chase</h2><p>Scattered across the real play area — walk to one to pick it up. You only see the ones your side can use.</p></div>
+    <div class="grid three"><article class="card glass tinted reveal" style="--c:167, 139, 250"><span class="tag chip" style="--c:155, 161, 172">Anyone</span><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A10.5 10.5 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.1 3.9M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.8 9.8 0 0 0 5.4-1.6"/></svg></div><h3>Invisibility</h3><p>Vanish from the other side’s radar or compass for 60 seconds.</p></article><article class="card glass tinted reveal" style="--c:217, 58, 74"><span class="tag chip" style="--c:217, 58, 74">Hunters</span><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 14.8V4a2 2 0 0 0-4 0v10.8a4 4 0 1 0 4 0z"/><path d="M12 9v6"/></svg></div><h3>Thermal Vision</h3><p>For 45 seconds every runner within 300 m shows on your map as a heat signature — invisible ones too.</p></article><article class="card glass tinted reveal" style="--c:73, 212, 255"><span class="tag chip" style="--c:34, 197, 94">Runners</span><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V10a7 7 0 0 1 14 0v11l-2.5-2-2.5 2-2-2-2 2-2.5-2z"/><circle cx="9.5" cy="10" r="1"/><circle cx="14.5" cy="10" r="1"/></svg></div><h3>Ghost Decoy</h3><p>A fake copy of you walks away from where you were heading. Hunters can’t tell it apart until they reach it.</p></article><article class="card glass tinted reveal" style="--c:245, 165, 36"><span class="tag chip" style="--c:34, 197, 94">Runners</span><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/><path d="M3 3l18 18"/></svg></div><h3>EMP Jammer</h3><p>Every hunter within 200 m loses their radar for 60 seconds.</p></article><article class="card glass tinted reveal" style="--c:34, 197, 94"><span class="tag chip" style="--c:34, 197, 94">Runners</span><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-8-5.2-8-11a4.5 4.5 0 0 1 8-2.8A4.5 4.5 0 0 1 20 10c0 5.8-8 11-8 11z"/><path d="M12 8v6M9 11h6"/></svg></div><h3>Adrenaline</h3><p>Two extra hearts, and a higher top speed for 90 seconds.</p></article><article class="card glass tinted reveal" style="--c:245, 165, 36"><span class="tag chip" style="--c:34, 197, 94">Runners</span><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22a7 7 0 0 0 7-7c0-4-3-6-4-9-1 2-2 3-3 3s-2-1-2-3c-3 2-5 5-5 9a7 7 0 0 0 7 7z"/></svg></div><h3>Safe Zone Flare</h3><p>A 30 m bubble where you stand. Nobody can be caught inside it for 90 seconds.</p></article></div>
+  </div>
+</section>
+
+<section class="section" id="modes" style="padding-top:20px">
+  <div class="wrap">
+    <div class="section-head reveal"><div class="eyebrow">Modes</div><h2>Three ways to play</h2></div>
+    <div class="grid three">
+      <article class="card glass tinted reveal" style="--c:73, 212, 255"><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4h11l-2 4 2 4H5"/></svg></div><h3>Standard</h3><p>Hunters against runners. Turn on jail mode and caught runners walk to the jail, where a free teammate can break them out.</p></article>
+      <article class="card glass tinted reveal" style="--c:217, 58, 74"><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5M5 5l3.5 3.5M15.5 15.5 19 19M5 19l3.5-3.5M15.5 8.5 19 5"/></svg></div><h3>Infection</h3><p>Every runner caught switches sides and joins the hunt. The match ends when nobody is left running.</p></article>
+      <article class="card glass tinted reveal" style="--c:167, 139, 250"><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6M15 20c0-2.6 1.6-4.6 4-4.6S23 17.4 23 20"/></svg></div><h3>Squad</h3><p>Teams, each with hunters and runners. Chase the other squads, protect your own — the last squad with a runner free wins.</p></article>
     </div>
   </div>
 </section>
 
+<section class="section" id="showcase">
+  <div class="section-head reveal" style="padding:0 24px"><div class="eyebrow">In the app</div><h2>Real screens, straight from the app</h2></div>
+  <div class="showcase" role="list"><figure class="reveal"><picture><source srcset="/assets/web/draw-your-arena.webp" type="image/webp"><img src="/assets/showcase/draw-your-arena.jpg" width="560" height="1212" alt="Drawing the play-area boundary and the jail on the map before a match" loading="lazy" decoding="async"></picture><figcaption>Draw your arena</figcaption></figure><figure class="reveal"><picture><source srcset="/assets/web/track-live.webp" type="image/webp"><img src="/assets/showcase/track-live.jpg" width="560" height="1212" alt="The live match HUD with radar, hearts and nearby power-ups" loading="lazy" decoding="async"></picture><figcaption>Track live</figcaption></figure><figure class="reveal"><picture><source srcset="/assets/web/easy-join.webp" type="image/webp"><img src="/assets/showcase/easy-join.jpg" width="560" height="1212" alt="Mission Control with the join code field, mode picker and host button" loading="lazy" decoding="async"></picture><figcaption>Join in seconds</figcaption></figure><figure class="reveal"><picture><source srcset="/assets/web/play-with-friends.webp" type="image/webp"><img src="/assets/showcase/play-with-friends.jpg" width="560" height="1212" alt="A player profile with match statistics and career totals" loading="lazy" decoding="async"></picture><figcaption>Play with friends</figcaption></figure></div>
+</section>
+
+<section class="section" id="watch" style="padding-top:30px">
+  <div class="wrap">
+    <div class="grid two">
+      <article class="card glass tinted reveal" style="--c:73, 212, 255"><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="3.5"/><path d="M9 6l1-3h4l1 3M9 18l1 3h4l1-3"/><path d="M12 9.5V12l1.5 1"/></svg></div><h3>On your wrist</h3><p>The Apple Watch app shows your radar or compass, hearts and catch requests, and taps you when a hunter closes in — so your phone can stay in your pocket.</p></article>
+      <article class="card glass tinted reveal" style="--c:245, 165, 36"><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div><h3>On your Lock Screen</h3><p>A Live Activity and the Dynamic Island keep the nearest hunter’s distance and the match clock in view without opening the app.</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="safety">
+  <div class="wrap">
+    <div class="section-head reveal"><div class="eyebrow">Safety &amp; privacy</div><h2>Built for real places and real people</h2></div>
+    <div class="grid three">
+      <article class="card glass tinted reveal" style="--c:34, 197, 94"><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2.5"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div><h3>Location only in a match</h3><p>Your position is shared only during a match you joined, after you agree to it for that match — and only as a bearing and distance, never a pin on someone’s map.</p></article>
+      <article class="card glass tinted reveal" style="--c:73, 212, 255"><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 6v6c0 5 3.5 9 8 10 4.5-1 8-5 8-10V6z"/><path d="m9 12 2 2 4-4"/></svg></div><h3>Report and block</h3><p>Every player can be reported or blocked from their profile. Reports reach a real person, and blocking takes effect immediately.</p></article>
+      <article class="card glass tinted reveal" style="--c:167, 139, 250"><div class="icon"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><circle cx="17" cy="9" r="2.6"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6M15 20c0-2.6 1.6-4.6 4-4.6S23 17.4 23 20"/></svg></div><h3>13 and over</h3><p>No ads, no tracking, no data brokers. Players under 18 should play with a parent’s or guardian’s permission. Always obey traffic laws and stay aware of your surroundings.</p></article>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="faq" style="padding-top:20px">
+  <div class="wrap">
+    <div class="section-head reveal"><div class="eyebrow">FAQ</div><h2>Questions, answered</h2></div>
+    <div class="faq glass reveal"><details><summary>Is Hunting Game free?</summary><p>Yes. Hunting Game is free to download and play, with no ads and no in-app purchases.</p></details><details><summary>How many people do I need?</summary><p>At least two: one hunter and one runner. It gets better with more — a few hunters against a bigger group of runners is a classic match, and Squad mode splits everyone into teams.</p></details><details><summary>Where can I play?</summary><p>Anywhere outdoors that’s public and safe to walk or run: a park, a campus, a quiet neighbourhood. The host draws the play area on the map before the match, and a zone inside it shrinks as the clock runs down.</p></details><details><summary>Do I need an Apple Watch?</summary><p>No. The Watch app is a bonus: your radar or compass, hearts and catch requests on your wrist, so your phone can stay in your pocket.</p></details><details><summary>Does it drain my battery?</summary><p>Live GPS uses battery like any run-tracking app. A charged phone comfortably lasts a normal match, and location is only used while a match is running.</p></details><details><summary>Can other players see where I am?</summary><p>Not on a map. Hunters see runners as a bearing and distance on their radar, and runners see hunters on a compass — except for 45 seconds within 300 m of a hunter using Thermal Vision. Your location is only shared during a match you joined, after you agree to it for that match.</p></details><details><summary>What happens when I get caught?</summary><p>A hunter within about 15 m sends a catch request and you answer it on your phone. Each catch costs a heart. With jail mode on you walk to the jail and wait for a teammate to break you out; otherwise you watch the rest of the match.</p></details><details><summary>How old do I have to be?</summary><p>Hunting Game is for players aged 13 and over. Players under 18 should have a parent’s or guardian’s permission.</p></details></div>
+  </div>
+</section>
+
+<section class="section" style="padding-top:20px">
+  <div class="wrap">
+    <div class="cta-band glass reveal">
+      <div class="radar" aria-hidden="true"><i></i><i></i><i></i></div>
+      <h2>Ready to hunt?</h2>
+      <p>Free on the App Store for iPhone, with a companion app for Apple Watch.</p>
+      <a class="store" href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener"><img src="/assets/app-store-badge.png" alt="Download on the App Store" style="height:54px;width:auto" width="162" height="54"></a>
+    </div>
+  </div>
+</section>
+</main>
 <footer>
-  <div class="wrap footer-inner">
-    <span class="wordmark" style="font-size:15px">HUNTING G<svg viewBox="0 0 416 512" style="width:0.66em;height:0.74em"><g transform="matrix(1,0,0,-1,0,448)"><path d="M306.0 366.0Q292 352 272.0 352.0Q252 352 238.0 366.0Q224 380 224.0 400.0Q224 420 238.0 434.0Q252 448 272.0 448.0Q292 448 306.0 434.0Q320 420 320.0 400.0Q320 380 306.0 366.0ZM114 131Q126 103 152 88L162 82L154 61Q141 32 109 32H32Q19 32 9.5 41.5Q0 51 0.0 64.0Q0 77 9.5 86.5Q19 96 32 96H99ZM384 224Q397 224 406.5 214.5Q416 205 416.0 192.0Q416 179 406.5 169.5Q397 160 384 160H330Q300 160 287 187L267 228L235 150L297 114Q311 105 317.0 90.0Q323 75 318 60L287 -42Q280 -64 256 -64Q251 -64 246 -62Q234 -59 228.0 -47.0Q222 -35 225 -22L253 65L168 115Q147 128 139.5 151.0Q132 174 142 196L179 283L164 288Q151 291 139 281L99 251Q89 243 76.0 244.5Q63 246 55.0 256.5Q47 267 48.5 280.5Q50 294 61 302L100 332Q137 360 181 349L252 328Q294 317 314 277L340 224Z"/></g></svg>ME</span>
-    <div class="footer-links">
-      <a href="/support.html">Support</a>
-      <a href="/privacy.html">Privacy Policy</a>
-      <a href="/legal.html">Legal Notice</a>
-      <a href="/terms.html">Terms of Use</a>
-      <a href="/rules.html">Game Rules</a>
-      <a href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener">App Store</a>
+  <div class="wrap foot">
+    <div>
+      <span style="font-size:18px"><span class="wordmark">HUNTING G<svg viewBox="0 0 416 512" style="width:.66em;height:.74em" aria-hidden="true"><g transform="matrix(1,0,0,-1,0,448)"><path d="M306.0 366.0Q292 352 272.0 352.0Q252 352 238.0 366.0Q224 380 224.0 400.0Q224 420 238.0 434.0Q252 448 272.0 448.0Q292 448 306.0 434.0Q320 420 320.0 400.0Q320 380 306.0 366.0ZM114 131Q126 103 152 88L162 82L154 61Q141 32 109 32H32Q19 32 9.5 41.5Q0 51 0.0 64.0Q0 77 9.5 86.5Q19 96 32 96H99ZM384 224Q397 224 406.5 214.5Q416 205 416.0 192.0Q416 179 406.5 169.5Q397 160 384 160H330Q300 160 287 187L267 228L235 150L297 114Q311 105 317.0 90.0Q323 75 318 60L287 -42Q280 -64 256 -64Q251 -64 246 -62Q234 -59 228.0 -47.0Q222 -35 225 -22L253 65L168 115Q147 128 139.5 151.0Q132 174 142 196L179 283L164 288Q151 291 139 281L99 251Q89 243 76.0 244.5Q63 246 55.0 256.5Q47 267 48.5 280.5Q50 294 61 302L100 332Q137 360 181 349L252 328Q294 317 314 277L340 224Z"/></g></svg>ME</span></span>
+      <p class="note">A real-world GPS manhunt for iPhone and Apple Watch. Built natively in SwiftUI.</p>
     </div>
-    <span class="footer-note">© 2026 Hunting Game. Built natively in SwiftUI.</span>
+    <div><h4>Play</h4><a href="/#how">How it plays</a><a href="/#power-ups">Power-ups</a><a href="/rules.html">Game rules</a><a href="https://apps.apple.com/us/app/hunting-game-manhunt/id6809603844" target="_blank" rel="noopener">App Store</a></div>
+    <div><h4>Help</h4><a href="/support.html">Support</a><a href="/#faq">FAQ</a><a href="/#safety">Safety</a></div>
+    <div><h4>Legal</h4><a href="/privacy.html">Privacy Policy</a><a href="/terms.html">Terms of Use</a><a href="/legal.html">Legal Notice</a></div>
   </div>
+  <div class="wrap"><p class="note" style="margin-top:34px">© 2026 Hunting Game. Apple, the Apple logo, iPhone and Apple Watch are trademarks of Apple Inc.</p></div>
 </footer>
-
+<script src="/assets/site.js?v=11" defer></script>
 </body>
 </html>
