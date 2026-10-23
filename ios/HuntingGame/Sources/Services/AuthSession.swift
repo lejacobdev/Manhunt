@@ -10,6 +10,10 @@ final class AuthSession: ObservableObject {
     @Published private(set) var token: String?
     @Published private(set) var currentUser: AppUser?
 
+    /// Ties an App Store purchase to this account (StoreKit's appAccountToken); the server only
+    /// grants a purchase to the account it was made from.
+    var accountUUID: UUID { currentUser.flatMap { UUID(uuidString: $0.id) } ?? UUID() }
+
     private let tokenKey = "com.huntinggame.app.jwt"
     private let userDefaultsKey = "com.huntinggame.app.user"
 

@@ -87,10 +87,10 @@ function buildAchievements(stats: ProfileStats): Achievement[] {
   }));
 }
 
-async function computeProfile(userId: string) {
+export async function computeProfile(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, username: true, userTag: true, avatarUrl: true, createdAt: true },
+    select: { id: true, username: true, userTag: true, avatarUrl: true, createdAt: true, equippedCosmetics: true },
   });
   if (!user) return null;
 
@@ -180,6 +180,9 @@ async function computeProfile(userId: string) {
       avatarUrl: user.avatarUrl,
       createdAt: user.createdAt,
       isOnline: isUserOnline(user.id),
+      // The two cosmetics other people see on a profile.
+      banner: (user.equippedCosmetics as Record<string, string> | null)?.banner ?? null,
+      badge: (user.equippedCosmetics as Record<string, string> | null)?.badge ?? null,
     },
     stats,
     achievements: buildAchievements(stats),

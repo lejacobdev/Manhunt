@@ -92,6 +92,9 @@ model User {
   /// admin rename deliberately leaves it alone: a moderator renaming someone off a bad name
   /// shouldn't spend the person's own next change.
   nameChangedAt DateTime?
+  /// What the player has equipped, by category: { mapStyle, radarSkin, marker, banner, badge }.
+  /// Purely cosmetic — nothing in it changes how a match plays.
+  equippedCosmetics Json @default("{}")
   avatarUrl     String?
   /// Grants access to the admin panel. Checked against the database on every admin
   /// request rather than read from the JWT, so revoking it takes effect immediately
@@ -112,6 +115,8 @@ model User {
   sentInvites  GameInvite[]  @relation("SentInvites")
   recvInvites  GameInvite[]  @relation("RecvInvites")
   deviceTokens DeviceToken[]
+  cosmetics    UserCosmetic[]
+  purchases    Purchase[]
 
   @@unique([username, userTag])
   @@unique([appleUserId])
@@ -318,4 +323,40 @@ model GameEvent {
   session GameSession @relation(fields: [sessionId], references: [id])
 
   @@index([sessionId, type])
+}
+
+/// A cosmetic a player owns. Granted by playing (stats milestones), by a purchase, or with the
+/// Supporter purchase. Cosmetics never affect gameplay.
+model UserCosmetic {
+  id        String   @id @default(uuid())
+  userId    String
+  itemId    String
+  /// PLAY, PURCHASE or SUPPORTER.
+  source    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemId])
+  @@index([userId])
+}
+
+/// An App Store purchase, recorded from its server-verified signed transaction. The original
+/// transaction id is the stable key across restores and devices; a refund sets revokedAt and the
+/// items it granted are taken back.
+model Purchase {
+  id                    String    @id @default(uuid())
+  userId                String
+  productId             String
+  transactionId         String    @unique
+  originalTransactionId String
+  environment           String
+  purchasedAt           DateTime
+  revokedAt             DateTime?
+  createdAt             DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([originalTransactionId])
 }

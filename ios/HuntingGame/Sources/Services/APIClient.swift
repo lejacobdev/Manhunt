@@ -481,6 +481,23 @@ final class APIClient {
         let _: EmptyResponse = try await post("/games/\(code)/catch-response", body: Body(requestId: requestId, decision: accept ? "accept" : "deny"))
     }
 
+    // MARK: Cosmetics
+
+    func cosmetics() async throws -> CosmeticsSnapshot {
+        try await get("/cosmetics")
+    }
+
+    func equipCosmetic(category: String, itemId: String) async throws -> CosmeticsSnapshot {
+        struct Body: Encodable { let category: String; let itemId: String }
+        return try await post("/cosmetics/equip", body: Body(category: category, itemId: itemId))
+    }
+
+    /// StoreKit 2 signed transactions; the server verifies them with Apple before unlocking anything.
+    func submitPurchases(_ transactions: [String]) async throws -> CosmeticsSnapshot {
+        struct Body: Encodable { let transactions: [String] }
+        return try await post("/cosmetics/purchases", body: Body(transactions: transactions))
+    }
+
     /// The post-match summary: each player's numbers, highlights and a timeline.
     func matchSummary(code: String) async throws -> MatchSummary {
         try await get("/games/\(code)/summary")

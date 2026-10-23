@@ -73,6 +73,7 @@ struct RootView: View {
         .onAppear {
             if authSession.isAuthenticated {
                 presence.start()
+                CosmeticsStore.shared.start()
                 PushNotificationManager.shared.requestAuthorizationIfNeeded()
                 PushNotificationManager.shared.flushPendingTokenIfNeeded()
             }
@@ -82,6 +83,7 @@ struct RootView: View {
         .onChange(of: authSession.isAuthenticated) { isAuthenticated in
             if isAuthenticated {
                 presence.start()
+                CosmeticsStore.shared.start()
                 PushNotificationManager.shared.requestAuthorizationIfNeeded()
                 PushNotificationManager.shared.flushPendingTokenIfNeeded()
                 startGameCenterIfReady()

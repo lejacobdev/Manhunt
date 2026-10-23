@@ -24,6 +24,9 @@ export interface PlayerState {
   id: string;
   userId: string;
   username: string;
+  /** Equipped cosmetic marker and badge (looks only). */
+  marker?: string;
+  badge?: string;
   role: PlayerRole;
   squad?: string;
   lat: number;

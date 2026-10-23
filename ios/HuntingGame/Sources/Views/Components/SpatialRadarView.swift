@@ -175,7 +175,7 @@ struct SpatialRadarView: View {
         if let nearestDistance {
             return ADATheme.dangerColor(distanceMeters: nearestDistance)
         }
-        return ADATheme.accent(for: role)
+        return CosmeticStyle.radarAccent(CosmeticsStore.shared.equipped["radarSkin"]) ?? ADATheme.accent(for: role)
     }
 
     private var haloOpacity: Double {

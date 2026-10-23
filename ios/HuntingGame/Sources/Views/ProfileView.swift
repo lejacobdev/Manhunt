@@ -33,6 +33,14 @@ struct ProfileView: View {
                 }
 
                 NavigationLink {
+                    CosmeticsView()
+                } label: {
+                    HStack { Image(systemName: "paintpalette.fill"); Text("CUSTOMIZE") }
+                }
+                .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.stealthPurple))
+                .padding(.horizontal)
+
+                NavigationLink {
                     AccountSettingsView()
                 } label: {
                     HStack { Image(systemName: "person.text.rectangle"); Text("NAME & SIGN-IN") }

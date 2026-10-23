@@ -16,6 +16,7 @@ import { adminRouter } from './routes/admin';
 import { installAsyncRouteErrorForwarding } from './utils/asyncRouteErrors';
 import { usersRouter } from './routes/users';
 import { pushRouter } from './routes/push';
+import { cosmeticsRouter } from './routes/cosmetics';
 import { prisma } from './lib/prisma';
 import { gameService, GameSettings } from './services/GameService';
 import { checkAccuracy, checkMotion, checkSpeed, checkTeleport } from './services/AntiCheatService';
@@ -120,6 +121,7 @@ app.use('/powerups', powerUpsRouter);
 app.use('/invites', invitesRouter);
 app.use('/admin', adminRouter);
 app.use('/users', usersRouter);
+app.use('/cosmetics', cosmeticsRouter);
 app.use('/push', (req, _res, next) => {
   console.log(`[PUSH] ${req.method} ${req.path} auth=${req.headers.authorization ? 'yes' : 'no'}`);
   next();
@@ -421,6 +423,9 @@ io.on('connection', (socket: Socket) => {
         inventory: (gamePlayer.inventory as PowerUpType[]) ?? [],
         activeBuffs: {},
         lastUpdate: Date.now(),
+        // Looks only: the marker teammates see on the map and the badge beside the name.
+        marker: (gamePlayer.user.equippedCosmetics as Record<string, string> | null)?.marker,
+        badge: (gamePlayer.user.equippedCosmetics as Record<string, string> | null)?.badge,
       };
       session.set(gamePlayer.id, state);
 

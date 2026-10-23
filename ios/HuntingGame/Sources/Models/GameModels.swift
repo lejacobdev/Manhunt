@@ -193,6 +193,10 @@ struct PlayerState: Codable, Identifiable, Equatable {
     var hearts: Int
     var inventory: [PowerUpType]
 
+    /// Equipped cosmetic map marker and badge (looks only); absent on older servers.
+    var marker: String? = nil
+    var badge: String? = nil
+
     static func == (lhs: PlayerState, rhs: PlayerState) -> Bool {
         lhs.id == rhs.id && lhs.lat == rhs.lat && lhs.lng == rhs.lng && lhs.isCaught == rhs.isCaught
             && lhs.isJailed == rhs.isJailed && lhs.isOut == rhs.isOut && lhs.hearts == rhs.hearts

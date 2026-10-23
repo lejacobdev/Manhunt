@@ -54,6 +54,9 @@ struct ProfileUser: Codable, Identifiable, Equatable {
     let avatarUrl: String?
     let createdAt: String
     let isOnline: Bool?
+    /// Equipped cosmetics everyone sees; absent on older servers.
+    var banner: String? = nil
+    var badge: String? = nil
 
     var tagLabel: String { "\(username)#\(userTag)" }
 
