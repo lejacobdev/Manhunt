@@ -133,7 +133,7 @@ struct MatchHistoryView: View {
                 get: { replaySessionCode.map { IdentifiableCode(code: $0) } },
                 set: { replaySessionCode = $0?.code }
             )) { wrapped in
-                MatchReplayView(sessionCode: wrapped.code)
+                MatchSummaryView(sessionCode: wrapped.code, myUserId: AuthSession.shared.currentUser?.id)
             }
             .fullScreenCover(item: $rejoinLaunch) { launch in
                 GameLobbyView(gamePlayer: launch.player, session: launch.session)

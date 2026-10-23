@@ -55,6 +55,8 @@ final class SocketService: ObservableObject {
     /// Fires with the caught player's id whenever a catch/infection event lands.
     /// hunterId is nil when no hunter was involved (kept for backward shape compatibility).
     let playerCaughtSubject = PassthroughSubject<(runnerId: String, hunterId: String?, reason: String?), Never>()
+    /// A catch without jail that cost a heart but didn't end the runner's match.
+    let playerTaggedSubject = PassthroughSubject<(runnerId: String, hunterId: String, heartsLeft: Int), Never>()
     let playerInfectedSubject = PassthroughSubject<(runnerId: String, hunterId: String), Never>()
     let playerRevivedSubject = PassthroughSubject<(playerId: String, revivedById: String), Never>()
     /// Fires with the spawn's id whenever anyone (not just this player) collects it, so
@@ -330,6 +332,13 @@ final class SocketService: ObservableObject {
         socket.on("roster_update") { [weak self] data, _ in
             guard let self, let raw = data.first else { return }
             self.players = Self.decodeArray(raw)
+        }
+
+        socket.on("player_tagged") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any],
+                  let runnerId = dict["runnerId"] as? String,
+                  let hunterId = dict["hunterId"] as? String else { return }
+            self?.playerTaggedSubject.send((runnerId, hunterId, (dict["heartsLeft"] as? NSNumber)?.intValue ?? 0))
         }
 
         socket.on("player_caught") { [weak self] data, _ in

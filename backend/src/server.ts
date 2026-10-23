@@ -19,6 +19,7 @@ import { pushRouter } from './routes/push';
 import { prisma } from './lib/prisma';
 import { gameService, GameSettings } from './services/GameService';
 import { checkAccuracy, checkMotion, checkSpeed, checkTeleport } from './services/AntiCheatService';
+import { pushService } from './services/PushService';
 import { distanceOutsidePolygonMeters } from './services/BoundaryService';
 import { ZoneState, computeZoneState, distanceOutsideZone } from './services/ZoneService';
 import {
@@ -684,6 +685,17 @@ io.on('connection', (socket: Socket) => {
     requests.set(runnerId, { requestId, hunterId, hunterUsername: hunter.username, requestedAt: Date.now() });
     socket.emit('catch_request_sent', { runnerId, requestId });
     io.to(runnerId).emit('catch_requested', { requestId, hunterId, hunterUsername: hunter.username });
+    // Also to the lock screen, with Yes / No buttons that answer without opening the app: now
+    // that silence counts as caught, a runner sprinting with the phone in a pocket has to be
+    // able to see and answer it.
+    void pushService.notify(runner.userId, {
+      title: 'Did you get caught?',
+      body: `${hunter.username} says they caught you. No answer in 20 seconds counts as caught.`,
+      category: 'CATCH_REQUEST',
+      expiresInSeconds: Math.ceil(CATCH_REQUEST_TIMEOUT_MS / 1000),
+      collapseId: requestId,
+      data: { type: 'catch_request', requestId, hunterId, roomCode },
+    });
   });
 
   /** Hunter-initiated cancel of their own pending request. */
@@ -698,7 +710,7 @@ io.on('connection', (socket: Socket) => {
     io.to(runnerId).emit('catch_request_cancelled', { hunterId });
   });
 
-  /** The runner's answer to a pending catch request: accept it, gamble on it, or deny it. */
+  /** The runner's answer to a pending catch request, from the in-app popup. */
   socket.on(
     'respond_catch',
     async ({
@@ -715,6 +727,11 @@ io.on('connection', (socket: Socket) => {
       if (!roomCode || !runnerId) return;
       const session = activeSessions.get(roomCode);
       if (!session) return;
+      if (decision === 'accept' || decision === 'deny') {
+        const error = await answerCatchRequest(roomCode, runnerId, { hunterId }, decision);
+        if (error) socket.emit('error_event', { reason: error });
+        return;
+      }
       const requests = pendingCatchRequests.get(roomCode);
       const pending = requests?.get(runnerId);
       if (!pending || pending.hunterId !== hunterId) {
@@ -724,27 +741,11 @@ io.on('connection', (socket: Socket) => {
       const runner = session.get(runnerId);
       const hunter = session.get(hunterId);
       if (!runner || !hunter) return;
-
-      if (decision === 'deny') {
-        // Hands it to the hunter: "my mistake" drops it, "I caught them" escalates it to the
-        // host as a dispute (catch_dispute). If the hunter says nothing, the runner's word
-        // stands when the request times out — just as the hunter's stands if the runner says
-        // nothing at all.
-        pending.deniedAt = Date.now();
-        io.to(hunter.id).emit('catch_deny_confirm', { requestId: pending.requestId, runnerUsername: runner.username });
-        return;
-      }
-
       requests!.delete(runnerId);
       const gameSessionId = await resolveSessionId(roomCode);
       if (!gameSessionId) return;
       const settings = sessionSettingsCache.get(roomCode);
       const mode = sessionModes.get(roomCode) ?? 'STANDARD';
-
-      if (decision === 'accept') {
-        await resolveCatch(roomCode, session, hunter, runner);
-        return;
-      }
 
       // decision === 'gamble' — opens a duel rather than resolving a single flip. Rounds
       // keep going (see gamble_call) until one side has no hearts left.
@@ -1293,6 +1294,14 @@ function pushCompassToRunner(roomCode: string, runner: PlayerState, allHunters: 
  *  respecting their own Thermal Vision/EMP Jammer buffs individually. */
 function pushRadarToHunter(roomCode: string, hunter: PlayerState, runners: PlayerState[], ping = false) {
   const next = nextPingAt(roomCode);
+  // The runners' head start: every hunter's radar is dark — power-ups included — until it ends.
+  if (inHeadStart(roomCode)) {
+    io.to(hunter.id).emit('radar_broadcast', {
+      runners: [], runnerBearings: [], decoys: [], heat: [], jammed: false, live: false,
+      nextPingAt: next, headStartEndsAt: headStartEndsAt(roomCode),
+    });
+    return;
+  }
   if (isBuffActive(hunter, 'EMP_JAMMER')) {
     // A jammed hunter's radar goes dark at once and misses every ping until the jam ends.
     wasJammed.set(hunter.id, true);
@@ -1443,14 +1452,15 @@ setInterval(() => {
         io.to(roomCode).emit('radar_ping', { at: Date.now(), nextPingAt: nextPingAt(roomCode) });
       }
     }
-    const fingerprint = Array.from(session.values())
+    const fingerprint = (inHeadStart(roomCode) ? 'headstart|' : '') + Array.from(session.values())
       .map((p) => `${p.id}:${['INVISIBILITY_10MIN', 'EMP_JAMMER', 'THERMAL_VISION'].filter((t) => isBuffActive(p, t as PowerUpType)).join(',')}`)
       .join('|');
     pruneExpiredDecoys(decoys, roomCode);
     const liveDecoys = (decoys.get(roomCode) ?? []).length > 0;
     if (visibilityFingerprint.get(roomCode) !== fingerprint || liveDecoys) {
+      const headStartJustEnded = visibilityFingerprint.get(roomCode)?.startsWith('headstart|') && !fingerprint.startsWith('headstart|');
       visibilityFingerprint.set(roomCode, fingerprint);
-      refreshRoomVision(roomCode);
+      refreshRoomVision(roomCode, !!headStartJustEnded);
       continue;
     }
     const { runners } = visionSides(session);
@@ -1686,6 +1696,53 @@ async function checkJailContainment(
   await checkStandardWinCondition(roomCode, gameSessionId, session, sessionModes.get(roomCode) ?? 'STANDARD');
 }
 
+/**
+ * A runner's answer to a pending catch request — from the in-app popup (socket) or from the
+ * Yes / No buttons on the lock-screen notification (REST, POST /games/:code/catch-response),
+ * which work without the app being open. Returns a sentence on failure, null on success.
+ */
+export async function answerCatchRequest(
+  roomCode: string,
+  runnerId: string,
+  match: { hunterId?: string; requestId?: string },
+  decision: 'accept' | 'deny'
+): Promise<string | null> {
+  const session = activeSessions.get(roomCode);
+  const requests = pendingCatchRequests.get(roomCode);
+  const pending = requests?.get(runnerId);
+  if (!session || !pending) return 'That catch request has already been answered or has expired.';
+  if ((match.hunterId && pending.hunterId !== match.hunterId) || (match.requestId && pending.requestId !== match.requestId)) {
+    return 'That catch request has already been answered or has expired.';
+  }
+  const runner = session.get(runnerId);
+  const hunter = session.get(pending.hunterId);
+  if (!runner || !hunter) return 'That player has left the match.';
+
+  if (decision === 'deny') {
+    // Hands it to the hunter: "my mistake" drops it, "I caught them" escalates it to the
+    // host as a dispute (catch_dispute). If the hunter says nothing, the runner's word stands
+    // when the request times out — just as the hunter's stands if the runner says nothing.
+    if (!pending.deniedAt) {
+      pending.deniedAt = Date.now();
+      io.to(hunter.id).emit('catch_deny_confirm', { requestId: pending.requestId, runnerUsername: runner.username });
+      io.to(runner.id).emit('catch_request_cancelled', { hunterId: hunter.id });
+    }
+    return null;
+  }
+  requests!.delete(runnerId);
+  io.to(runner.id).emit('catch_request_cancelled', { hunterId: hunter.id });
+  await resolveCatch(roomCode, session, hunter, runner);
+  return null;
+}
+
+/** When the runners' head start ends (epoch ms), or 0 when there is none. */
+function headStartEndsAt(roomCode: string): number {
+  const started = sessionStartedAtCache.get(roomCode);
+  const seconds = Math.max(0, Math.min(600, sessionSettingsCache.get(roomCode)?.headStartSeconds ?? 0));
+  return started && seconds ? started + seconds * 1000 : 0;
+}
+const inHeadStart = (roomCode: string) => Date.now() < headStartEndsAt(roomCode);
+
 /** True when a point is inside the jail (plus its GPS buffer). */
 function isInsideJail(roomCode: string, point: { lat: number; lng: number }, accuracy = 0): boolean {
   const settings = sessionSettingsCache.get(roomCode);
@@ -1705,6 +1762,9 @@ function catchBlockedReason(
 ): string | null {
   const mode = sessionModes.get(roomCode) ?? 'STANDARD';
   if (hunter.role !== 'HUNTER') return 'Only hunters can catch.';
+  if (inHeadStart(roomCode)) {
+    return `Runners have a head start — catching opens in ${Math.ceil((headStartEndsAt(roomCode) - Date.now()) / 1000)} s.`;
+  }
   // An eliminated hunter used to be able to keep catching from wherever they stood.
   if (hunter.isOut) return "You're out of the match.";
   if (!runner || runner.role !== 'RUNNER') return 'You can only catch runners.';
@@ -1722,7 +1782,7 @@ function catchBlockedReason(
   }
   const protectedUntil = releaseProtection.get(roomCode)?.get(runner.id) ?? 0;
   if (protectedUntil > Date.now()) {
-    return `${runner.username} was just freed and can't be caught for another ${Math.ceil((protectedUntil - Date.now()) / 1000)} s.`;
+    return `${runner.username} is shielded for another ${Math.ceil((protectedUntil - Date.now()) / 1000)} s.`;
   }
   return null;
 }
@@ -1748,7 +1808,7 @@ async function resolveCatch(
     runner.role = 'HUNTER';
     runner.isCaught = false;
     clearContainmentState(roomCode, runner);
-    await gameService.convertRunnerToHunter(gameSessionId, runner.id);
+    await gameService.convertRunnerToHunter(gameSessionId, runner.id, hunter.id);
     io.to(roomCode).emit('player_infected', { runnerId: runner.id, hunterId: hunter.id, timestamp: new Date().toISOString() });
     // Infection used to have no win check at all, so a match where everyone had been turned
     // kept running until the clock ran out.
@@ -1788,11 +1848,9 @@ function protect(roomCode: string, playerIds: string[]) {
  * The single place a catch is applied, so the request/respond popup and the gamble-timeout
  * fallback can't drift apart on the rules.
  *
- * Every catch costs the runner a heart. With jail mode on that's what bounds the
- * catch/bail-out cycle — a runner can be broken out and re-caught only as many times as
- * they have hearts left, and one who runs out is finished regardless of any rescue.
- * Without jail mode the heart still goes, but being caught already ends their match, so it
- * only really shows up in the post-match stats.
+ * Hearts are a runner's lives. Every catch costs one; the last one ends their match. With
+ * jail mode on, a catch with hearts left sends them to jail (and a jailbreak can free them);
+ * without it, they keep playing behind a 30 s shield.
  */
 async function applyCatch(
   roomCode: string,
@@ -1832,16 +1890,28 @@ async function applyCatch(
     return;
   }
 
-  runner.isCaught = true;
-  runner.isJailed = jail;
-  runner.hasReachedJail = false;
-  await gameService.recordCatchAccepted(gameSessionId, hunter.id, runner.id, jail, runner.hearts);
-
   if (!jail) {
-    io.to(roomCode).emit('player_caught', { runnerId: runner.id, hunterId: hunter.id, timestamp: caughtAt });
-    await checkStandardWinCondition(roomCode, gameSessionId, session, mode);
+    // Hearts are lives. Without jail a catch used to end a runner's match on the spot, so their
+    // other hearts never mattered. Now a caught runner with hearts left loses one and keeps
+    // playing: a 30 s shield to get away from the hunter who caught them, then back in the hunt.
+    // Only the last heart ends their match (handled above).
+    protect(roomCode, [runner.id]);
+    await gameService.recordCatchAccepted(gameSessionId, hunter.id, runner.id, false, runner.hearts);
+    await prisma.gamePlayer.update({ where: { id: runner.id }, data: { isCaught: false, caughtAt: null } });
+    io.to(roomCode).emit('player_tagged', {
+      runnerId: runner.id,
+      hunterId: hunter.id,
+      heartsLeft: runner.hearts,
+      shieldMs: RELEASE_PROTECTION_MS,
+      timestamp: caughtAt,
+    });
     return;
   }
+
+  runner.isCaught = true;
+  runner.isJailed = true;
+  runner.hasReachedJail = false;
+  await gameService.recordCatchAccepted(gameSessionId, hunter.id, runner.id, true, runner.hearts);
 
   // Sentenced but not yet imprisoned — they walk to the jail themselves, on a clock.
   const arrivalMs = (settings?.jailArrivalSeconds ?? DEFAULT_JAIL_ARRIVAL_SECONDS) * 1000;
@@ -2114,10 +2184,21 @@ function squadsWithFreeRunners(session: Map<string, PlayerState>): Map<string, n
   return out;
 }
 
+/** Writes any buffered location fixes for this room now (they normally flush every 10 s). */
+async function flushLocationLogs(roomCode: string, gameSessionId: string) {
+  const entries = pendingLogs.get(roomCode) ?? [];
+  if (entries.length === 0) return;
+  pendingLogs.set(roomCode, []);
+  await gameService.logLocationBatch(gameSessionId, entries).catch((err) => console.error('[locationLogFlush] failed', err));
+}
+
 async function finishMatch(roomCode: string, gameSessionId: string, payload: Record<string, unknown>) {
   if (!sessionStartedAtCache.has(roomCode)) return; // already over
+  await flushLocationLogs(roomCode, gameSessionId);
   await gameService.endSession(gameSessionId);
   sessionStartedAtCache.delete(roomCode);
+  // Kept so the post-match summary can say how it ended.
+  await prisma.gameEvent.create({ data: { sessionId: gameSessionId, type: 'MATCH_END', payload: payload as object } }).catch(() => {});
   io.to(roomCode).emit('game_over', payload);
 }
 
@@ -2166,8 +2247,10 @@ async function checkHunterEliminationWinCondition(
 async function endMatch(roomCode: string, reason: string) {
   const gameSessionId = await resolveSessionId(roomCode);
   if (!gameSessionId) return;
+  await flushLocationLogs(roomCode, gameSessionId);
   await gameService.endSession(gameSessionId);
   sessionStartedAtCache.delete(roomCode);
+  await prisma.gameEvent.create({ data: { sessionId: gameSessionId, type: 'MATCH_END', payload: { reason } } }).catch(() => {});
   io.to(roomCode).emit('game_over', { reason });
 }
 

@@ -43,15 +43,35 @@ export function computeZoneState(
     const d = turf.distance(turf.point([center.lng, center.lat]), turf.point([p.lng, p.lat]), { units: 'meters' });
     if (d > fullRadiusMeters) fullRadiusMeters = d;
   }
-  fullRadiusMeters = Math.max(fullRadiusMeters, ZONE_FINAL_RADIUS_METERS * 2);
+  // The final circle scales with the play area: a fixed 40 m was a sensible end for a park and
+  // impossibly tight for a whole neighbourhood.
+  const finalRadiusMeters = Math.min(150, Math.max(ZONE_FINAL_RADIUS_METERS, fullRadiusMeters * 0.08));
+  fullRadiusMeters = Math.max(fullRadiusMeters, finalRadiusMeters * 2);
 
   const elapsedMs = now.getTime() - startedAt.getTime();
   const totalMs = durationMinutes * 60 * 1000;
   const progress = Math.min(1, Math.max(0, elapsedMs / totalMs));
+  const shrink = zoneShrinkFraction(progress);
+  const radiusMeters = fullRadiusMeters - (fullRadiusMeters - finalRadiusMeters) * shrink;
 
-  const radiusMeters = fullRadiusMeters - (fullRadiusMeters - ZONE_FINAL_RADIUS_METERS) * progress;
+  return { center, radiusMeters, fullRadiusMeters, finalRadiusMeters, progress };
+}
 
-  return { center, radiusMeters, fullRadiusMeters, finalRadiusMeters: ZONE_FINAL_RADIUS_METERS, progress };
+/**
+ * How far the zone has closed (0 → 1) at a point in the match (0 → 1), scaled to the match's
+ * own length rather than shrinking at one constant rate from the first second:
+ *  - the first 20 % holds the full area (the head start and the early game);
+ *  - it then closes slowly at first and faster later (ease-in), so the middle of the match
+ *    still has room to hide and the pressure builds towards the end;
+ *  - the final circle is reached at 90 % and holds for the closing stretch.
+ * The old linear shrink was fastest exactly when it should be slowest, and on a 10-minute
+ * match it was squeezing players from the very first minute.
+ */
+export function zoneShrinkFraction(progress: number): number {
+  const HOLD = 0.2;
+  const CLOSED = 0.9;
+  const t = Math.min(1, Math.max(0, (progress - HOLD) / (CLOSED - HOLD)));
+  return t * t;
 }
 
 /** Metres a point sits outside the current zone circle; 0 when inside it. */

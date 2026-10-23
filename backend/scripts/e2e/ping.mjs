@@ -26,7 +26,7 @@ const code = c.body.session.code, sessionId = c.body.session.id; H.gp = c.body.p
 R.gp = (await req('POST', `/games/${code}/join`, { role: 'RUNNER' }, R.token)).body.player;
 R2.gp = (await req('POST', `/games/${code}/join`, { role: 'RUNNER' }, R2.token)).body.player;
 sql(`UPDATE "GamePlayer" SET role='HUNTER', hearts=5 WHERE id='${H.gp.id}'`);
-const patch = await req('PATCH', `/games/${code}/settings`, { radarIntervalSeconds: 10 }, H.token);
+const patch = await req('PATCH', `/games/${code}/settings`, { radarIntervalSeconds: 10, headStartSeconds: 0 }, H.token);
 check(patch.status === 200 && patch.body.session.settings.radarIntervalSeconds === 10, 'setting: the host sets a 10 s ping');
 const bad = await req('PATCH', `/games/${code}/settings`, { radarIntervalSeconds: 601 }, H.token);
 check(bad.status === 400, 'setting: more than 10 minutes is refused');

@@ -13,6 +13,19 @@ import { prisma } from '../lib/prisma';
  * warning logged, not per-call) so the rest of the app works unmodified before those are
  * provisioned. See README for what's needed and where to generate it.
  */
+export interface PushPayload {
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  /** A notification category the app registered — e.g. CATCH_REQUEST, which carries
+   *  Yes/No buttons that answer from the lock screen. */
+  category?: string;
+  /** Drop the push if APNs can't deliver it within this many seconds. */
+  expiresInSeconds?: number;
+  /** Same id replaces an earlier notification; the app also uses it to clear the banner. */
+  collapseId?: string;
+}
+
 class PushService {
   private client: http2.ClientHttp2Session | null = null;
   private cachedToken: { jwt: string; issuedAt: number } | null = null;
@@ -58,7 +71,7 @@ class PushService {
    *  APNs reports as gone (410, or 400 BadDeviceToken) has its row cleaned up; any other
    *  failure is logged and otherwise swallowed — a push is a courtesy, never something a
    *  caller's own request should fail over. */
-  async notify(userId: string, payload: { title: string; body: string; data?: Record<string, unknown> }): Promise<void> {
+  async notify(userId: string, payload: PushPayload): Promise<void> {
     if (!this.isConfigured) {
       if (!this.warnedNotConfigured) {
         console.warn('[PushService] APNS_* env vars not set — push notifications are disabled.');
@@ -73,10 +86,14 @@ class PushService {
     await Promise.all(tokens.map((t) => this.sendOne(t.token, payload)));
   }
 
-  private async sendOne(deviceToken: string, payload: { title: string; body: string; data?: Record<string, unknown> }): Promise<void> {
+  private async sendOne(deviceToken: string, payload: PushPayload): Promise<void> {
     const session = this.connect();
     const body = JSON.stringify({
-      aps: { alert: { title: payload.title, body: payload.body }, sound: 'default' },
+      aps: {
+        alert: { title: payload.title, body: payload.body },
+        sound: 'default',
+        ...(payload.category ? { category: payload.category } : {}),
+      },
       ...payload.data,
     });
 
@@ -89,6 +106,10 @@ class PushService {
         'apns-push-type': 'alert',
         'apns-priority': '10',
         'content-type': 'application/json',
+        // A catch request is worthless after its 20 s window: don't deliver it late, and let a
+        // newer one for the same request replace it.
+        ...(payload.expiresInSeconds ? { 'apns-expiration': String(Math.floor(Date.now() / 1000) + payload.expiresInSeconds) } : {}),
+        ...(payload.collapseId ? { 'apns-collapse-id': payload.collapseId.slice(0, 64) } : {}),
       });
 
       let status = 0;

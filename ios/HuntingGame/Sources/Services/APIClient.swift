@@ -344,7 +344,7 @@ final class APIClient {
 
     /// Host-only lobby edit. `boundsPolygon`, when sent, always redraws the play area —
     /// re-scattering power-ups inside the new shape.
-    func updateSessionSettings(code: String, durationMinutes: Int?, boundsPolygon: [Coordinate]?, mode: GameMode?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, jailArrivalSeconds: Int?, bailOutSeconds: Int?, gamblingEnabled: Bool?, antiCheatEnabled: Bool?, radarIntervalSeconds: Int? = nil) async throws -> GameSession {
+    func updateSessionSettings(code: String, durationMinutes: Int?, boundsPolygon: [Coordinate]?, mode: GameMode?, jailEnabled: Bool?, jailPolygon: [Coordinate]?, jailArrivalSeconds: Int?, bailOutSeconds: Int?, gamblingEnabled: Bool?, antiCheatEnabled: Bool?, radarIntervalSeconds: Int? = nil, headStartSeconds: Int? = nil) async throws -> GameSession {
         struct Body: Encodable {
             let durationMinutes: Int?
             let boundsPolygon: [Coordinate]?
@@ -356,11 +356,12 @@ final class APIClient {
             let gamblingEnabled: Bool?
             let antiCheatEnabled: Bool?
             let radarIntervalSeconds: Int?
+            let headStartSeconds: Int?
         }
         struct Response: Decodable { let session: GameSession }
         let resp: Response = try await patch(
             "/games/\(code)/settings",
-            body: Body(durationMinutes: durationMinutes, boundsPolygon: boundsPolygon, mode: mode?.rawValue, jailEnabled: jailEnabled, jailPolygon: jailPolygon, jailArrivalSeconds: jailArrivalSeconds, bailOutSeconds: bailOutSeconds, gamblingEnabled: gamblingEnabled, antiCheatEnabled: antiCheatEnabled, radarIntervalSeconds: radarIntervalSeconds)
+            body: Body(durationMinutes: durationMinutes, boundsPolygon: boundsPolygon, mode: mode?.rawValue, jailEnabled: jailEnabled, jailPolygon: jailPolygon, jailArrivalSeconds: jailArrivalSeconds, bailOutSeconds: bailOutSeconds, gamblingEnabled: gamblingEnabled, antiCheatEnabled: antiCheatEnabled, radarIntervalSeconds: radarIntervalSeconds, headStartSeconds: headStartSeconds)
         )
         return resp.session
     }
@@ -473,6 +474,17 @@ final class APIClient {
     }
 
     // MARK: - Core request helpers
+
+    /// Answers a catch request from its lock-screen notification — no socket needed.
+    func respondToCatchFromNotification(code: String, requestId: String, accept: Bool) async throws {
+        struct Body: Encodable { let requestId: String; let decision: String }
+        let _: EmptyResponse = try await post("/games/\(code)/catch-response", body: Body(requestId: requestId, decision: accept ? "accept" : "deny"))
+    }
+
+    /// The post-match summary: each player's numbers, highlights and a timeline.
+    func matchSummary(code: String) async throws -> MatchSummary {
+        try await get("/games/\(code)/summary")
+    }
 
     private func get<T: Decodable>(_ path: String, queryItems: [URLQueryItem] = []) async throws -> T {
         // appendingPathComponent doesn't understand query-string syntax — it would

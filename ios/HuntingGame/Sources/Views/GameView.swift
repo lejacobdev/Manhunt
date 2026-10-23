@@ -615,8 +615,8 @@ struct GameView: View {
                     showReplay = true
                 } label: {
                     HStack {
-                        Image(systemName: "play.circle.fill")
-                        Text("WATCH REPLAY")
+                        Image(systemName: "list.bullet.rectangle.portrait.fill")
+                        Text("MATCH SUMMARY")
                     }
                 }
                 .buttonStyle(GlowButtonStyle(tint: gameOverTint))
@@ -626,7 +626,8 @@ struct GameView: View {
         .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: gameOverTint, strength: .strong)
         .padding(.horizontal, 40)
         .sheet(isPresented: $showReplay) {
-            MatchReplayView(sessionCode: viewModel.roomCode)
+            // The summary first — who caught whom, distances, power-ups — with the replay inside it.
+            MatchSummaryView(sessionCode: viewModel.roomCode, myUserId: AuthSession.shared.currentUser?.id)
         }
     }
 
@@ -895,6 +896,15 @@ struct GameView: View {
                 )
             }
 
+            if let headStart = headStartRemaining {
+                bannerText(
+                    viewModel.role == .hunter
+                        ? "HEAD START — YOUR RADAR COMES ONLINE IN \(headStart / 60):\(String(format: "%02d", headStart % 60))"
+                        : "HEAD START — HUNTERS ARE BLIND FOR \(headStart / 60):\(String(format: "%02d", headStart % 60))",
+                    tint: viewModel.role == .hunter ? ADATheme.tacticalAmber : ADATheme.runnerGreen
+                )
+            }
+
             if let bailout = viewModel.lastBailout {
                 bannerText(
                     "JAILBREAK — \(bailout.bailerUsername.uppercased()) FREED \(bailout.freedCount)",
@@ -1000,6 +1010,14 @@ struct GameView: View {
             .filter { $0.key != .invisibility }
             .map { (type: $0.key, remaining: $0.value) }
             .sorted { $0.type.rawValue < $1.type.rawValue }
+    }
+
+    /// Seconds left of the runners' head start, while it's running.
+    private var headStartRemaining: Int? {
+        guard viewModel.headStartSeconds > 0, let startedAt = socket.matchStartedAt,
+              viewModel.role == .hunter || viewModel.role == .runner else { return nil }
+        let left = Double(viewModel.headStartSeconds) - now.timeIntervalSince(startedAt)
+        return left > 0 ? Int(left.rounded(.up)) : nil
     }
 
     /// "NEXT PING 0:23" in a match with a ping interval; "THERMAL: LIVE" while Thermal Vision

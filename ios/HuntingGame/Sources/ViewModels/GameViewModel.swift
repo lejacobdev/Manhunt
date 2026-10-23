@@ -377,6 +377,26 @@ final class GameViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        // Hearts are lives: a catch without jail costs a heart and leaves the runner in the
+        // match behind a 30 s shield.
+        socket.playerTaggedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] event in
+                guard let self else { return }
+                if event.runnerId == self.gamePlayerId {
+                    self.protectedUntil = Date().addingTimeInterval(30)
+                    self.showCatchFailure = "Caught — \(event.heartsLeft) heart\(event.heartsLeft == 1 ? "" : "s") left. You're shielded for 30 s: get away!"
+                    HapticsEngine.shared.catchFailed()
+                    self.pushWatchSnapshot()
+                } else if event.hunterId == self.gamePlayerId {
+                    let name = self.allPlayers.first { $0.id == event.runnerId }?.username ?? "They"
+                    self.showCatchFailure = "Caught \(name) — \(event.heartsLeft) heart\(event.heartsLeft == 1 ? "" : "s") left. They're shielded for 30 s."
+                    self.pendingCatchRequestRunnerId = nil
+                    HapticsEngine.shared.catchSucceeded()
+                }
+            }
+            .store(in: &cancellables)
+
         socket.playerRevivedSubject
             .receive(on: DispatchQueue.main)
             .sink { [weak self] event in
@@ -754,6 +774,7 @@ final class GameViewModel: ObservableObject {
         guard let request = incomingCatchRequest else { return }
         HapticsEngine.shared.catchFailed()
         socket.respondToCatch(hunterId: request.hunterId, decision: "accept")
+        PushNotificationManager.shared.clearCatchNotification(requestId: request.requestId)
         incomingCatchRequest = nil
     }
 
@@ -788,6 +809,7 @@ final class GameViewModel: ObservableObject {
         guard let request = incomingCatchRequest else { return }
         HapticsEngine.shared.lightTap()
         socket.respondToCatch(hunterId: request.hunterId, decision: "deny")
+        PushNotificationManager.shared.clearCatchNotification(requestId: request.requestId)
         incomingCatchRequest = nil
     }
 
@@ -869,6 +891,7 @@ final class GameViewModel: ObservableObject {
     /// Seconds between radar pings for this match (0 = continuous). The lobby can change it up
     /// to the start, so the latest settings broadcast wins over the session this view opened with.
     var radarPingInterval: Int { (socket.latestSettings ?? sessionSettings).radarIntervalSeconds ?? 0 }
+    var headStartSeconds: Int { (socket.latestSettings ?? sessionSettings).headStartSeconds ?? 0 }
     var allPlayers: [PlayerState] { socket.players }
     var inventory: [PowerUpType] { socket.inventory }
 }

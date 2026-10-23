@@ -41,6 +41,8 @@ final class GameLobbyViewModel: ObservableObject {
     @Published var antiCheatEnabled: Bool
     /// Index into `RadarPing.steps` — a slider position, saved as seconds.
     @Published var radarPingStep: Double
+    /// Runners' head start, in seconds.
+    @Published var headStartSeconds: Double
     var radarIntervalSeconds: Int { RadarPing.steps[min(RadarPing.steps.count - 1, max(0, Int(radarPingStep)))] }
     /// True while the host is actively redrawing an already-set play area — see
     /// `beginRedrawBoundary()`. The boundary is otherwise treated as fixed once set, the
@@ -79,6 +81,7 @@ final class GameLobbyViewModel: ObservableObject {
         self.gamblingEnabled = session.settings.gamblingEnabled ?? false
         self.antiCheatEnabled = session.settings.antiCheatEnabled ?? false
         self.radarPingStep = Double(RadarPing.steps.firstIndex(of: session.settings.radarIntervalSeconds ?? 0) ?? 0)
+        self.headStartSeconds = Double(session.settings.headStartSeconds ?? 0)
         bindSocket()
     }
 
@@ -127,6 +130,7 @@ final class GameLobbyViewModel: ObservableObject {
                 self.gamblingEnabled = settings.gamblingEnabled ?? false
                 self.antiCheatEnabled = settings.antiCheatEnabled ?? false
                 self.radarPingStep = Double(RadarPing.steps.firstIndex(of: settings.radarIntervalSeconds ?? 0) ?? 0)
+                self.headStartSeconds = Double(settings.headStartSeconds ?? 0)
             }
             .store(in: &cancellables)
 
@@ -221,7 +225,8 @@ final class GameLobbyViewModel: ObservableObject {
                 bailOutSeconds: Int(bailOutSeconds),
                 gamblingEnabled: gamblingEnabled,
                 antiCheatEnabled: antiCheatEnabled,
-                radarIntervalSeconds: radarIntervalSeconds
+                radarIntervalSeconds: radarIntervalSeconds,
+                headStartSeconds: Int(headStartSeconds)
             )
             // The whole row, not just its settings — this response also carries the mode,
             // which lives outside the settings blob.

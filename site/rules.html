@@ -48,19 +48,26 @@
   <div class="callout" style="--c:34, 197, 94"><strong>The short version.</strong> Hunters chase runners; runners survive until the clock runs out. Everyone has hearts — lose them all and you're out. Stay inside the play area. Hunters win when every runner is caught, jailed or eliminated; runners win if one is still free at time, or if every hunter is eliminated.</div>
   <h2 id="before-the-match">Before the match</h2>
   <p>The host draws the play area, picks the mode and the match length, and assigns everyone a role: hunter, runner or spectator. A match needs at least one hunter and one runner to start (in Squad mode, runners in at least two squads).</p>
+  <p>Runners get a <strong>head start</strong> (the host sets it, up to 5 minutes; a minute by default): hunters' radar stays dark and nobody can be caught while it runs.</p>
   <p>The host also sets the <strong>radar ping</strong>: live, or every 10 seconds up to every 10 minutes. On a live radar, every movement shows up straight away. With a ping, hunters' radar and runners' compass only update on each ping, and the screen counts down to the next one.</p>
   <h2 id="hearts">Hearts</h2>
-  <p>Runners start with <strong>3 hearts</strong>, hunters with <strong>5</strong>. Nearly every rule below costs a heart or takes one from someone else. Reaching zero eliminates you for the rest of the match; you stay on as a spectator.</p>
+  <p>Hearts are lives. Runners start with <strong>3</strong>, hunters with <strong>5</strong>.</p>
+  <ul>
+    <li><strong>Runners</strong> lose a heart every time they're caught.</li>
+    <li><strong>Hunters</strong> lose a heart to every jailbreak.</li>
+    <li><strong>Everyone</strong> loses hearts outside the play area or the shrinking zone.</li>
+    <li>Adrenaline adds two. Lose your last heart and you're out for the rest of the match — you stay on as a spectator.</li>
+  </ul>
   <h2 id="getting-caught">Getting caught</h2>
   <ul>
     <li>A hunter has to get within about <strong>15 metres</strong> of a runner and send a catch request.</li>
-    <li>The runner answers on their own phone within <strong>20 seconds</strong>. <strong>No answer counts as caught</strong> — the request already proved the hunter was close enough.</li>
+    <li>The runner answers on their own phone within <strong>20 seconds</strong> — in the app, or with the Yes / No buttons on the lock-screen notification. <strong>No answer counts as caught</strong> — the request already proved the hunter was close enough.</li>
     <li>If the runner says no, the hunter decides: <em>my mistake</em> (no catch), or they insist. If they insist, the <strong>host rules</strong>. If the host is one of the two players, or doesn't rule within 45 seconds, the catch stands. If the hunter doesn't answer, the runner's word stands.</li>
-    <li>Every catch costs the runner one heart. A runner who loses their last heart to a catch is out of the match.</li>
+    <li>Every catch costs the runner one heart. Without jail mode they keep playing behind a <strong>30-second shield</strong> to get away; with jail mode they're sent to jail. A runner who loses their last heart is out.</li>
     <li>Nobody can be caught inside a Safe Zone Flare, or within 30 seconds of being freed.</li>
   </ul>
   <h2 id="jail-mode">Jail mode</h2>
-  <p>If the host turned jail on, a caught runner isn't out — they're sentenced.</p>
+  <p>If the host turned jail on, a caught runner with hearts left is sentenced to jail.</p>
   <ul>
     <li><strong>Get to the jail.</strong> Walk there yourself within the time the host set. Not turning up is a disqualification. Reconnecting starts a fresh walk; it never skips it.</li>
     <li><strong>Stay in the jail.</strong> Leaving gives you 10 seconds to get back inside, then you're disqualified.</li>
@@ -69,7 +76,7 @@
     <li><strong>Neutral ground.</strong> The jail never costs anyone hearts — not even after the shrinking zone has passed it. Safe Zone Flares don't work at the jail, so a jailbreak is always a real risk.</li>
   </ul>
   <h2 id="the-play-area">The play area</h2>
-  <p>The host draws the boundary, and a zone inside it shrinks steadily over the match towards a point inside the play area. Outside either one you get a warning and then lose a heart at a time — hunters and runners alike, in every mode — until you're back inside or eliminated. Your phone's GPS accuracy is taken into account, so a bad signal at the edge won't punish you.</p>
+  <p>The host draws the boundary, and a zone inside it closes in towards a point inside the play area, scaled to the match's length: it holds for the first fifth of the match, closes slowly and then faster, and reaches its final size — bigger for bigger areas — with a tenth of the time left. Outside either one you get a warning and then lose a heart at a time — hunters and runners alike, in every mode — until you're back inside or eliminated. Your phone's GPS accuracy is taken into account, so a bad signal at the edge won't punish you.</p>
   <h2 id="power-ups">Power-ups</h2>
   <p>Scattered around the play area. Walk to one to pick it up, then use it from your equipment panel. You only see the ones your side can use, and you can't pick any up while caught.</p>
   <div class="table-wrap"><table>
@@ -87,7 +94,7 @@
   <ul>
     <li><strong>Standard</strong> — hunters against runners, as above.</li>
     <li><strong>Infection</strong> — a caught runner switches sides and joins the hunt. Jail and hearts-on-catch don't apply. The match ends when nobody is left running.</li>
-    <li><strong>Squad</strong> — teams, each with hunters and runners. You only chase other squads' runners, and your radar and compass only show the other squads. Without jail, a free squadmate can revive a caught teammate by standing next to them; with jail, a jailbreak frees only your own squad and only costs the other squads' hunters a heart. Pick your squad when you join.</li>
+    <li><strong>Squad</strong> — teams, each with hunters and runners. You only chase other squads' runners, and your radar and compass only show the other squads. A jailbreak frees only your own squad and only costs the other squads' hunters a heart. Pick your squad when you join.</li>
   </ul>
   <h2 id="winning">Winning</h2>
   <ul>

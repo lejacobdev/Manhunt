@@ -53,7 +53,13 @@ export interface GameSettings {
   /** Seconds between radar/compass pings. 0 (or absent) is continuous: every GPS fix updates
    *  everyone's radar. Anything else and the radar and compass only update on each ping. */
   radarIntervalSeconds?: number;
+  /** Seconds after the start during which hunters' radar is dark and nobody can be caught,
+   *  so runners can scatter. Absent on older sessions, which means none. */
+  headStartSeconds?: number;
 }
+
+/** A new match's head start unless the host changes it. */
+export const DEFAULT_HEAD_START_SECONDS = 60;
 
 export class GameService {
   public async createSession(input: CreateSessionInput) {
@@ -75,6 +81,8 @@ export class GameService {
       bailOutSeconds: input.bailOutSeconds ?? DEFAULT_BAIL_OUT_SECONDS,
       gamblingEnabled: input.gamblingEnabled ?? false,
       antiCheatEnabled: input.antiCheatEnabled ?? false,
+      radarIntervalSeconds: 0,
+      headStartSeconds: DEFAULT_HEAD_START_SECONDS,
     };
 
     const session = await prisma.gameSession.create({
@@ -306,13 +314,13 @@ export class GameService {
   }
 
   /** INFECTION mode: a caught runner flips sides and rejoins as a hunter instead of being eliminated. */
-  public async convertRunnerToHunter(sessionId: string, playerId: string) {
+  public async convertRunnerToHunter(sessionId: string, playerId: string, byPlayerId?: string) {
     await prisma.gamePlayer.update({
       where: { id: playerId },
       data: { role: 'HUNTER', isCaught: false, caughtAt: null },
     });
     return prisma.gameEvent.create({
-      data: { sessionId, type: 'INFECTED', payload: { playerId, timestamp: new Date().toISOString() } },
+      data: { sessionId, type: 'INFECTED', payload: { playerId, byPlayerId: byPlayerId ?? null, timestamp: new Date().toISOString() } },
     });
   }
 

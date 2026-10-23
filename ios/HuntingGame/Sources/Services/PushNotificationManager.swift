@@ -21,8 +21,24 @@ final class PushNotificationManager: NSObject, ObservableObject {
     /// reported, rather than needing the OS to hand it back again.
     private var lastRegisteredToken: String?
 
+    static let catchCategory = "CATCH_REQUEST"
+    static let catchYes = "CATCH_YES"
+    static let catchNo = "CATCH_NO"
+
     private override init() {
         super.init()
+        // A catch request arrives with Yes / No buttons, answerable from the lock screen
+        // without opening the app: silence counts as caught, and a runner mid-sprint with the
+        // phone in a pocket otherwise can't answer in time.
+        let yes = UNNotificationAction(identifier: Self.catchYes, title: "Yes, I was caught", options: [.destructive])
+        let no = UNNotificationAction(identifier: Self.catchNo, title: "No, not caught", options: [])
+        let category = UNNotificationCategory(identifier: Self.catchCategory, actions: [yes, no], intentIdentifiers: [], options: [])
+        UNUserNotificationCenter.current().setNotificationCategories([category])
+    }
+
+    /// Clears a catch request's notification once it's been answered in the app.
+    func clearCatchNotification(requestId: String) {
+        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: [requestId])
     }
 
     /// Call once signed in — registering before that would have nowhere to attach the
@@ -93,6 +109,11 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        // A catch request while the app is open is already on screen as the in-app popup.
+        if notification.request.content.userInfo["type"] as? String == "catch_request" {
+            completionHandler([])
+            return
+        }
         // .list as well as .banner so it's still in Notification Centre afterwards — a
         // banner that vanishes unread is the same as never having sent it.
         completionHandler([.banner, .sound, .list])
@@ -107,6 +128,21 @@ extension PushNotificationManager: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let info = response.notification.request.content.userInfo
+        if response.actionIdentifier == Self.catchYes || response.actionIdentifier == Self.catchNo,
+           let code = info["roomCode"] as? String, let requestId = info["requestId"] as? String {
+            // Answered from the lock screen: straight to the server, the app may not even be
+            // running. The system gives a short window to finish; hold it open until it does.
+            let accept = response.actionIdentifier == Self.catchYes
+            let task = UIApplication.shared.beginBackgroundTask(withName: "catch-response")
+            Task {
+                try? await APIClient.shared.respondToCatchFromNotification(code: code, requestId: requestId, accept: accept)
+                await MainActor.run {
+                    UIApplication.shared.endBackgroundTask(task)
+                    completionHandler()
+                }
+            }
+            return
+        }
         if let type = info["type"] as? String {
             DispatchQueue.main.async { self.tappedType = type }
         }

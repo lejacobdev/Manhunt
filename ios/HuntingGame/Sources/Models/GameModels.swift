@@ -128,6 +128,8 @@ struct GameSettings: Codable, Equatable {
     let antiCheatEnabled: Bool?
     /// Seconds between radar/compass pings; 0 or absent is continuous.
     var radarIntervalSeconds: Int? = nil
+    /// Runners' head start in seconds: hunters' radar is dark and nobody can be caught.
+    var headStartSeconds: Int? = nil
 }
 
 /// The ping intervals a host can pick, in seconds — 0 is a live, continuous radar.
@@ -325,6 +327,8 @@ struct RadarBroadcast: Codable {
     var live: Bool? = nil
     /// Epoch ms of the next ping, when the match has a ping interval.
     var nextPingAt: Double? = nil
+    /// Epoch ms when the runners' head start ends, while it's running.
+    var headStartEndsAt: Double? = nil
 }
 
 struct PowerUpSpawn: Codable, Identifiable {

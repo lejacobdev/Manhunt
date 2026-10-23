@@ -255,6 +255,7 @@ struct GameLobbyView: View {
                 )
                 settingsRow(icon: "clock.fill", text: "\(Int(viewModel.durationMinutes)) minute match")
                 settingsRow(icon: "dot.radiowaves.left.and.right", text: "Radar ping: \(RadarPing.label(viewModel.radarIntervalSeconds).lowercased())")
+                settingsRow(icon: "figure.run", text: viewModel.headStartSeconds == 0 ? "No head start" : "Runners get a \(Int(viewModel.headStartSeconds)) s head start")
                 settingsRow(
                     icon: "lock.fill",
                     text: viewModel.jailEnabled
@@ -373,6 +374,23 @@ private struct LobbySetupSheet: View {
                         Text("DURATION: \(Int(viewModel.durationMinutes)) MIN")
                         Slider(value: $viewModel.durationMinutes, in: 10...180, step: 5)
                             .tint(ADATheme.spatialCyan)
+                    }
+                    .tacticalFont(.telemetry, size: 12)
+                    .foregroundColor(.white.opacity(0.7))
+                    .padding(16)
+                    .glassCard(cornerRadius: ADATheme.cardCornerRadius)
+                    .padding(.horizontal)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(viewModel.headStartSeconds == 0
+                             ? "RUNNER HEAD START: NONE"
+                             : "RUNNER HEAD START: \(Int(viewModel.headStartSeconds) / 60):\(String(format: "%02d", Int(viewModel.headStartSeconds) % 60))")
+                        Slider(value: $viewModel.headStartSeconds, in: 0...300, step: 15)
+                            .tint(ADATheme.runnerGreen)
+                        Text("Runners scatter first: hunters' radar stays dark and nobody can be caught until it ends.")
+                            .tacticalFont(.ui, size: 11, weight: .medium)
+                            .foregroundColor(.white.opacity(0.45))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .tacticalFont(.telemetry, size: 12)
                     .foregroundColor(.white.opacity(0.7))

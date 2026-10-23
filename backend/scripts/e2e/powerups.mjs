@@ -65,6 +65,7 @@ H2.gp = (await post(`/games/${code}/join`, { role: 'HUNTER' }, H2.token)).player
 R1.gp = (await post(`/games/${code}/join`, { role: 'RUNNER' }, R1.token)).player;
 R2.gp = (await post(`/games/${code}/join`, { role: 'RUNNER' }, R2.token)).player;
 sql(`DELETE FROM "PowerUpSpawn" WHERE "sessionId"='${sessionId}'`);
+await fetch(`${API}/games/${code}/settings`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + H1.token }, body: JSON.stringify({ headStartSeconds: 0 }) });
 await post(`/games/${code}/start`, {}, H1.token);
 const all = [H1, H2, R1, R2];
 for (const p of all) { await connect(p); p.socket.emit('join_room', { roomCode: code, gamePlayerId: p.gp.id }); }

@@ -8,7 +8,7 @@ import { zodErrorMessage } from '../utils/validation';
 // Circular import (server.ts imports this router) — safe because `io` and
 // the caches are only read inside route handlers, which run long after both
 // modules have finished loading, never at module top level.
-import { emitAdminEvent, io, sessionModes, sessionSettingsCache, sessionStartedAtCache } from '../server';
+import { answerCatchRequest, emitAdminEvent, io, sessionModes, sessionSettingsCache, sessionStartedAtCache } from '../server';
 
 export const gamesRouter = Router();
 gamesRouter.use(requireAuth);
@@ -136,6 +136,8 @@ const updateSettingsSchema = z.object({
   antiCheatEnabled: z.boolean().optional(),
   // 0 = continuous; otherwise the radar and compass update once per ping, up to 10 minutes.
   radarIntervalSeconds: z.number().int().min(0).max(600).optional(),
+  // Runners' head start: hunters' radar is dark and nobody can be caught. Up to 5 minutes.
+  headStartSeconds: z.number().int().min(0).max(300).optional(),
 });
 
 /**
@@ -380,4 +382,185 @@ gamesRouter.post('/history/clear', async (req: AuthedRequest, res) => {
     data: { hiddenFromHistory: true },
   });
   return res.json({ ok: true });
+});
+
+const catchResponseSchema = z.object({ requestId: z.string().min(1), decision: z.enum(['accept', 'deny']) });
+
+/**
+ * The Yes / No buttons on a catch request's lock-screen notification. They work without the
+ * app being open — and so without a live socket — which is why this is a REST route rather
+ * than the socket's respond_catch. Same rules either way (answerCatchRequest in server.ts).
+ */
+gamesRouter.post('/:code/catch-response', async (req: AuthedRequest, res) => {
+  const parsed = catchResponseSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
+  const session = await gameService.getSessionByCode(req.params.code);
+  const me = session?.players.find((p) => p.userId === req.user!.userId);
+  if (!session || !me) return res.status(404).json({ error: 'Game not found.' });
+  const error = await answerCatchRequest(session.code, me.id, { requestId: parsed.data.requestId }, parsed.data.decision);
+  if (error) return res.status(409).json({ error });
+  return res.json({ ok: true });
+});
+
+const POWER_UP_NAMES: Record<string, string> = {
+  INVISIBILITY_10MIN: 'Invisibility', GHOST_DECOY: 'Ghost Decoy', EMP_JAMMER: 'EMP Jammer',
+  THERMAL_VISION: 'Thermal Vision', ADRENALINE: 'Adrenaline', SAFE_ZONE_FLARE: 'Safe Zone Flare',
+};
+const OUT_REASONS: Record<string, string> = {
+  CAUGHT: 'caught on their last heart', BOUNDARY: 'out of hearts outside the play area', ZONE: 'out of hearts outside the zone',
+  JAIL_BREACH: 'left the jail', JAIL_NO_SHOW: 'never reached the jail', BAILOUT: 'spent their last heart on a jailbreak', GAMBLE: 'lost a gamble',
+};
+
+/** Metres walked along a trail, skipping jumps no one could make on foot and fixes too vague to trust. */
+function trailDistance(points: { latitude: number; longitude: number; accuracy: number; timestamp: Date }[]): number {
+  let total = 0;
+  let prev: (typeof points)[number] | undefined;
+  for (const p of points) {
+    if (p.accuracy > 50) continue;
+    if (prev) {
+      const d = turfDistance(prev.latitude, prev.longitude, p.latitude, p.longitude);
+      const dt = (p.timestamp.getTime() - prev.timestamp.getTime()) / 1000;
+      if (dt > 0 && d / dt <= 12.5 && d >= 2) total += d;
+    }
+    prev = p;
+  }
+  return Math.round(total);
+}
+function turfDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000, toRad = Math.PI / 180;
+  const a = Math.sin(((lat2 - lat1) * toRad) / 2) ** 2 + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(((lng2 - lng1) * toRad) / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * The post-match summary: how it ended, each player's numbers (catches, times caught, distance
+ * run, power-ups), the highlights, and a timeline of what happened. Built only from what the
+ * server already records; members of the match only, like the replay.
+ */
+gamesRouter.get('/:code/summary', async (req: AuthedRequest, res) => {
+  const session = await gameService.getSessionByCode(req.params.code);
+  if (!session) return res.status(404).json({ error: 'Game not found.' });
+  if (!session.players.some((p) => p.userId === req.user!.userId)) {
+    return res.status(403).json({ error: 'You are not a member of this game.' });
+  }
+  const [events, logs] = await Promise.all([
+    prisma.gameEvent.findMany({ where: { sessionId: session.id }, orderBy: { timestamp: 'asc' } }),
+    prisma.locationLog.findMany({ where: { sessionId: session.id }, orderBy: { timestamp: 'asc' }, take: 50_000 }),
+  ]);
+  const name = new Map(session.players.map((p) => [p.id, p.user.username]));
+  const start = session.startedAt ?? session.createdAt;
+  const at = (d: Date) => Math.max(0, Math.round((d.getTime() - start.getTime()) / 1000));
+
+  type Stat = { catches: number; timesCaught: number; jailbreaks: number; freed: number; powerUpsCollected: number; powerUpsUsed: string[]; infectedBy?: string | null; outReason?: string | null };
+  const stats = new Map<string, Stat>(session.players.map((p) => [p.id, { catches: 0, timesCaught: 0, jailbreaks: 0, freed: 0, powerUpsCollected: 0, powerUpsUsed: [] }]));
+  const timeline: { at: number; kind: string; text: string }[] = [];
+  let end: { reason?: string; winningSquad?: string } = {};
+
+  for (const e of events) {
+    const p = (e.payload ?? {}) as Record<string, any>;
+    switch (e.type) {
+      case 'CATCH': {
+        const h = stats.get(p.hunterPlayerId), r = stats.get(p.runnerPlayerId);
+        if (h) h.catches++;
+        if (r) r.timesCaught++;
+        timeline.push({ at: at(e.timestamp), kind: 'catch', text: `${name.get(p.hunterPlayerId) ?? 'A hunter'} caught ${name.get(p.runnerPlayerId) ?? 'a runner'}${p.jailed ? ' — sent to jail' : ''}` });
+        break;
+      }
+      case 'INFECTED': {
+        const r = stats.get(p.playerId);
+        if (r) { r.timesCaught++; r.infectedBy = p.byPlayerId ?? null; }
+        const h = p.byPlayerId ? stats.get(p.byPlayerId) : undefined;
+        if (h) h.catches++;
+        timeline.push({ at: at(e.timestamp), kind: 'infect', text: `${name.get(p.playerId) ?? 'A runner'} was turned${p.byPlayerId ? ` by ${name.get(p.byPlayerId)}` : ''}` });
+        break;
+      }
+      case 'JAIL_BAILOUT': {
+        const b = stats.get(p.bailerPlayerId);
+        const freed = (p.freedPlayerIds ?? []).length;
+        if (b) { b.jailbreaks++; b.freed += freed; }
+        timeline.push({ at: at(e.timestamp), kind: 'jailbreak', text: `${name.get(p.bailerPlayerId) ?? 'A runner'} broke ${freed} out of jail` });
+        break;
+      }
+      case 'REVIVED':
+        timeline.push({ at: at(e.timestamp), kind: 'revive', text: `${name.get(p.playerId) ?? 'A runner'} was freed${p.revivedById && name.get(p.revivedById) ? ` by ${name.get(p.revivedById)}` : ''}` });
+        break;
+      case 'PLAYER_OUT': {
+        const s = stats.get(p.playerId);
+        if (s) s.outReason = p.reason;
+        timeline.push({ at: at(e.timestamp), kind: 'out', text: `${name.get(p.playerId) ?? 'A player'} is out — ${OUT_REASONS[p.reason] ?? 'eliminated'}` });
+        break;
+      }
+      case 'POWERUP_COLLECTED': {
+        const s = stats.get(p.playerId);
+        if (s) s.powerUpsCollected++;
+        break;
+      }
+      case 'POWERUP_USED': {
+        const s = stats.get(p.playerId);
+        if (s) s.powerUpsUsed.push(p.powerUpType);
+        timeline.push({ at: at(e.timestamp), kind: 'powerup', text: `${name.get(p.playerId) ?? 'A player'} used ${POWER_UP_NAMES[p.powerUpType] ?? 'a power-up'}` });
+        break;
+      }
+      case 'MATCH_END':
+        end = p;
+        break;
+    }
+  }
+
+  const trails = new Map<string, typeof logs>();
+  for (const l of logs) {
+    const list = trails.get(l.playerId) ?? [];
+    list.push(l);
+    trails.set(l.playerId, list);
+  }
+
+  const players = session.players.map((p) => {
+    const s = stats.get(p.id)!;
+    const usedCounts: Record<string, number> = {};
+    for (const t of s.powerUpsUsed) usedCounts[POWER_UP_NAMES[t] ?? t] = (usedCounts[POWER_UP_NAMES[t] ?? t] ?? 0) + 1;
+    return {
+      gamePlayerId: p.id,
+      userId: p.userId,
+      username: p.user.username,
+      role: p.role,
+      startedAs: s.infectedBy !== undefined ? 'RUNNER' : p.role,
+      squad: p.squad,
+      hearts: p.hearts,
+      survived: p.role === 'RUNNER' && !p.isCaught && !p.isOut,
+      isOut: p.isOut,
+      outReason: s.outReason ? OUT_REASONS[s.outReason] ?? s.outReason : null,
+      distanceMeters: trailDistance(trails.get(p.id) ?? []),
+      catches: s.catches,
+      timesCaught: s.timesCaught,
+      jailbreaks: s.jailbreaks,
+      freedOthers: s.freed,
+      powerUpsCollected: s.powerUpsCollected,
+      powerUpsUsed: usedCounts,
+    };
+  });
+
+  const playing = players.filter((p) => p.role !== 'SPECTATOR' || p.startedAs !== 'SPECTATOR');
+  const best = <K extends keyof (typeof players)[number]>(key: K) =>
+    [...playing].sort((a, b) => (b[key] as number) - (a[key] as number)).find((p) => (p[key] as number) > 0);
+  const highlights = [
+    { title: 'Top hunter', player: best('catches'), value: (p: any) => `${p.catches} catch${p.catches === 1 ? '' : 'es'}` },
+    { title: 'Furthest run', player: best('distanceMeters'), value: (p: any) => `${(p.distanceMeters / 1000).toFixed(2)} km` },
+    { title: 'Jailbreaker', player: best('freedOthers'), value: (p: any) => `freed ${p.freedOthers}` },
+    { title: 'Power player', player: [...playing].sort((a, b) => Object.values(b.powerUpsUsed).reduce((x, y) => x + y, 0) - Object.values(a.powerUpsUsed).reduce((x, y) => x + y, 0)).find((p) => Object.keys(p.powerUpsUsed).length > 0), value: (p: any) => `${Object.values(p.powerUpsUsed as Record<string, number>).reduce((x, y) => x + y, 0)} power-ups` },
+  ]
+    .filter((h) => h.player)
+    .map((h) => ({ title: h.title, username: h.player!.username, gamePlayerId: h.player!.gamePlayerId, value: h.value(h.player) }));
+
+  return res.json({
+    code: session.code,
+    mode: session.mode,
+    startedAt: session.startedAt,
+    endedAt: session.endedAt,
+    durationSeconds: session.startedAt && session.endedAt ? Math.round((session.endedAt.getTime() - session.startedAt.getTime()) / 1000) : null,
+    endReason: end.reason ?? null,
+    winningSquad: end.winningSquad ?? null,
+    players,
+    highlights,
+    timeline: timeline.slice(-80),
+  });
 });

@@ -29,7 +29,7 @@ function connect(p) {
   p.socket = s; p.ev = [];
   for (const e of ['radar_broadcast', 'compass_update', 'player_jailed', 'player_caught', 'player_revived', 'player_infected', 'jail_arrived', 'jail_bailout',
     'hearts_update', 'catch_failed', 'catch_requested', 'catch_deny_confirm', 'catch_dispute', 'catch_dispute_pending', 'catch_ruling', 'game_over',
-    'boundary_status', 'error_event', 'player_joined', 'player_eliminated', 'catch_request_expired']) {
+    'boundary_status', 'error_event', 'player_joined', 'player_eliminated', 'catch_request_expired', 'player_tagged', 'zone_update']) {
     s.on(e, (d) => { p.ev.push({ e, d, at: Date.now() }); if (e === 'radar_broadcast') p.radar = d; if (e === 'compass_update') p.compass = d; });
   }
   return new Promise((res) => s.on('connect', res));
@@ -38,7 +38,7 @@ const last = (p, e) => [...p.ev].reverse().find((x) => x.e === e)?.d;
 const got = (p, e, pred = () => true) => p.ev.some((x) => x.e === e && pred(x.d));
 const move = (p, pos) => { p.pos = pos; p.socket.emit('send_location_update', { lat: pos.lat, lng: pos.lng, accuracy: 5, speed: 1, battery: 90, isMovingOnFoot: true }); };
 
-async function match({ mode = 'STANDARD', host, players, jail = false, startExpect = 200 }) {
+async function match({ mode = 'STANDARD', host, players, jail = false, headStart = 0 }) {
   const bounds = [m(-800, -800), m(-800, 800), m(800, 800), m(800, -800)];
   const body = { durationMinutes: 30, boundsPolygon: bounds, role: host.role, mode, ...(host.squad ? { squad: host.squad } : {}) };
   if (jail) Object.assign(body, { jailEnabled: true, jailPolygon: [m(-30, 780), m(-30, 860), m(30, 860), m(30, 780)], jailArrivalSeconds: 30, bailOutSeconds: 5 });
@@ -54,6 +54,7 @@ async function match({ mode = 'STANDARD', host, players, jail = false, startExpe
   }
   if (host.gp.role !== host.role) sql(`UPDATE "GamePlayer" SET role='${host.role}', hearts=${host.role === 'HUNTER' ? 5 : host.role === 'RUNNER' ? 3 : 0} WHERE id='${host.gp.id}'`);
   sql(`DELETE FROM "PowerUpSpawn" WHERE "sessionId"='${sessionId}'`);
+  await req('PATCH', `/games/${code}/settings`, { headStartSeconds: headStart }, host.token);
   const st = await req('POST', `/games/${code}/start`, {}, host.token);
   return { code, sessionId, start: st };
 }
@@ -155,7 +156,7 @@ const done = (all) => all.forEach((p) => p.socket?.disconnect());
   check(got(H1, 'hearts_update', (d) => d.playerId === H1.gp.id && d.hearts === 4) && got(H1, 'hearts_update', (d) => d.playerId === R3.gp.id && d.hearts === 2), 'jailbreak: every hunter and the rescuer pay a heart');
   move(H1, m(0, 818)); await sleep(500);
   H1.socket.emit('request_catch', { runnerId: R1.gp.id }); await sleep(600);
-  check(got(H1, 'catch_failed', (d) => /just freed/.test(d.reason)), 'jailbreak: freed runners have 30 s before they can be caught again');
+  check(got(H1, 'catch_failed', (d) => /shielded/.test(d.reason)), 'jailbreak: freed runners have 30 s before they can be caught again');
 
   // 8. Host override goes through the rules
   R3.ev = [];
@@ -206,10 +207,72 @@ const done = (all) => all.forEach((p) => p.socket?.disconnect());
   check(got(HA, 'catch_failed', (d) => /own squad/.test(d.reason)), "squad: can't catch your own squad");
   RB.socket.emit('request_catch', { runnerId: HA.gp.id }); await sleep(600);
   check(got(RB, 'catch_failed', (d) => /Only hunters/.test(d.reason)), "squad: a runner can't catch a hunter (they used to be able to)");
+  sql(`UPDATE "GamePlayer" SET hearts=1 WHERE id='${RB.gp.id}'`);
+  RB.socket.disconnect(); await sleep(300); RB.ev = []; await connect(RB); RB.socket.emit('join_room', { roomCode: mm.code, gamePlayerId: RB.gp.id }); await sleep(600);
+  move(RB, m(0, 6)); await sleep(500);
   HA.socket.emit('request_catch', { runnerId: RB.gp.id });
   await waitFor(() => got(RB, 'catch_requested'), 3000);
   RB.socket.emit('respond_catch', { hunterId: HA.gp.id, decision: 'accept' });
   check(await waitFor(() => got(HA, 'game_over', (d) => d.reason === 'SQUAD_WON' && d.winningSquad === 'red'), 3000), 'squad: the last squad with a free runner wins, by name');
+  done(all);
+}
+
+// ====================================================================== head start, hearts as lives, lock screen, zone, summary
+{
+  const H = await account('lh'); H.role = 'HUNTER';
+  const R = await account('lr'); R.role = 'RUNNER';
+  const R2 = await account('lq'); R2.role = 'RUNNER';
+  const all = [H, R, R2];
+  const mm = await match({ host: H, players: [R, R2], headStart: 6 });
+  await enter(mm, all);
+  move(H, m(0, 0)); move(R, m(0, 5)); move(R2, m(0, 300)); await sleep(1200);
+  const zone = last(H, 'zone_update');
+  check(H.radar?.headStartEndsAt > Date.now() && (H.radar?.runnerBearings ?? []).length === 0, "head start: the hunter's radar is dark");
+  H.socket.emit('request_catch', { runnerId: R.gp.id }); await sleep(600);
+  check(got(H, 'catch_failed', (d) => /head start/.test(d.reason)), 'head start: no catches while it runs');
+  check(await waitFor(() => (H.radar?.runnerBearings ?? []).length === 2, 9000), 'head start: when it ends the radar comes online by itself');
+
+  // Hearts as lives, answered "from the lock screen" (REST)
+  H.socket.emit('request_catch', { runnerId: R.gp.id });
+  await waitFor(() => got(R, 'catch_requested'), 3000);
+  const reqId = last(R, 'catch_requested').requestId;
+  const rest = await req('POST', `/games/${mm.code}/catch-response`, { requestId: reqId, decision: 'accept' }, R.token);
+  check(rest.status === 200, 'lock screen: answering Yes over REST works without the socket', JSON.stringify(rest.body));
+  check(await waitFor(() => got(H, 'player_tagged', (d) => d.runnerId === R.gp.id && d.heartsLeft === 2), 3000), 'hearts: without jail a catch costs a heart (3 → 2) and the runner stays in');
+  await sleep(1200);
+  check((H.radar?.runnerBearings ?? []).some((b) => b.runnerId === R.gp.id), 'hearts: the caught runner is still on the radar, still in the match');
+  H.socket.emit('request_catch', { runnerId: R.gp.id }); await sleep(600);
+  check(got(H, 'catch_failed', (d) => /shielded/.test(d.reason)), 'hearts: a 30 s shield stops an instant re-catch');
+  const again = await req('POST', `/games/${mm.code}/catch-response`, { requestId: reqId, decision: 'accept' }, R.token);
+  check(again.status === 409, 'lock screen: an already-answered request is refused');
+
+  // Last heart: out, and with no runners left the hunter wins (after runner A's shield runs out)
+  await sleep(30_500);
+  sql(`UPDATE "GamePlayer" SET hearts=1 WHERE id IN ('${R.gp.id}','${R2.gp.id}')`);
+  for (const r of [R, R2]) { r.socket.disconnect(); await sleep(200); r.ev = []; await connect(r); r.socket.emit('join_room', { roomCode: mm.code, gamePlayerId: r.gp.id }); }
+  await sleep(800); move(R, m(0, 5)); move(R2, m(5, 0)); move(H, m(0, 0)); await sleep(800);
+  for (const r of [R, R2]) {
+    H.socket.emit('request_catch', { runnerId: r.gp.id });
+    await waitFor(() => got(r, 'catch_requested'), 3000);
+    r.socket.emit('respond_catch', { hunterId: H.gp.id, decision: 'accept' });
+    await waitFor(() => got(H, 'player_eliminated', (d) => d.playerId === r.gp.id), 3000);
+  }
+  check(got(H, 'player_eliminated', (d) => d.playerId === R.gp.id && d.reason === 'CAUGHT'), 'hearts: the last heart ends the runner\'s match');
+  check(await waitFor(() => got(H, 'game_over', (d) => d.reason === 'ALL_RUNNERS_RESOLVED'), 3000), 'hearts: hunters win when every runner is out');
+
+  // Zone held at full size at the start
+  check(zone && zone.radiusMeters >= zone.fullRadiusMeters - 1, 'zone: it holds at full size at the start of the match', zone ? `${Math.round(zone.radiusMeters)} of ${Math.round(zone.fullRadiusMeters)} m` : 'no zone');
+
+  // Summary
+  await sleep(1000);
+  const sum = await req('GET', `/games/${mm.code}/summary`, null, H.token);
+  const hs = sum.body.players?.find((p) => p.gamePlayerId === H.gp.id);
+  check(sum.status === 200 && sum.body.endReason === 'ALL_RUNNERS_RESOLVED', 'summary: it says how the match ended');
+  check(hs?.catches === 3, 'summary: the hunter is credited with 3 catches', String(hs?.catches));
+  check(sum.body.players?.find((p) => p.gamePlayerId === R.gp.id)?.timesCaught === 2, 'summary: runner A was caught twice');
+  check((sum.body.timeline ?? []).some((t) => t.kind === 'catch') && (sum.body.highlights ?? []).some((h) => h.title === 'Top hunter'), 'summary: timeline and highlights are filled in');
+  const outsider = await account('lo');
+  check((await req('GET', `/games/${mm.code}/summary`, null, outsider.token)).status === 403, "summary: someone who wasn't in the match can't read it");
   done(all);
 }
 
