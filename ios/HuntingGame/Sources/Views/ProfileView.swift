@@ -34,6 +34,7 @@ struct ProfileView: View {
 
                 NavigationLink {
                     CosmeticsView()
+                    .clearsFloatingTabBar()
                 } label: {
                     HStack { Image(systemName: "paintpalette.fill"); Text("CUSTOMIZE") }
                 }
@@ -42,6 +43,7 @@ struct ProfileView: View {
 
                 NavigationLink {
                     AccountSettingsView()
+                    .clearsFloatingTabBar()
                 } label: {
                     HStack { Image(systemName: "person.text.rectangle"); Text("NAME & SIGN-IN") }
                 }
@@ -52,6 +54,7 @@ struct ProfileView: View {
 
                 NavigationLink {
                     RulesView()
+                    .clearsFloatingTabBar()
                 } label: {
                     HStack { Image(systemName: "list.bullet.rectangle"); Text("GAME RULES") }
                 }
@@ -60,6 +63,7 @@ struct ProfileView: View {
 
                 NavigationLink {
                     BlockedUsersView()
+                    .clearsFloatingTabBar()
                 } label: {
                     HStack { Image(systemName: "hand.raised.fill"); Text("BLOCKED USERS") }
                 }

@@ -19,6 +19,10 @@ struct DisclosureHeader: View {
                     .tacticalFont(.symbol, size: 12, weight: .bold)
                 Text(title)
                     .tacticalFont(.telemetry, size: 12)
+                    // One line that shrinks to fit rather than breaking a word mid-way at the
+                    // largest text sizes ("EQUI / PMEN / T").
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
                 Spacer()
                 Image(systemName: "chevron.down")
                     .tacticalFont(.symbol, size: 11, weight: .bold)

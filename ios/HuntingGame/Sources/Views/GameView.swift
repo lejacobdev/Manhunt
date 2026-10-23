@@ -83,7 +83,6 @@ struct GameView: View {
             // Drawn after (so on top of) the dock/radar above — on the right, behind
             // the radar, it used to render underneath both and never actually show.
             damageFlash
-            recenterButton
             toastBanner
             containmentWarningBanner
 
@@ -265,9 +264,6 @@ struct GameView: View {
     /// compass gauge docks above the right column, and a right-aligned button there
     /// used to sit right behind it, invisible and untappable.
     private var recenterButton: some View {
-        VStack {
-            Spacer()
-            HStack {
                 Button {
                     HapticsEngine.shared.lightTap()
                     recenterRequestToken += 1
@@ -281,12 +277,6 @@ struct GameView: View {
                 .buttonStyle(ScaleButtonStyle())
                 .tacticalGlass(in: Circle(), interactive: true)
                 .accessibilityLabel("Recenter on my position")
-                Spacer()
-            }
-            .padding(.leading, 16)
-            // Clears a collapsed left-column dock panel sitting below it.
-            .padding(.bottom, 92)
-        }
     }
 
     /// A failed catch, a server-rejected action ("too far to collect"), or a location
@@ -526,6 +516,9 @@ struct GameView: View {
     private var bottomDock: some View {
         HStack(alignment: .bottom, spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
+                // At the top of the left column rather than at a fixed offset above it: a fixed
+                // offset sat on top of the Equipment panel whenever the column grew.
+                recenterButton
                 ForEach(Array(leftDockPanels.enumerated()), id: \.offset) { _, panel in
                     panel.frame(width: dockWidth)
                 }

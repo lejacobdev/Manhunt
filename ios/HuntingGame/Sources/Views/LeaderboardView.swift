@@ -142,6 +142,7 @@ struct LeaderboardView: View {
         let isMe = entry.user.id == authSession.currentUser?.id
         return NavigationLink {
             PublicProfileView(userId: entry.user.id, displayName: entry.user.tagLabel)
+            .clearsFloatingTabBar()
         } label: {
             VStack(spacing: 6) {
                 Image(systemName: "medal.fill")
@@ -210,6 +211,7 @@ struct LeaderboardView: View {
     private func row(_ entry: LeaderboardEntry, isMe: Bool) -> some View {
         NavigationLink {
             PublicProfileView(userId: entry.user.id, displayName: entry.user.tagLabel)
+            .clearsFloatingTabBar()
         } label: {
             HStack(spacing: 12) {
                 rankBadge(entry.rank)

@@ -50,6 +50,8 @@ struct HeartsRowView: View {
         // The red lives in the hearts themselves; the panel stays neutral glass so it reads over
         // a red-roofed neighbourhood too.
         .glassCard(cornerRadius: ADATheme.controlCornerRadius)
+        // Heart symbols, not text: they stop growing at a size where five still fit the column.
+        .dynamicTypeSize(...DynamicTypeSize.xLarge)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Hearts")
         .accessibilityValue("\(hearts) of \(slots)")

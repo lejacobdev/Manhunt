@@ -137,11 +137,19 @@ struct MatchSummaryView: View {
                 .tacticalFont(.telemetry, size: 11)
                 .tacticalText(.secondary)
             if let me {
-                HStack(spacing: 10) {
-                    stat("\(me.catches)", "CATCHES", ADATheme.hunterRed)
-                    stat(distanceLabel(me.distanceMeters), "DISTANCE", ADATheme.spatialCyan)
-                    stat("\(me.powerUpsUsedTotal)", "POWER-UPS", ADATheme.tacticalAmber)
-                    stat("\(me.hearts)", "HEARTS LEFT", ADATheme.runnerGreen)
+                // Four across when they fit, two by two at large text sizes.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) { myStats(me) }
+                    VStack(spacing: 10) {
+                        HStack(spacing: 10) {
+                            stat("\(me.catches)", "CATCHES", ADATheme.hunterRed)
+                            stat(distanceLabel(me.distanceMeters), "DISTANCE", ADATheme.spatialCyan)
+                        }
+                        HStack(spacing: 10) {
+                            stat("\(me.powerUpsUsedTotal)", "POWER-UPS", ADATheme.tacticalAmber)
+                            stat("\(me.hearts)", "HEARTS LEFT", ADATheme.runnerGreen)
+                        }
+                    }
                 }
                 .padding(.top, 8)
             }
@@ -150,6 +158,14 @@ struct MatchSummaryView: View {
         .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: resultTint(s, me: me))
         .padding(.horizontal)
         .accessibilityElement(children: .combine)
+    }
+
+    @ViewBuilder
+    private func myStats(_ me: MatchSummary.Player) -> some View {
+        stat("\(me.catches)", "CATCHES", ADATheme.hunterRed)
+        stat(distanceLabel(me.distanceMeters), "DISTANCE", ADATheme.spatialCyan)
+        stat("\(me.powerUpsUsedTotal)", "POWER-UPS", ADATheme.tacticalAmber)
+        stat("\(me.hearts)", "HEARTS LEFT", ADATheme.runnerGreen)
     }
 
     private func stat(_ value: String, _ label: String, _ tint: Color) -> some View {

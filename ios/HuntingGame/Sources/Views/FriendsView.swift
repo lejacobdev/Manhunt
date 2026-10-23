@@ -61,6 +61,7 @@ struct FriendsView: View {
                             // overlaid outside the link so it keeps its own taps.
                             NavigationLink {
                                 PublicProfileView(userId: user.id, displayName: user.tagLabel)
+                                .clearsFloatingTabBar()
                             } label: {
                                 HStack(spacing: 8) {
                                     Circle()
@@ -234,6 +235,7 @@ struct FriendsView: View {
 
                     NavigationLink {
                         PublicProfileView(userId: friend.id, displayName: friend.tagLabel)
+                        .clearsFloatingTabBar()
                     } label: {
                         HStack(spacing: 10) {
                             Circle()

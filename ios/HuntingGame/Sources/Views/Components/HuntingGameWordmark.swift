@@ -108,5 +108,12 @@ struct HuntingGameWordmark: View {
         }
         .tacticalFont(.display, size: size)
         .foregroundColor(.white)
+        // A logo, not text to read: it keeps its size at every Dynamic Type setting instead of
+        // breaking across lines ("HUNTIN ME / G G").
+        .dynamicTypeSize(.large)
+        .lineLimit(1)
+        .minimumScaleFactor(0.5)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Hunting Game")
     }
 }

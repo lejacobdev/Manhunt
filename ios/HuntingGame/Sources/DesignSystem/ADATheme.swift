@@ -113,6 +113,12 @@ extension View {
         tacticalGlass(cornerRadius: cornerRadius, tint: tint == .clear ? nil : tint, strength: strength)
     }
 
+    /// For screens pushed from a tab: they don't inherit the tab root's bottom inset, so without
+    /// this their last control sits under the floating tab bar.
+    func clearsFloatingTabBar() -> some View {
+        safeAreaInset(edge: .bottom) { Color.clear.frame(height: 84) }
+    }
+
     /// Applies the app's obsidian backdrop, edge-to-edge.
     func obsidianBackdrop() -> some View {
         background(ADATheme.obsidianBackground.edgesIgnoringSafeArea(.all))
