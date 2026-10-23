@@ -1,0 +1,20 @@
+name: ASC what's new
+
+# Sets "What's New" on the iOS version being prepared for submission from
+# ios/HuntingGame/WhatsNew.txt. Ubuntu, App Store Connect API only.
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: App Store Connect
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+        run: |
+          echo "$API_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8" node scripts/asc-whats-new.mjs
