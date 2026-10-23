@@ -15,6 +15,7 @@ struct RadarBearing: Identifiable {
 /// runners for a hunter), and a live distance readout for whichever is closest. Feeds the
 /// escalating CoreHaptics proximity pulse once the nearest distance drops under 25m.
 struct SpatialRadarView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Legacy single-target fallback, used only when `targets` is empty (e.g. a stale
     /// server or the Xcode preview below) — otherwise `targets` is the source of truth.
     let distanceMeters: Int?
@@ -89,7 +90,7 @@ struct SpatialRadarView: View {
                 VStack(spacing: 2 * scale) {
                     Image(systemName: "triangle.fill")
                         .tacticalFont(.symbol, size: (isNearest ? 16 : 9) * scale, weight: .bold)
-                        .foregroundColor(isNearest ? accentColor : .white.opacity(0.45))
+                        .foregroundColor(isNearest ? accentColor : .white.opacity(0.64))
                         .shadow(color: isNearest ? accentColor : .clear, radius: isNearest ? 8 * scale : 0)
                         .scaleEffect(isNearest ? pulseScale : 1.0)
                     if !isNearest {
@@ -97,7 +98,7 @@ struct SpatialRadarView: View {
                         // big center readout only ever shows the closest one.
                         Text("\(target.distanceMeters)m")
                             .tacticalFont(.telemetry, size: 8 * scale)
-                            .foregroundColor(.white.opacity(0.4))
+                            .tacticalText(.secondary)
                     }
                     Spacer()
                 }
@@ -123,7 +124,13 @@ struct SpatialRadarView: View {
         }
         .frame(width: diameter, height: diameter)
         .glassCard(cornerRadius: diameter / 2, tint: accentColor)
+        // One VoiceOver element that reads out what the gauge shows.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(role == .hunter ? "Radar" : "Compass")
+        .accessibilityValue(spokenReading)
         .onAppear {
+            // Reduce Motion: no spinning sweep and no pulsing — the readings themselves still update.
+            guard !reduceMotion else { return }
             withAnimation(.linear(duration: 4.0).repeatForever(autoreverses: false)) {
                 scanRotation = 360
             }
@@ -134,6 +141,20 @@ struct SpatialRadarView: View {
         .onChange(of: nearestDistance) { newValue in
             handleProximityChange(newValue)
         }
+    }
+
+    private var spokenReading: String {
+        let sorted = effectiveTargets.sorted { $0.distanceMeters < $1.distanceMeters }
+        guard let nearest = sorted.first else {
+            return role == .hunter ? "No runners in sight." : "No hunters in sight."
+        }
+        let relative = (nearest.bearingDegrees - currentHeading + 360).truncatingRemainder(dividingBy: 360)
+        let clock = Int((relative / 30).rounded()) % 12
+        let direction = "at \(clock == 0 ? 12 : clock) o'clock"
+        let who = role == .hunter ? "runner" : "hunter"
+        let level = ADATheme.dangerLabel(distanceMeters: nearest.distanceMeters).lowercased()
+        let others = sorted.count > 1 ? " \(sorted.count - 1) more in range." : ""
+        return "Nearest \(who) \(nearest.distanceMeters) metres \(direction), \(level).\(others)"
     }
 
     /// `targets` when the server sent any; otherwise the legacy single distance/bearing

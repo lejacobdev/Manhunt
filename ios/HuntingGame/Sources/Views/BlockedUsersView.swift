@@ -21,7 +21,7 @@ struct BlockedUsersView: View {
                     } else if blocked.isEmpty {
                         Text("You haven't blocked anyone.")
                             .tacticalFont(.ui, size: 13, weight: .medium)
-                            .foregroundColor(.white.opacity(0.35))
+                            .tacticalText(.tertiary)
                             .padding(.top, 40)
                     } else {
                         ForEach(blocked) { user in
@@ -52,14 +52,14 @@ struct BlockedUsersView: View {
                             }
                             .padding(12)
                             .glassCard(cornerRadius: ADATheme.controlCornerRadius)
-                            .transition(.scale.combined(with: .opacity))
+                            .tacticalTransition(.scale.combined(with: .opacity))
                         }
                     }
 
                     if let errorMessage {
                         Text(errorMessage)
                             .tacticalFont(.telemetry, size: 12)
-                            .foregroundColor(ADATheme.hunterRed)
+                            .foregroundColor(ADATheme.hunterRedText)
                     }
                 }
                 .padding()

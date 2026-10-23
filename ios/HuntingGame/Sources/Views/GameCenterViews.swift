@@ -101,7 +101,7 @@ struct GameCenterCard: View {
 
                 Text("Your Game Center name and stats appear on the public leaderboards. Turn sharing off to stop posting new scores.")
                     .tacticalFont(.ui, size: 11, weight: .medium)
-                    .foregroundColor(.white.opacity(0.4))
+                    .tacticalText(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else if manager.status == .needsSignIn {
                 Button {

@@ -31,7 +31,7 @@ struct AccountSettingsView: View {
                 if let error = viewModel.errorMessage {
                     Text(error)
                         .tacticalFont(.telemetry, size: 12)
-                        .foregroundColor(ADATheme.hunterRed)
+                        .foregroundColor(ADATheme.hunterRedText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                 }
@@ -63,7 +63,7 @@ struct AccountSettingsView: View {
 
             Text("Other players find you by your name and tag together, so both can change.")
                 .tacticalFont(.ui, size: 12)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
 
             ADATextField(placeholder: "Username", text: $viewModel.username)
                 .textInputAutocapitalization(.never)
@@ -100,7 +100,7 @@ struct AccountSettingsView: View {
             } else if let days = viewModel.overview?.nameChangeCooldownDays {
                 Text("You can change this once every \(days) days.")
                     .tacticalFont(.telemetry, size: 10)
-                    .foregroundColor(.white.opacity(0.3))
+                    .tacticalText(.tertiary)
             }
 
             HStack(spacing: 10) {
@@ -119,7 +119,7 @@ struct AccountSettingsView: View {
                 if viewModel.isDirty {
                     Button("Undo") { viewModel.resetEdits() }
                         .tacticalFont(.ui, size: 13)
-                        .foregroundColor(.white.opacity(0.45))
+                        .tacticalText(.secondary)
                 }
             }
         }
@@ -136,7 +136,7 @@ struct AccountSettingsView: View {
 
             Text("Add Apple or Game Center to sign in without typing your name and password.")
                 .tacticalFont(.ui, size: 12)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
 
             ForEach(AccountProvider.allCases) { provider in
                 providerRow(provider)
@@ -200,7 +200,7 @@ struct AccountSettingsView: View {
             if isLinked && viewModel.isOnlyWayIn(provider) {
                 Text("This is the only way into your account. Set a password first to unlink it.")
                     .tacticalFont(.telemetry, size: 10)
-                    .foregroundColor(.white.opacity(0.35))
+                    .tacticalText(.tertiary)
             }
         }
         .padding(.vertical, 4)
@@ -217,7 +217,7 @@ struct AccountSettingsView: View {
                  ? "You can sign in with your name, tag and password."
                  : "This account has no password yet — it signs in with Apple or Game Center. Add one as a backup.")
                 .tacticalFont(.ui, size: 12)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
 
             Button {
                 showPasswordSheet = true
@@ -241,7 +241,7 @@ struct AccountSettingsView: View {
                 .foregroundColor(ADATheme.spatialCyan)
             Text(title)
                 .tacticalFont(.telemetry, size: 11)
-                .foregroundColor(.white.opacity(0.45))
+                .tacticalText(.secondary)
                 .tracking(1.5)
         }
     }
@@ -287,7 +287,7 @@ private struct PasswordSheet: View {
                         if let error = viewModel.errorMessage {
                             Text(error)
                                 .tacticalFont(.telemetry, size: 12)
-                                .foregroundColor(ADATheme.hunterRed)
+                                .foregroundColor(ADATheme.hunterRedText)
                                 .multilineTextAlignment(.center)
                         }
 

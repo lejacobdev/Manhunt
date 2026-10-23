@@ -87,3 +87,34 @@ enum TacticalTypeScale {
         }
     }
 }
+
+// MARK: - Contrast
+
+/// How much a line of secondary text recedes. Both levels meet WCAG AA (4.5:1) against the
+/// obsidian background and the glass cards at the default setting — the old 0.25–0.45 white
+/// opacities did not (2.1–4.3:1) — and both rise further with Increase Contrast.
+enum TextEmphasis {
+    case secondary
+    case tertiary
+}
+
+extension View {
+    func tacticalText(_ emphasis: TextEmphasis) -> some View {
+        modifier(TacticalTextEmphasisModifier(emphasis: emphasis))
+    }
+}
+
+private struct TacticalTextEmphasisModifier: ViewModifier {
+    let emphasis: TextEmphasis
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    func body(content: Content) -> some View {
+        let increased = contrast == .increased
+        let opacity: Double
+        switch emphasis {
+        case .secondary: opacity = increased ? 0.88 : 0.64
+        case .tertiary: opacity = increased ? 0.78 : 0.54
+        }
+        return content.foregroundColor(.white.opacity(opacity))
+    }
+}

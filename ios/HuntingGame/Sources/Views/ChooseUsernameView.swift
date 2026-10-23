@@ -47,7 +47,7 @@ struct ChooseUsernameView: View {
 
                             Text("PICK YOUR NAME")
                                 .tacticalFont(.telemetry, size: 12)
-                                .foregroundColor(.white.opacity(0.4))
+                                .tacticalText(.secondary)
                                 .tracking(2)
                         }
                         .padding(.top, 8)
@@ -81,7 +81,7 @@ struct ChooseUsernameView: View {
                         if let error = viewModel.errorMessage {
                             Text(error)
                                 .tacticalFont(.telemetry, size: 12)
-                                .foregroundColor(ADATheme.hunterRed)
+                                .foregroundColor(ADATheme.hunterRedText)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
                         }
@@ -99,7 +99,7 @@ struct ChooseUsernameView: View {
 
                         Button("Cancel") { viewModel.cancelSignUp() }
                             .tacticalFont(.ui, size: 13)
-                            .foregroundColor(.white.opacity(0.45))
+                            .tacticalText(.secondary)
                             .disabled(viewModel.isLoading)
                     }
                     .adaptiveContentWidth()

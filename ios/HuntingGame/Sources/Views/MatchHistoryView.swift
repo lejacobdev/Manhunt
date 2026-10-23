@@ -28,7 +28,7 @@ struct MatchHistoryView: View {
                 } else if let errorMessage {
                     Text(errorMessage)
                         .tacticalFont(.ui, size: 13, weight: .medium)
-                        .foregroundColor(ADATheme.hunterRed)
+                        .foregroundColor(ADATheme.hunterRedText)
                         .padding()
                 } else {
                     List {
@@ -59,7 +59,7 @@ struct MatchHistoryView: View {
                             if entries.isEmpty && currentSession == nil {
                                 Text("No matches yet — your finished games will show up here.")
                                     .tacticalFont(.ui, size: 13, weight: .medium)
-                                    .foregroundColor(.white.opacity(0.4))
+                                    .tacticalText(.secondary)
                                     .listRowBackground(Color.clear)
                                     .listRowSeparator(.hidden)
                             } else {
@@ -110,7 +110,7 @@ struct MatchHistoryView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     if entries.contains(where: { $0.session.status == .ended }) {
                         Button("Clear") { showClearConfirm = true }
-                            .foregroundColor(ADATheme.hunterRed)
+                            .foregroundColor(ADATheme.hunterRedText)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -217,7 +217,7 @@ struct MatchHistoryView: View {
                         .foregroundColor(.white)
                     Text(resultLabel(for: entry))
                         .tacticalFont(.telemetry, size: 10)
-                        .foregroundColor(.white.opacity(0.45))
+                        .tacticalText(.secondary)
                 }
 
                 Spacer()

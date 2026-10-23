@@ -23,7 +23,7 @@ struct HostControlPanelView: View {
                     if players.isEmpty {
                         Text("Waiting for players.")
                             .tacticalFont(.ui, size: 11, weight: .medium)
-                            .foregroundColor(.white.opacity(0.4))
+                            .tacticalText(.secondary)
                     } else {
                         ScrollView {
                             VStack(spacing: 6) {
@@ -36,7 +36,7 @@ struct HostControlPanelView: View {
                     }
                 }
                 .clipped()
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .tacticalTransition(.opacity.combined(with: .move(edge: .bottom)))
             }
 
             Button {
@@ -74,7 +74,7 @@ struct HostControlPanelView: View {
                 Text(player.username.uppercased())
                     .tacticalFont(.ui, size: 11, weight: .semibold)
                     .foregroundColor(.white)
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .truncationMode(.tail)
             }
             HStack(spacing: 6) {
@@ -95,7 +95,7 @@ struct HostControlPanelView: View {
                 }
             }
             .tacticalFont(.telemetry, size: 9)
-            .foregroundColor(.white.opacity(0.5))
+            .tacticalText(.secondary)
         }
         .padding(8)
         .background(Color.white.opacity(0.05))
@@ -106,16 +106,16 @@ struct HostControlPanelView: View {
         Group {
             if player.isOut {
                 Text("OUT")
-                    .foregroundColor(ADATheme.hunterRed)
+                    .foregroundColor(ADATheme.hunterRedText)
             } else if player.isJailed {
                 Text("JAILED")
                     .foregroundColor(ADATheme.tacticalAmber)
             } else if player.isCaught {
                 Text("CAUGHT")
-                    .foregroundColor(ADATheme.hunterRed)
+                    .foregroundColor(ADATheme.hunterRedText)
             } else {
                 Text("ACTIVE")
-                    .foregroundColor(.white.opacity(0.4))
+                    .tacticalText(.secondary)
             }
         }
         .tacticalFont(.telemetry, size: 10)

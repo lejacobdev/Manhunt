@@ -22,6 +22,9 @@ enum ADATheme {
     // MARK: Tactical accents
 
     static let hunterRed = TacticalPalette.hunterRed
+    /// Hunter red for text and small icons. The brand red is only 3.4:1 against the glass cards;
+    /// this lighter shade is 5.6:1 and still unmistakably the hunters' colour.
+    static let hunterRedText = Color(hex: "#FF6B79")
     static let runnerGreen = TacticalPalette.runnerGreen
     static let tacticalAmber = TacticalPalette.tacticalAmber
     static let spatialCyan = TacticalPalette.spatialCyan

@@ -44,7 +44,7 @@ struct CoinFlipView: View {
             if let myChoice, isFlipping {
                 Text("YOU CALLED \(myChoice.rawValue.uppercased())")
                     .tacticalFont(.ui, size: 12, weight: .medium)
-                    .foregroundColor(.white.opacity(0.5))
+                    .tacticalText(.secondary)
             }
 
             if let outcome {
@@ -55,7 +55,7 @@ struct CoinFlipView: View {
 
                 Text(outcomeSubtitle(outcome))
                     .tacticalFont(.ui, size: 12, weight: .medium)
-                    .foregroundColor(.white.opacity(0.5))
+                    .tacticalText(.secondary)
                     .multilineTextAlignment(.center)
 
                 if awaitingCall {

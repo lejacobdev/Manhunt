@@ -94,7 +94,7 @@ struct LocationConsentView: View {
 
                 Text(purpose.declineNote)
                     .tacticalFont(.ui, size: 12, weight: .medium)
-                    .foregroundColor(.white.opacity(0.4))
+                    .tacticalText(.secondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 34)
@@ -102,7 +102,7 @@ struct LocationConsentView: View {
                 if let errorMessage {
                     Text(errorMessage)
                         .tacticalFont(.telemetry, size: 12)
-                        .foregroundColor(ADATheme.hunterRed)
+                        .foregroundColor(ADATheme.hunterRedText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 30)
                 }

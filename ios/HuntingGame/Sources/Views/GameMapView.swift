@@ -229,14 +229,21 @@ struct GameMapView: UIViewRepresentable {
             if let circle = overlay as? TaggedCircle {
                 let renderer = MKCircleRenderer(circle: circle)
                 switch circle.kind {
+                // Each overlay has its own line style as well as its own colour, so they stay
+                // distinguishable for anyone who can't tell the colours apart: the boundary is a
+                // solid line, the jail a long dash, the shrinking zone a short dash, and a safe
+                // zone a dotted ring.
                 case .zone:
                     renderer.strokeColor = UIColor(ADATheme.spatialCyan)
                     renderer.fillColor = UIColor(ADATheme.spatialCyan).withAlphaComponent(0.06)
-                    renderer.lineWidth = 2
+                    renderer.lineWidth = 2.5
+                    renderer.lineDashPattern = [6, 5]
                 case .safeZone:
                     renderer.strokeColor = UIColor(ADATheme.runnerGreen)
                     renderer.fillColor = UIColor(ADATheme.runnerGreen).withAlphaComponent(0.18)
-                    renderer.lineWidth = 2
+                    renderer.lineWidth = 3
+                    renderer.lineDashPattern = [1, 6]
+                    renderer.lineCap = .round
                 }
                 return renderer
             }
@@ -250,8 +257,9 @@ struct GameMapView: UIViewRepresentable {
             case .jail:
                 renderer.strokeColor = UIColor(ADATheme.stealthPurple)
                 renderer.fillColor = UIColor(ADATheme.stealthPurple).withAlphaComponent(0.12)
+                renderer.lineDashPattern = [14, 6]
             }
-            renderer.lineWidth = 2
+            renderer.lineWidth = 2.5
             return renderer
         }
 
@@ -269,6 +277,8 @@ struct GameMapView: UIViewRepresentable {
             // silently dropped for visual tidiness.
             view.collisionMode = .none
             view.displayPriority = .required
+            view.isAccessibilityElement = true
+            view.accessibilityLabel = Self.accessibilityLabel(for: blip)
             switch blip.kind {
             case .player(let role):
                 view.markerTintColor = UIColor(ADATheme.accent(for: role))
@@ -293,6 +303,17 @@ struct GameMapView: UIViewRepresentable {
                 Self.applyNameLabel(nil, to: view)
             }
             return view
+        }
+
+        fileprivate static func accessibilityLabel(for blip: BlipAnnotation) -> String {
+            switch blip.kind {
+            case .player(let role):
+                if let name = blip.username { return "\(role.displayName) \(name)" }
+                return "You, \(role.displayName.lowercased())"
+            case .heat: return "Heat signature of a runner"
+            case .decoy: return "Decoy"
+            case .powerUpSpawn(_, let type): return "\(type.displayName) power-up. Walk to it, then double-tap to pick it up."
+            }
         }
 
         /// A small always-visible name pill under the marker — unlike a callout, it doesn't

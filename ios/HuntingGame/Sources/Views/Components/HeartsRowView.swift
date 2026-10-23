@@ -35,7 +35,7 @@ struct HeartsRowView: View {
                         if breakingIndex == index {
                             Image(systemName: "heart.fill")
                                 .tacticalFont(.symbol, size: 16, weight: .bold)
-                                .foregroundColor(ADATheme.hunterRed)
+                                .foregroundColor(ADATheme.hunterRedText)
                                 .shadow(color: ADATheme.hunterRed, radius: 8)
                                 .scaleEffect(breakAnimating ? 2.4 : 1)
                                 .rotationEffect(.degrees(breakAnimating ? 28 : 0))

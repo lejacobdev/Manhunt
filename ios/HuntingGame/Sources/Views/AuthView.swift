@@ -57,7 +57,7 @@ struct AuthView: View {
 
                         Text("REAL-WORLD GPS MANHUNT")
                             .tacticalFont(.telemetry, size: 12)
-                            .foregroundColor(.white.opacity(0.4))
+                            .tacticalText(.secondary)
                             .tracking(2)
 
                         // Same dot+telemetry-label status row as GameView's top bar
@@ -69,7 +69,7 @@ struct AuthView: View {
                                 .shadow(color: ADATheme.runnerGreen, radius: 4)
                             Text(isRegisterMode ? "NEW OPERATIVE" : "AWAITING CREDENTIALS")
                                 .tacticalFont(.telemetry, size: 10)
-                                .foregroundColor(.white.opacity(0.35))
+                                .tacticalText(.tertiary)
                                 .tracking(1.5)
                         }
                         .padding(.top, 4)
@@ -93,7 +93,7 @@ struct AuthView: View {
                         if !isRegisterMode {
                             ADATextField(placeholder: "Tag (e.g. 4921)", text: $viewModel.userTag)
                                 .keyboardType(.numberPad)
-                                .transition(.scale.combined(with: .opacity))
+                                .tacticalTransition(.scale.combined(with: .opacity))
                         }
 
                         ADASecureField(placeholder: "Password", text: $viewModel.password)
@@ -106,9 +106,9 @@ struct AuthView: View {
                     if let error = viewModel.errorMessage {
                         Text(error)
                             .tacticalFont(.telemetry, size: 12)
-                            .foregroundColor(ADATheme.hunterRed)
+                            .foregroundColor(ADATheme.hunterRedText)
                             .padding(.horizontal)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            .tacticalTransition(.opacity.combined(with: .move(edge: .top)))
                     }
 
                     Button(action: submit) {
@@ -146,7 +146,7 @@ struct AuthView: View {
                 dividerLine
                 Text("OR")
                     .tacticalFont(.telemetry, size: 10)
-                    .foregroundColor(.white.opacity(0.35))
+                    .tacticalText(.tertiary)
                     .tracking(1.5)
                 dividerLine
             }
@@ -181,7 +181,7 @@ struct AuthView: View {
 
             Text("Signing in with Apple or Game Center never posts anything for you, and we never see your email address.")
                 .tacticalFont(.telemetry, size: 10)
-                .foregroundColor(.white.opacity(0.3))
+                .tacticalText(.tertiary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 28)
         }

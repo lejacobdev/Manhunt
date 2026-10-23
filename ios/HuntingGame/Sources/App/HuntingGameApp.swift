@@ -31,6 +31,21 @@ struct RootView: View {
 
     var body: some View {
         Group {
+            #if DEBUG
+            if let scenario = ScreenshotScenario.current {
+                scenario.view
+            } else {
+                mainContent
+            }
+            #else
+            mainContent
+            #endif
+        }
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        Group {
             if !hasAcceptedTerms {
                 TermsGateView { hasAcceptedTerms = true }
             } else if !hasSeenRules {

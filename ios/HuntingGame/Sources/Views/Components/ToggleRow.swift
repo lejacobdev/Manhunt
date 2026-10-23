@@ -17,7 +17,7 @@ struct ToggleRow: View {
                     .foregroundColor(.white)
                 Text(subtitle)
                     .tacticalFont(.ui, size: 11, weight: .medium)
-                    .foregroundColor(.white.opacity(0.45))
+                    .tacticalText(.secondary)
             }
             Spacer(minLength: 8)
             Toggle("", isOn: $isOn.animation(ADATheme.controlSpring))

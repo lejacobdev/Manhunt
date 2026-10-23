@@ -133,7 +133,7 @@ struct AddFriendSheet: View {
                         .foregroundColor(.white)
                     Text("Send them a friend request?")
                         .tacticalFont(.ui, size: 13, weight: .medium)
-                        .foregroundColor(.white.opacity(0.5))
+                        .tacticalText(.secondary)
 
                     Button {
                         Task { await send(to: user) }

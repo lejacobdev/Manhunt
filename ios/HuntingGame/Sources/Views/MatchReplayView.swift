@@ -31,7 +31,7 @@ struct MatchReplayView: View {
                 } else if let errorMessage {
                     Text(errorMessage)
                         .tacticalFont(.ui, size: 13, weight: .medium)
-                        .foregroundColor(ADATheme.hunterRed)
+                        .foregroundColor(ADATheme.hunterRedText)
                         .padding()
                 } else if timeRange != nil {
                     GameMapView(
@@ -49,7 +49,7 @@ struct MatchReplayView: View {
                 } else {
                     Text("No location data was recorded for this match.")
                         .tacticalFont(.ui, size: 13, weight: .medium)
-                        .foregroundColor(.white.opacity(0.5))
+                        .tacticalText(.secondary)
                         .padding()
                 }
             }

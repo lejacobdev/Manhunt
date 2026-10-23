@@ -67,7 +67,7 @@ struct GameLobbyView: View {
                     if let error = viewModel.errorMessage {
                         Text(error)
                             .tacticalFont(.telemetry, size: 12)
-                            .foregroundColor(ADATheme.hunterRed)
+                            .foregroundColor(ADATheme.hunterRedText)
                             .padding(.horizontal)
                             .padding(.top, 8)
                     }
@@ -149,7 +149,7 @@ struct GameLobbyView: View {
             }
             Text(viewModel.isHost ? "YOU'RE HOSTING" : "WAITING FOR HOST TO START")
                 .tacticalFont(.telemetry, size: 10)
-                .foregroundColor(.white.opacity(0.4))
+                .tacticalText(.secondary)
                 .tracking(2)
         }
         .padding(.top, 12)
@@ -159,7 +159,7 @@ struct GameLobbyView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("PLAYERS · \(socket.players.count)")
                 .tacticalFont(.telemetry, size: 11)
-                .foregroundColor(.white.opacity(0.4))
+                .tacticalText(.secondary)
                 .padding(.leading, 4)
 
             // One glass list, hairlines between rows — not a card per player.
@@ -208,12 +208,12 @@ struct GameLobbyView: View {
                         } else {
                             Text(p.role.displayName.uppercased())
                                 .tacticalFont(.telemetry, size: 10)
-                                .foregroundColor(.white.opacity(0.4))
+                                .tacticalText(.secondary)
                         }
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 11)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .tacticalTransition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
             .padding(.vertical, 2)
@@ -230,7 +230,7 @@ struct GameLobbyView: View {
             HStack {
                 Text("MATCH SETTINGS")
                     .tacticalFont(.telemetry, size: 11)
-                    .foregroundColor(.white.opacity(0.4))
+                    .tacticalText(.secondary)
                 if viewModel.isHost {
                     Spacer()
                     Button {
@@ -389,7 +389,7 @@ private struct LobbySetupSheet: View {
                             .tint(ADATheme.runnerGreen)
                         Text("Runners scatter first: hunters' radar stays dark and nobody can be caught until it ends.")
                             .tacticalFont(.ui, size: 11, weight: .medium)
-                            .foregroundColor(.white.opacity(0.45))
+                            .tacticalText(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .tacticalFont(.telemetry, size: 12)
@@ -407,7 +407,7 @@ private struct LobbySetupSheet: View {
                              ? "Radar and compass update continuously."
                              : "Radar and compass only update on each ping. Thermal Vision tracks live between pings.")
                             .tacticalFont(.ui, size: 11, weight: .medium)
-                            .foregroundColor(.white.opacity(0.45))
+                            .tacticalText(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .tacticalFont(.telemetry, size: 12)
@@ -435,7 +435,7 @@ private struct LobbySetupSheet: View {
                              ? "Tap the map to redraw the play-area boundary (min. 3 points)."
                              : "Tap the map to draw the public play-area boundary (min. 3 points).")
                             .tacticalFont(.ui, size: 12, weight: .medium)
-                            .foregroundColor(.white.opacity(0.45))
+                            .tacticalText(.secondary)
                             .padding(.horizontal)
 
                         BoundaryMapView(
@@ -464,7 +464,7 @@ private struct LobbySetupSheet: View {
                             Spacer()
                             Text("\(viewModel.boundaryPoints.count) POINTS")
                                 .tacticalFont(.telemetry, size: 12)
-                                .foregroundColor(.white.opacity(0.4))
+                                .tacticalText(.secondary)
                         }
                         .padding(.horizontal)
                     }
@@ -491,7 +491,7 @@ private struct LobbySetupSheet: View {
                                 .stroke(ADATheme.borderGlass, lineWidth: 1)
                         )
                         .padding(.horizontal)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .tacticalTransition(.opacity.combined(with: .move(edge: .top)))
 
                         HStack {
                             Button("CLEAR") { viewModel.jailPoints.removeAll() }
@@ -499,7 +499,7 @@ private struct LobbySetupSheet: View {
                             Spacer()
                             Text("\(viewModel.jailPoints.count) POINTS")
                                 .tacticalFont(.telemetry, size: 12)
-                                .foregroundColor(.white.opacity(0.4))
+                                .tacticalText(.secondary)
                         }
                         .padding(.horizontal)
 
@@ -510,7 +510,7 @@ private struct LobbySetupSheet: View {
                                     .tint(ADATheme.hunterRed)
                                 Text("How long a caught runner has to walk to the jail before they're disqualified.")
                                     .tacticalFont(.ui, size: 11, weight: .medium)
-                                    .foregroundColor(.white.opacity(0.4))
+                                    .tacticalText(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
 
@@ -520,7 +520,7 @@ private struct LobbySetupSheet: View {
                                     .tint(ADATheme.runnerGreen)
                                 Text("How long a free runner must stand in the jail to release everyone in it. Costs them a heart, and every hunter one too.")
                                     .tacticalFont(.ui, size: 11, weight: .medium)
-                                    .foregroundColor(.white.opacity(0.4))
+                                    .tacticalText(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
                         }
@@ -529,7 +529,7 @@ private struct LobbySetupSheet: View {
                         .padding(16)
                         .glassCard(cornerRadius: ADATheme.cardCornerRadius)
                         .padding(.horizontal)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                        .tacticalTransition(.opacity.combined(with: .move(edge: .top)))
                     }
 
                     // GAMBLING — disabled for now, kept here so it can be switched back on
@@ -557,7 +557,7 @@ private struct LobbySetupSheet: View {
                     if let error = viewModel.errorMessage {
                         Text(error)
                             .tacticalFont(.telemetry, size: 12)
-                            .foregroundColor(ADATheme.hunterRed)
+                            .foregroundColor(ADATheme.hunterRedText)
                             .padding(.horizontal)
                     }
 

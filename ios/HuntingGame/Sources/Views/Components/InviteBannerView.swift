@@ -22,7 +22,7 @@ struct InviteBannerView: View {
                             .foregroundColor(.white)
                         Text("\(invite.mode.displayName) · CODE \(invite.sessionCode)")
                             .tacticalFont(.ui, size: 11, weight: .medium)
-                            .foregroundColor(.white.opacity(0.5))
+                            .tacticalText(.secondary)
                     }
 
                     Spacer()
@@ -31,8 +31,9 @@ struct InviteBannerView: View {
                         onDecline(invite)
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(ADATheme.hunterRed)
+                            .foregroundColor(ADATheme.hunterRedText)
                     }
+            .accessibilityLabel("Dismiss invite")
                     .tacticalFont(.symbol, size: 22, weight: .regular)
 
                     Button("JOIN") { onJoin(invite) }
@@ -40,7 +41,7 @@ struct InviteBannerView: View {
                 }
                 .padding(12)
                 .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.tacticalAmber)
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .tacticalTransition(.move(edge: .top).combined(with: .opacity))
             }
         }
         .padding(.horizontal)
@@ -67,13 +68,13 @@ struct InviteJoinSheet: View {
                         .foregroundColor(.white)
                     Text("\(invite.mode.displayName.uppercased()) · CODE \(invite.sessionCode)")
                         .tacticalFont(.telemetry, size: 11)
-                        .foregroundColor(.white.opacity(0.5))
+                        .tacticalText(.secondary)
                 }
                 .padding(.top, 24)
 
                 Text("You'll join as a runner — the host assigns hunters from the lobby.")
                     .tacticalFont(.telemetry, size: 10)
-                    .foregroundColor(.white.opacity(0.4))
+                    .tacticalText(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
 

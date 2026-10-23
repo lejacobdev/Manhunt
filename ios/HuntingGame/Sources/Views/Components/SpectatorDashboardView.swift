@@ -21,7 +21,7 @@ struct SpectatorDashboardView: View {
                     if players.isEmpty {
                         Text("Waiting for players.")
                             .tacticalFont(.ui, size: 11, weight: .medium)
-                            .foregroundColor(.white.opacity(0.4))
+                            .tacticalText(.secondary)
                     } else {
                         ScrollView {
                             VStack(spacing: 6) {
@@ -34,7 +34,7 @@ struct SpectatorDashboardView: View {
                     }
                 }
                 .clipped()
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .tacticalTransition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .padding(12)
@@ -56,12 +56,12 @@ struct SpectatorDashboardView: View {
                     Text(player.username.uppercased())
                         .tacticalFont(.ui, size: 11, weight: .semibold)
                         .foregroundColor(.white)
-                        .lineLimit(1)
+                        .lineLimit(2)
                         .truncationMode(.tail)
                     Spacer(minLength: 4)
                     Image(systemName: isFocused ? "scope" : "location")
                         .tacticalFont(.symbol, size: 12, weight: .semibold)
-                        .foregroundColor(isFocused ? ADATheme.spatialCyan : .white.opacity(0.4))
+                        .foregroundColor(isFocused ? ADATheme.spatialCyan : .white.opacity(0.64))
                 }
                 HStack(spacing: 6) {
                     Text(player.role.displayName.uppercased())
@@ -72,7 +72,7 @@ struct SpectatorDashboardView: View {
                     statusBadge(for: player)
                 }
                 .tacticalFont(.telemetry, size: 9)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
             }
             .padding(8)
             .background(isFocused ? ADATheme.spatialCyan.opacity(0.12) : Color.white.opacity(0.05))
@@ -84,13 +84,13 @@ struct SpectatorDashboardView: View {
     private func statusBadge(for player: PlayerState) -> some View {
         Group {
             if player.isOut {
-                Text("OUT").foregroundColor(ADATheme.hunterRed)
+                Text("OUT").foregroundColor(ADATheme.hunterRedText)
             } else if player.isJailed {
                 Text("JAILED").foregroundColor(ADATheme.tacticalAmber)
             } else if player.isCaught {
-                Text("CAUGHT").foregroundColor(ADATheme.hunterRed)
+                Text("CAUGHT").foregroundColor(ADATheme.hunterRedText)
             } else {
-                Text("ACTIVE").foregroundColor(.white.opacity(0.4))
+                Text("ACTIVE").tacticalText(.secondary)
             }
         }
         .tacticalFont(.telemetry, size: 10)

@@ -21,7 +21,7 @@ struct PowerUpDeckView: View {
                     if inventory.isEmpty {
                         Text("None collected — find a power-up spawn on the map.")
                             .tacticalFont(.ui, size: 11, weight: .medium)
-                            .foregroundColor(.white.opacity(0.35))
+                            .tacticalText(.tertiary)
                     } else {
                         // Stacked vertically, sized to content rather than a fixed/scrolling
                         // row — the panel's own height grows and shrinks with how many
@@ -34,12 +34,12 @@ struct PowerUpDeckView: View {
                                     HapticsEngine.shared.powerUpActivated()
                                     onActivate(item)
                                 }
-                                .transition(.scale.combined(with: .opacity))
+                                .tacticalTransition(.scale.combined(with: .opacity))
                             }
                         }
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .tacticalTransition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .padding(12)
@@ -59,7 +59,7 @@ private struct PowerUpChip: View {
                     .tacticalFont(.symbol, size: 16, weight: .bold)
                 Text(item.displayName.uppercased())
                     .tacticalFont(.telemetry, size: 12)
-                    .lineLimit(1)
+                    .lineLimit(2)
                     .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
             }

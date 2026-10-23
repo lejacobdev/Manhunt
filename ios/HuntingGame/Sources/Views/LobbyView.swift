@@ -138,7 +138,7 @@ struct LobbyView: View {
 
                     if let update = updateChecker.available {
                         UpdateBannerView(update: update, onDismiss: { updateChecker.dismiss() })
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .tacticalTransition(.move(edge: .top).combined(with: .opacity))
                     }
 
                     if !presence.incomingInvites.isEmpty {
@@ -158,7 +158,7 @@ struct LobbyView: View {
                                 Task { _ = try? await presence.respondToInvite(invite, accept: false) }
                             }
                         )
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .tacticalTransition(.move(edge: .top).combined(with: .opacity))
                     }
 
                     joinSection
@@ -178,7 +178,7 @@ struct LobbyView: View {
                     if let error = viewModel.errorMessage {
                         Text(error)
                             .tacticalFont(.telemetry, size: 12)
-                            .foregroundColor(ADATheme.hunterRed)
+                            .foregroundColor(ADATheme.hunterRedText)
                             .padding(.horizontal)
                             .transition(.opacity)
                     }
@@ -274,7 +274,7 @@ struct LobbyView: View {
                         .shadow(color: ADATheme.runnerGreen, radius: 4)
                     Text(user.tagLabel.uppercased())
                         .tacticalFont(.telemetry, size: 11)
-                        .foregroundColor(.white.opacity(0.5))
+                        .tacticalText(.secondary)
                 }
                 .padding(.top, 2)
             }
@@ -293,7 +293,7 @@ struct LobbyView: View {
 
             if viewModel.selectedMode == .squad {
                 ADATextField(placeholder: "Squad name", text: $viewModel.squadName)
-                    .transition(.scale.combined(with: .opacity))
+                    .tacticalTransition(.scale.combined(with: .opacity))
             }
 
             Button {
@@ -328,7 +328,7 @@ struct LobbyView: View {
 
             if viewModel.hostMode == .squad {
                 ADATextField(placeholder: "Squad name", text: $viewModel.hostSquadName)
-                    .transition(.scale.combined(with: .opacity))
+                    .tacticalTransition(.scale.combined(with: .opacity))
             }
 
             Button {
@@ -367,7 +367,7 @@ struct LobbyView: View {
                     .tracking(1)
                 Text(subtitle)
                     .tacticalFont(.ui, size: 11, weight: .medium)
-                    .foregroundColor(.white.opacity(0.45))
+                    .tacticalText(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)

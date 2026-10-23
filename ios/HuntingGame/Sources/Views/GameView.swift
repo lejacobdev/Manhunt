@@ -8,6 +8,7 @@ struct GameView: View {
     // otherwise those socket-driven updates wouldn't trigger a re-render.
     @ObservedObject private var socket = SocketService.shared
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var now = Date()
     @State private var focusedPlayerId: String?
     @State private var showReplay = false
@@ -28,8 +29,14 @@ struct GameView: View {
     @State private var isRecordingConsent = false
     @State private var consentError: String?
 
-    init(gamePlayer: GamePlayer, session: GameSession) {
+    /// A static screen for the simulator screenshot scenarios: no socket, no location, no
+    /// check-in screen.
+    private let isPreview: Bool
+
+    init(gamePlayer: GamePlayer, session: GameSession, isPreview: Bool = false) {
         _viewModel = StateObject(wrappedValue: GameViewModel(gamePlayer: gamePlayer, session: session))
+        self.isPreview = isPreview
+        _showLocationConsent = State(initialValue: !isPreview)
     }
 
     var body: some View {
@@ -69,9 +76,9 @@ struct GameView: View {
             }
             }
             .adaptiveContentWidth(ADATheme.dockContentWidth)
-            // The dock columns are a fixed width; past this size a panel would push the map
-            // off screen. Everything outside the live match scales further.
-            .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+            // Text in the HUD scales up to about 235 %. Past that a panel would push the map off
+            // the screen entirely; the dock columns widen with the text (see dockWidth).
+            .dynamicTypeSize(...DynamicTypeSize.accessibility3)
 
             // Drawn after (so on top of) the dock/radar above — on the right, behind
             // the radar, it used to render underneath both and never actually show.
@@ -83,40 +90,40 @@ struct GameView: View {
             if socket.gameOverReason != nil {
                 dimScrim
                 gameOverOverlay
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    .tacticalTransition(.scale(scale: 0.85).combined(with: .opacity))
             } else if viewModel.isOut {
                 dimScrim
                 eliminatedOverlay
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    .tacticalTransition(.scale(scale: 0.85).combined(with: .opacity))
             } else if viewModel.isCaught && !viewModel.isJailed {
                 dimScrim
                 caughtOverlay
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    .tacticalTransition(.scale(scale: 0.85).combined(with: .opacity))
             }
 
             if viewModel.catchTargetId != nil && viewModel.mode == .infection {
                 dimScrim
                     .onTapGesture { viewModel.cancelCatch() }
                 catchCodeSheet
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .tacticalTransition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if viewModel.incomingCatchRequest != nil {
                 dimScrim
                 catchRequestPopup
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .tacticalTransition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if let denyConfirm = viewModel.pendingDenyConfirm {
                 dimScrim
                 denyConfirmSheet(denyConfirm)
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    .tacticalTransition(.scale(scale: 0.85).combined(with: .opacity))
             }
 
             if let dispute = socket.pendingDispute {
                 dimScrim
                 disputeRulingSheet(dispute)
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
+                    .tacticalTransition(.scale(scale: 0.85).combined(with: .opacity))
             }
 
             // GAMBLING — disabled for now, kept here in full so it can be switched back on
@@ -135,7 +142,7 @@ struct GameView: View {
             //         onCall: viewModel.callGamble,
             //         onContinue: viewModel.dismissGambleResult
             //     )
-            //     .transition(.scale(scale: 0.85).combined(with: .opacity))
+            //     .tacticalTransition(.scale(scale: 0.85).combined(with: .opacity))
             // }
         }
         .animation(ADATheme.ambientSpring, value: viewModel.isCaught)
@@ -156,7 +163,7 @@ struct GameView: View {
         .animation(ADATheme.controlSpring, value: viewModel.pendingDenyConfirm)
         .animation(ADATheme.controlSpring, value: viewModel.isCoinFlipping)
         .animation(ADATheme.controlSpring, value: viewModel.role)
-        .onAppear { viewModel.start() }
+        .onAppear { if !isPreview { viewModel.start() } }
         .onDisappear { viewModel.stop() }
         .fullScreenCover(isPresented: $showLocationConsent) {
             LocationConsentView(
@@ -307,7 +314,7 @@ struct GameView: View {
                 .tacticalGlass(in: Capsule(), tint: ADATheme.tacticalAmber)
                 .padding(.horizontal, 24)
                 .padding(.top, 130)
-                .transition(.move(edge: .top).combined(with: .scale(scale: 0.6, anchor: .top)).combined(with: .opacity))
+                .tacticalTransition(.move(edge: .top).combined(with: .scale(scale: 0.6, anchor: .top)).combined(with: .opacity))
                 .accessibilityAddTraits(.updatesFrequently)
                 .allowsHitTesting(false)
             }
@@ -365,14 +372,14 @@ struct GameView: View {
                 if viewModel.role == .runner && viewModel.mode == .infection {
                     Text("CODE: \(viewModel.arrestCode)")
                         .tacticalFont(.telemetry, size: 12)
-                        .foregroundColor(.white.opacity(0.5))
+                        .tacticalText(.secondary)
                 }
                 if let remaining = matchRemainingText {
                     Text("TIME LEFT: \(remaining)")
                         .tacticalFont(.telemetry, size: 12)
                         .tacticalNumericTransition(countsDown: true)
                         .animation(.default, value: remaining)
-                        .foregroundColor(.white.opacity(0.5))
+                        .tacticalText(.secondary)
                 }
                 if let pingText = radarPingText {
                     Text(pingText)
@@ -391,32 +398,9 @@ struct GameView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 8) {
-                HStack(spacing: 8) {
-                    if viewModel.isJailed {
-                        StatusBadge(icon: "lock.fill", text: "JAILED", tint: ADATheme.tacticalAmber)
-                    }
-                    if let until = viewModel.protectedUntil, until > now {
-                        StatusBadge(icon: "shield.lefthalf.filled", text: "SHIELDED \(Int(until.timeIntervalSince(now).rounded(.up)))s", tint: ADATheme.runnerGreen)
-                    }
-                    if viewModel.isInvisible {
-                        StatusBadge(icon: "eye.slash.fill", text: "STEALTH \(viewModel.invisibilityRemainingSec)s", tint: ADATheme.stealthPurple)
-                    }
-                    // Every other buff this player is running, so activating one visibly
-                    // does something rather than just emptying an inventory slot.
-                    ForEach(otherActiveBuffs, id: \.type) { buff in
-                        StatusBadge(
-                            icon: buff.type.iconName,
-                            text: "\(buff.type.displayName.uppercased()) \(buff.remaining)s",
-                            tint: ADATheme.accent(for: buff.type)
-                        )
-                    }
-                    if viewModel.isRadarJammed {
-                        StatusBadge(
-                            icon: "bolt.slash.fill",
-                            text: viewModel.jammedRemainingSec > 0 ? "JAMMED \(viewModel.jammedRemainingSec)s" : "JAMMED",
-                            tint: ADATheme.tacticalAmber
-                        )
-                    }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { statusBadges }
+                    VStack(alignment: .trailing, spacing: 6) { statusBadges }
                 }
                 Button {
                     showExitConfirm = true
@@ -432,6 +416,36 @@ struct GameView: View {
         .glassCard(cornerRadius: 20, tint: ADATheme.accent(for: viewModel.role))
         .padding(.horizontal, 16)
         .padding(.top, 10)
+    }
+
+    /// Buffs, jail and jam badges — a row when there's room, a column when the text is large.
+    @ViewBuilder
+    private var statusBadges: some View {
+        if viewModel.isJailed {
+            StatusBadge(icon: "lock.fill", text: "JAILED", tint: ADATheme.tacticalAmber)
+        }
+        if let until = viewModel.protectedUntil, until > now {
+            StatusBadge(icon: "shield.lefthalf.filled", text: "SHIELDED \(Int(until.timeIntervalSince(now).rounded(.up)))s", tint: ADATheme.runnerGreen)
+        }
+        if viewModel.isInvisible {
+            StatusBadge(icon: "eye.slash.fill", text: "STEALTH \(viewModel.invisibilityRemainingSec)s", tint: ADATheme.stealthPurple)
+        }
+        // Every other buff this player is running, so activating one visibly
+        // does something rather than just emptying an inventory slot.
+        ForEach(otherActiveBuffs, id: \.type) { buff in
+            StatusBadge(
+                icon: buff.type.iconName,
+                text: "\(buff.type.displayName.uppercased()) \(buff.remaining)s",
+                tint: ADATheme.accent(for: buff.type)
+            )
+        }
+        if viewModel.isRadarJammed {
+            StatusBadge(
+                icon: "bolt.slash.fill",
+                text: viewModel.jammedRemainingSec > 0 ? "JAMMED \(viewModel.jammedRemainingSec)s" : "JAMMED",
+                tint: ADATheme.tacticalAmber
+            )
+        }
     }
 
     // MARK: - Bottom dock
@@ -484,7 +498,7 @@ struct GameView: View {
                     targets: radarTargets,
                     currentHeading: viewModel.currentHeadingDegrees,
                     role: viewModel.role,
-                    diameter: ADATheme.dockPanelWidth
+                    diameter: dockWidth
                 )
             ))
         }
@@ -501,11 +515,19 @@ struct GameView: View {
         return panels
     }
 
+    /// Each dock column widens with the reader's text size — up to half the screen, so the two
+    /// columns still sit on either side with the map visible above them.
+    private var dockWidth: CGFloat {
+        let textScale = TacticalTypeScale.scaled(1, for: min(dynamicTypeSize, .accessibility3))
+        let half = (UIScreen.main.bounds.width - 36) / 2
+        return min(max(ADATheme.dockPanelWidth, ADATheme.dockPanelWidth * textScale * 0.8), max(ADATheme.dockPanelWidth, half))
+    }
+
     private var bottomDock: some View {
         HStack(alignment: .bottom, spacing: 8) {
             VStack(alignment: .leading, spacing: 8) {
                 ForEach(Array(leftDockPanels.enumerated()), id: \.offset) { _, panel in
-                    panel.frame(width: ADATheme.dockPanelWidth)
+                    panel.frame(width: dockWidth)
                 }
             }
 
@@ -513,7 +535,7 @@ struct GameView: View {
 
             VStack(alignment: .trailing, spacing: 8) {
                 ForEach(Array(rightDockPanels.enumerated()), id: \.offset) { _, panel in
-                    panel.frame(width: ADATheme.dockPanelWidth)
+                    panel.frame(width: dockWidth)
                 }
             }
         }
@@ -531,7 +553,7 @@ struct GameView: View {
                     if viewModel.visibleRunners.isEmpty {
                         Text(viewModel.isRadarJammed ? "Jammed by EMP." : "None in range.")
                             .tacticalFont(.ui, size: 11, weight: .medium)
-                            .foregroundColor(.white.opacity(0.4))
+                            .tacticalText(.secondary)
                     } else {
                         ScrollView {
                             VStack(spacing: 6) {
@@ -549,7 +571,7 @@ struct GameView: View {
                                     }
                                     .buttonStyle(GlowButtonStyle(tint: ADATheme.hunterRed, glow: false))
                                     .accessibilityLabel("Catch \(runner.username)")
-                                    .transition(.scale.combined(with: .opacity))
+                                    .tacticalTransition(.scale.combined(with: .opacity))
                                 }
                             }
                         }
@@ -557,7 +579,7 @@ struct GameView: View {
                     }
                 }
                 .clipped()
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .tacticalTransition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
         .padding(12)
@@ -605,7 +627,7 @@ struct GameView: View {
 
             Text(gameOverReasonLabel)
                 .tacticalFont(.ui, size: 13, weight: .medium)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
 
             HStack(spacing: 14) {
                 Button("EXIT") { dismiss() }
@@ -683,7 +705,7 @@ struct GameView: View {
         VStack(spacing: 14) {
             Image(systemName: "hand.raised.fill")
                 .tacticalFont(.symbol, size: 36, weight: .bold)
-                .foregroundColor(ADATheme.hunterRed)
+                .foregroundColor(ADATheme.hunterRedText)
                 .shadow(color: ADATheme.hunterRed, radius: 12)
 
             Text("YOU HAVE BEEN CAUGHT")
@@ -692,7 +714,7 @@ struct GameView: View {
 
             Text("Spectate the rest of the match from here.")
                 .tacticalFont(.ui, size: 13, weight: .medium)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
         }
         .padding(32)
         .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.hunterRed, strength: .strong)
@@ -703,7 +725,7 @@ struct GameView: View {
         VStack(spacing: 14) {
             Image(systemName: "xmark.seal.fill")
                 .tacticalFont(.symbol, size: 36, weight: .bold)
-                .foregroundColor(ADATheme.hunterRed)
+                .foregroundColor(ADATheme.hunterRedText)
                 .shadow(color: ADATheme.hunterRed, radius: 12)
 
             Text("YOU'RE OUT")
@@ -712,11 +734,11 @@ struct GameView: View {
 
             Text(eliminationReasonLabel)
                 .tacticalFont(.ui, size: 13, weight: .medium)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
 
             Text("Spectate the rest of the match from here.")
                 .tacticalFont(.ui, size: 13, weight: .medium)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
         }
         .padding(32)
         .glassCard(cornerRadius: ADATheme.sheetCornerRadius, tint: ADATheme.hunterRed, strength: .strong)
@@ -745,14 +767,14 @@ struct GameView: View {
                 .multilineTextAlignment(.center)
             Text("Answer within 20 seconds — no answer counts as caught.")
                 .tacticalFont(.ui, size: 11, weight: .medium)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
                 .multilineTextAlignment(.center)
 
             // GAMBLING — see the commented-out CoinFlipView overlay above.
             // if viewModel.sessionSettings.gamblingEnabled == true {
             //     Text("Gambling risks a heart, but never sends you to jail.")
             //         .tacticalFont(.ui, size: 11, weight: .medium)
-            //         .foregroundColor(.white.opacity(0.45))
+            //         .tacticalText(.secondary)
             // }
 
             VStack(spacing: 10) {
@@ -806,7 +828,7 @@ struct GameView: View {
                 .multilineTextAlignment(.center)
             Text("If you really caught them, the host decides. If you don't answer, their word stands.")
                 .tacticalFont(.ui, size: 12, weight: .medium)
-                .foregroundColor(.white.opacity(0.5))
+                .tacticalText(.secondary)
                 .multilineTextAlignment(.center)
             VStack(spacing: 10) {
                 Button {
@@ -877,7 +899,7 @@ struct GameView: View {
                     .tacticalGlass(in: Capsule(), tint: ADATheme.hunterRed, strength: .strong)
                     .padding(.horizontal, 24)
                     .padding(.top, 130)
-                    .transition(.move(edge: .top).combined(with: .scale(scale: 0.6, anchor: .top)).combined(with: .opacity))
+                    .tacticalTransition(.move(edge: .top).combined(with: .scale(scale: 0.6, anchor: .top)).combined(with: .opacity))
                     .allowsHitTesting(false)
             } else if viewModel.bailActive {
                 bannerText(
@@ -932,7 +954,7 @@ struct GameView: View {
             .tacticalGlass(in: Capsule(), tint: tint, strength: .strong)
             .padding(.horizontal, 24)
             .padding(.top, 130)
-            .transition(.move(edge: .top).combined(with: .scale(scale: 0.6, anchor: .top)).combined(with: .opacity))
+            .tacticalTransition(.move(edge: .top).combined(with: .scale(scale: 0.6, anchor: .top)).combined(with: .opacity))
             .allowsHitTesting(false)
     }
 

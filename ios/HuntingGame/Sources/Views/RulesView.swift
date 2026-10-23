@@ -136,7 +136,7 @@ struct RulesView: View {
 
                             Button("NOT RIGHT NOW") { onDecline?() }
                                 .tacticalFont(.telemetry, size: 11)
-                                .foregroundColor(.white.opacity(0.4))
+                                .tacticalText(.secondary)
                                 .tracking(1.5)
                         }
                         .padding(.top, 4)
@@ -165,6 +165,7 @@ struct RulesView: View {
                     .tacticalFont(.telemetry, size: 11)
                     .foregroundColor(tint)
                     .tracking(1.5)
+                    .accessibilityAddTraits(.isHeader)
             }
 
             ForEach(lines, id: \.self) { line in

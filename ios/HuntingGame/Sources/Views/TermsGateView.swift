@@ -23,7 +23,7 @@ struct TermsGateView: View {
 
                                 Text("BEFORE YOU START")
                                     .tacticalFont(.telemetry, size: 12)
-                                    .foregroundColor(.white.opacity(0.4))
+                                    .tacticalText(.secondary)
                                     .tracking(2)
                             }
                             .padding(.top, 12)

@@ -101,7 +101,7 @@ struct FloatingTabBar: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
-                    .foregroundColor(selection == tab ? tab.accent : .white.opacity(0.45))
+                    .foregroundColor(selection == tab ? tab.accent : .white.opacity(0.64))
                     .frame(maxWidth: .infinity)
                     .frame(height: circleDiameter - 10)
                     .background {
@@ -117,6 +117,12 @@ struct FloatingTabBar: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(tab.label)
                 .accessibilityAddTraits(selection == tab ? .isSelected : [])
+                // The bar keeps a fixed height at every text size, so — like Apple's own tab
+                // bars — touch and hold shows the item enlarged in the middle of the screen.
+                .accessibilityShowsLargeContentViewer {
+                    Image(systemName: tab.icon)
+                    Text(tab.label)
+                }
             }
         }
         .padding(.horizontal, 5)
@@ -144,6 +150,10 @@ struct FloatingTabBar: View {
         // button changing state rather than being replaced.
         .id("floating-tab-bar-toggle")
         .accessibilityLabel(isExpanded ? "Hide tab bar" : "Show tab bar")
+        .accessibilityShowsLargeContentViewer {
+            Image(systemName: selection.icon)
+            Text(isExpanded ? "Hide tab bar" : "Show tab bar")
+        }
         .accessibilityValue(selection.label)
     }
 }

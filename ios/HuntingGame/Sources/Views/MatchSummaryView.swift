@@ -57,6 +57,8 @@ struct MatchSummaryView: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var summary: MatchSummary?
+    /// Shown instead of loading — the simulator screenshot scenarios.
+    var preloaded: MatchSummary? = nil
     @State private var errorMessage: String?
     @State private var showReplay = false
 
@@ -79,7 +81,7 @@ struct MatchSummaryView: View {
                     } else if let errorMessage {
                         Text(errorMessage)
                             .tacticalFont(.ui, size: 13, weight: .medium)
-                            .foregroundColor(ADATheme.hunterRed)
+                            .foregroundColor(ADATheme.hunterRedText)
                             .multilineTextAlignment(.center)
                             .padding(.top, 60)
                     } else {
@@ -106,6 +108,7 @@ struct MatchSummaryView: View {
     }
 
     private func load() async {
+        if let preloaded { summary = preloaded; return }
         // The last fixes and the end of the match are written as it ends; a moment's grace
         // means the summary opened straight from the game-over screen is complete.
         for attempt in 0..<3 {
@@ -132,7 +135,7 @@ struct MatchSummaryView: View {
                 .multilineTextAlignment(.center)
             Text("\(s.mode.displayName.uppercased()) · CODE \(s.code)\(s.durationSeconds.map { " · \(durationLabel($0))" } ?? "")")
                 .tacticalFont(.telemetry, size: 11)
-                .foregroundColor(.white.opacity(0.45))
+                .tacticalText(.secondary)
             if let me {
                 HStack(spacing: 10) {
                     stat("\(me.catches)", "CATCHES", ADATheme.hunterRed)
@@ -158,7 +161,7 @@ struct MatchSummaryView: View {
                 .minimumScaleFactor(0.6)
             Text(label)
                 .tacticalFont(.telemetry, size: 8)
-                .foregroundColor(.white.opacity(0.4))
+                .tacticalText(.secondary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
@@ -224,11 +227,11 @@ struct MatchSummaryView: View {
                                 Spacer()
                                 Text(statusLabel(p))
                                     .tacticalFont(.telemetry, size: 9)
-                                    .foregroundColor(p.survived ? ADATheme.runnerGreen : p.isOut ? ADATheme.hunterRed : .white.opacity(0.45))
+                                    .foregroundColor(p.survived ? ADATheme.runnerGreen : p.isOut ? ADATheme.hunterRed : .white.opacity(0.64))
                             }
                             Text(detailLine(p))
                                 .tacticalFont(.telemetry, size: 10)
-                                .foregroundColor(.white.opacity(0.5))
+                                .tacticalText(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
                             if let reason = p.outReason {
                                 Text("Out: \(reason)")
@@ -255,7 +258,7 @@ struct MatchSummaryView: View {
                     HStack(alignment: .top, spacing: 12) {
                         Text(clock(m.at))
                             .tacticalFont(.telemetry, size: 11)
-                            .foregroundColor(.white.opacity(0.4))
+                            .tacticalText(.secondary)
                             .frame(width: 44, alignment: .leading)
                         Image(systemName: icon(for: m.kind))
                             .tacticalFont(.symbol, size: 11, weight: .bold)
@@ -281,7 +284,7 @@ struct MatchSummaryView: View {
     private func sectionLabel(_ text: String) -> some View {
         Text(text)
             .tacticalFont(.telemetry, size: 11)
-            .foregroundColor(.white.opacity(0.4))
+            .tacticalText(.secondary)
             .padding(.leading, 4)
             .accessibilityAddTraits(.isHeader)
     }

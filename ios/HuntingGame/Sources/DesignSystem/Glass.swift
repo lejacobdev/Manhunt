@@ -273,3 +273,22 @@ extension View {
         }
     }
 }
+
+// MARK: - Reduce Motion
+
+extension View {
+    /// `transition`, except that with Reduce Motion on it is a plain fade: no zooming, sliding or
+    /// springing panels for anyone who finds that motion uncomfortable.
+    func tacticalTransition(_ transition: AnyTransition) -> some View {
+        modifier(ReduceMotionTransition(transition: transition))
+    }
+}
+
+private struct ReduceMotionTransition: ViewModifier {
+    let transition: AnyTransition
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func body(content: Content) -> some View {
+        content.transition(reduceMotion ? .opacity : transition)
+    }
+}

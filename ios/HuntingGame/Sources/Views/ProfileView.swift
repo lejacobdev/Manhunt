@@ -68,7 +68,7 @@ struct ProfileView: View {
                     }
                 }
                 .tacticalFont(.telemetry, size: 11)
-                .foregroundColor(.white.opacity(0.3))
+                .tacticalText(.tertiary)
                 .tracking(1.5)
                 .padding(.top, 4)
 
@@ -256,7 +256,7 @@ private struct ProfileBody: View {
             if let error = viewModel.errorMessage, viewModel.profile == nil {
                 Text(error)
                     .tacticalFont(.telemetry, size: 12)
-                    .foregroundColor(ADATheme.hunterRed)
+                    .foregroundColor(ADATheme.hunterRedText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
             }
@@ -307,7 +307,7 @@ private struct ProfileBody: View {
             if let since = profileUser?.memberSinceLabel {
                 Text("PLAYING SINCE \(since.uppercased())")
                     .tacticalFont(.telemetry, size: 10)
-                    .foregroundColor(.white.opacity(0.35))
+                    .tacticalText(.tertiary)
                     .tracking(1.5)
             }
         }
@@ -335,7 +335,7 @@ private struct ProfileBody: View {
                 .lineLimit(1)
             Text(label)
                 .tacticalFont(.telemetry, size: 9)
-                .foregroundColor(.white.opacity(0.4))
+                .tacticalText(.secondary)
                 .tracking(1)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -351,7 +351,7 @@ private struct ProfileBody: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("CAREER")
                 .tacticalFont(.telemetry, size: 11)
-                .foregroundColor(.white.opacity(0.4))
+                .tacticalText(.secondary)
                 .padding(.leading, 4)
 
             VStack(spacing: 0) {
@@ -403,7 +403,7 @@ private struct ProfileBody: View {
             HStack {
                 Text("ACHIEVEMENTS")
                     .tacticalFont(.telemetry, size: 11)
-                    .foregroundColor(.white.opacity(0.4))
+                    .tacticalText(.secondary)
                 Spacer()
                 Text("\(unlocked)/\(list.count)")
                     .tacticalFont(.telemetry, size: 11)
@@ -440,7 +440,7 @@ private struct ProfileBody: View {
 
             Text(achievement.description)
                 .tacticalFont(.ui, size: 10, weight: .medium)
-                .foregroundColor(.white.opacity(0.4))
+                .tacticalText(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -493,7 +493,7 @@ struct FriendCodeSheet: View {
             VStack(spacing: 20) {
                 Text("SCAN TO ADD ME")
                     .tacticalFont(.telemetry, size: 11)
-                    .foregroundColor(.white.opacity(0.4))
+                    .tacticalText(.secondary)
                     .tracking(2)
                     .padding(.top, 20)
 
@@ -505,7 +505,7 @@ struct FriendCodeSheet: View {
 
                 Text("Any camera app can scan this — it opens Hunting Game and sends the friend request.")
                     .tacticalFont(.ui, size: 12, weight: .medium)
-                    .foregroundColor(.white.opacity(0.4))
+                    .tacticalText(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
 

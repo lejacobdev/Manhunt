@@ -46,7 +46,7 @@ struct LeaderboardView: View {
                 Spacer()
                 Text(error)
                     .tacticalFont(.ui, size: 13, weight: .medium)
-                    .foregroundColor(ADATheme.hunterRed)
+                    .foregroundColor(ADATheme.hunterRedText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
                 Spacer()
@@ -54,7 +54,7 @@ struct LeaderboardView: View {
                 Spacer()
                 Text("No finished matches yet — play a game to get on the board.")
                     .tacticalFont(.ui, size: 13, weight: .medium)
-                    .foregroundColor(.white.opacity(0.4))
+                    .tacticalText(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
                 Spacer()
@@ -161,7 +161,7 @@ struct LeaderboardView: View {
                     .minimumScaleFactor(0.6)
                 Text(viewModel.sort.label)
                     .tacticalFont(.telemetry, size: 8)
-                    .foregroundColor(.white.opacity(0.35))
+                    .tacticalText(.tertiary)
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 12)
@@ -183,7 +183,7 @@ struct LeaderboardView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("YOUR RANK")
                     .tacticalFont(.telemetry, size: 9)
-                    .foregroundColor(.white.opacity(0.45))
+                    .tacticalText(.secondary)
                 Text("\(me.matchesPlayed) matches · \(me.winRatePercent)% wins")
                     .tacticalFont(.ui, size: 12, weight: .semibold)
                     .foregroundColor(.white)
@@ -220,7 +220,7 @@ struct LeaderboardView: View {
                         .foregroundColor(isMe ? ADATheme.tacticalAmber : .white)
                     Text("\(entry.matchesPlayed) matches · \(entry.winRatePercent)% wins")
                         .tacticalFont(.telemetry, size: 9)
-                        .foregroundColor(.white.opacity(0.4))
+                        .tacticalText(.secondary)
                 }
 
                 Spacer()
@@ -233,7 +233,7 @@ struct LeaderboardView: View {
                         .minimumScaleFactor(0.7)
                     Text(viewModel.sort.label)
                         .tacticalFont(.telemetry, size: 8)
-                        .foregroundColor(.white.opacity(0.3))
+                        .tacticalText(.tertiary)
                 }
             }
             .padding(.horizontal, 14)

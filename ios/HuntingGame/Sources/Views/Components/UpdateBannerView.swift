@@ -18,7 +18,7 @@ struct UpdateBannerView: View {
                     .foregroundColor(.white)
                 Text(update.changelog)
                     .tacticalFont(.ui, size: 11, weight: .medium)
-                    .foregroundColor(.white.opacity(0.5))
+                    .tacticalText(.secondary)
                     .lineLimit(2)
                 Text("Install it from the SideStore/AltStore app.")
                     .tacticalFont(.telemetry, size: 9)
@@ -32,8 +32,9 @@ struct UpdateBannerView: View {
                 onDismiss()
             } label: {
                 Image(systemName: "xmark.circle.fill")
-                    .foregroundColor(.white.opacity(0.35))
+                    .tacticalText(.tertiary)
             }
+            .accessibilityLabel("Dismiss update notice")
         }
         .padding(12)
         .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.spatialCyan)

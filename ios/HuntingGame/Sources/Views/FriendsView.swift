@@ -86,7 +86,7 @@ struct FriendsView: View {
                                     .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.runnerGreen))
                                     .padding(.trailing, 12)
                             }
-                            .transition(.scale.combined(with: .opacity))
+                            .tacticalTransition(.scale.combined(with: .opacity))
                         }
                     }
                     .glassCard(cornerRadius: ADATheme.cardCornerRadius)
@@ -96,12 +96,12 @@ struct FriendsView: View {
 
                 if let message = viewModel.lastActionMessage {
                     StatusBadge(icon: "checkmark.circle.fill", text: message.uppercased(), tint: ADATheme.runnerGreen)
-                        .transition(.scale.combined(with: .opacity))
+                        .tacticalTransition(.scale.combined(with: .opacity))
                 }
                 if let error = viewModel.errorMessage {
                     Text(error)
                         .tacticalFont(.telemetry, size: 12)
-                        .foregroundColor(ADATheme.hunterRed)
+                        .foregroundColor(ADATheme.hunterRedText)
                         .padding(.horizontal)
                 }
 
@@ -143,6 +143,7 @@ struct FriendsView: View {
                 Image(systemName: "qrcode.viewfinder")
                     .tacticalFont(.symbol, size: 17, weight: .semibold)
             }
+            .accessibilityLabel("Scan a friend code")
             .foregroundColor(ADATheme.spatialCyan)
 
             Spacer()
@@ -167,7 +168,7 @@ struct FriendsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("FRIEND REQUESTS")
                 .tacticalFont(.telemetry, size: 11)
-                .foregroundColor(.white.opacity(0.4))
+                .tacticalText(.secondary)
                 .padding(.leading, 4)
 
             ForEach(viewModel.incomingRequests) { request in
@@ -188,7 +189,7 @@ struct FriendsView: View {
                         Task { await viewModel.decline(request) }
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(ADATheme.hunterRed)
+                            .foregroundColor(ADATheme.hunterRedText)
                     }
                     .accessibilityLabel("Decline request from \(request.otherUser.tagLabel)")
                     Button {
@@ -202,7 +203,7 @@ struct FriendsView: View {
                 .tacticalFont(.symbol, size: 22, weight: .regular)
                 .padding(12)
                 .glassCard(cornerRadius: ADATheme.controlCornerRadius, tint: ADATheme.tacticalAmber)
-                .transition(.scale.combined(with: .opacity))
+                .tacticalTransition(.scale.combined(with: .opacity))
             }
         }
         .padding(.horizontal)
@@ -212,13 +213,13 @@ struct FriendsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("YOUR FRIENDS")
                 .tacticalFont(.telemetry, size: 11)
-                .foregroundColor(.white.opacity(0.4))
+                .tacticalText(.secondary)
                 .padding(.leading, 4)
 
             if viewModel.friends.isEmpty {
                 Text("No friends yet — search above to send a request.")
                     .tacticalFont(.ui, size: 12, weight: .medium)
-                    .foregroundColor(.white.opacity(0.35))
+                    .tacticalText(.tertiary)
             } else {
                 VStack(spacing: 0) {
                 ForEach(viewModel.friends) { friend in
@@ -253,7 +254,7 @@ struct FriendsView: View {
                             } else {
                                 Image(systemName: "chevron.right")
                                     .tacticalFont(.symbol, size: 11, weight: .semibold)
-                                    .foregroundColor(.white.opacity(0.25))
+                                    .tacticalText(.tertiary)
                             }
                         }
                         .padding(.vertical, 11)
