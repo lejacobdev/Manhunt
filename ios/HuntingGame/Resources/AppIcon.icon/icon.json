@@ -1,63 +1,67 @@
 {
-  "fill-specializations" : [
+  "fill-specializations": [
     {
-      "value" : {
-        "linear-gradient" : [
+      "value": {
+        "linear-gradient": [
           "srgb:0.74902,1.00000,0.65098,1.00000",
           "srgb:0.00000,0.55294,1.00000,1.00000"
         ]
       }
     },
     {
-      "appearance" : "dark",
-      "value" : {
-        "linear-gradient" : [
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
           "srgb:0.11765,0.30196,0.16863,1.00000",
           "srgb:0.02353,0.18039,0.36078,1.00000"
         ]
       }
     }
   ],
-  "groups" : [
+  "groups": [
     {
-      "layers" : [
+      "layers": [
         {
-          "glass" : true,
-          "image-name" : "runner.svg",
-          "name" : "Runner"
+          "glass": true,
+          "image-name": "runner.svg",
+          "name": "Runner",
+          "opacity": 1
         }
       ],
-      "name" : "Runner",
-      "shadow" : {
-        "kind" : "neutral",
-        "opacity" : 0.5
+      "name": "Runner",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
       },
-      "translucency" : {
-        "enabled" : true,
-        "value" : 0.4
-      }
+      "translucency": {
+        "enabled": true,
+        "value": 0.85
+      },
+      "blur-material": 0.3,
+      "lighting": "combined",
+      "specular": true
     },
     {
-      "layers" : [
+      "layers": [
         {
-          "glass" : false,
-          "image-name" : "rings.svg",
-          "name" : "Radar rings",
-          "opacity" : 0.28
+          "glass": false,
+          "image-name": "rings.svg",
+          "name": "Radar rings",
+          "opacity": 0.28
         }
       ],
-      "name" : "Radar",
-      "shadow" : {
-        "kind" : "none",
-        "opacity" : 0
+      "name": "Radar",
+      "shadow": {
+        "kind": "none",
+        "opacity": 0
       },
-      "translucency" : {
-        "enabled" : false,
-        "value" : 0
+      "translucency": {
+        "enabled": false,
+        "value": 0
       }
     }
   ],
-  "supported-platforms" : {
-    "squares" : "shared"
+  "supported-platforms": {
+    "squares": "shared"
   }
 }
