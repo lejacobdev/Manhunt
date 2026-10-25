@@ -9,6 +9,11 @@ name: iPhone screens
 #   gh workflow run iphone-screens.yml --ref <branch>
 on:
   workflow_dispatch:
+    inputs:
+      scenarios:
+        description: "Only these scenarios, space-separated, default text size only (empty = all, every variant)"
+        required: false
+        default: ""
 
 concurrency:
   group: iphone-screens
@@ -67,6 +72,8 @@ jobs:
           xcrun --sdk iphonesimulator assetutil --info "$APP/Assets.car" | grep -iE '"(Name|RenditionName|AssetType|Icon Image|Appearances)"' | grep -i -B1 -A1 icon | head -40 || true
 
       - name: Screenshot every scenario
+        env:
+          ONLY: ${{ inputs.scenarios }}
         run: |
           UDID="${{ steps.sim.outputs.udid }}"
           APP=$(find "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name "*.app" | head -1)
@@ -81,17 +88,24 @@ jobs:
           xcrun simctl location "$UDID" set 37.7749,-122.4194 || true
           xcrun simctl privacy "$UDID" grant location-always "$BUNDLE" || true
           xcrun simctl privacy "$UDID" grant motion "$BUNDLE" || true
+          ALL="auth rules hud-hunter hud-runner summary cosmetics invite setup game-over how-to"
           shoot() {  # $1 = variant label
-            for S in auth rules hud-hunter hud-runner summary cosmetics invite setup game-over how-to; do
+            for S in ${ONLY:-$ALL}; do
               xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
-              xcrun simctl launch "$UDID" "$BUNDLE" -UIScenario "$S" >/dev/null
-              sleep 7
+              xcrun simctl launch "$UDID" "$BUNDLE" -UIScenario "$S" > "$OUT/${1}_${S}.launch.txt" 2>&1
+              sleep 9
+              # Whether it's still running — a crash leaves a report instead.
+              xcrun simctl spawn "$UDID" launchctl list | grep -c "$BUNDLE" >> "$OUT/${1}_${S}.launch.txt" || true
               xcrun simctl io "$UDID" screenshot "$OUT/${1}_${S}.png" || true
             done
           }
           xcrun simctl ui "$UDID" content_size large
           xcrun simctl ui "$UDID" increase_contrast disabled || true
           shoot default
+          if [ -n "$ONLY" ]; then
+            cp ~/Library/Logs/DiagnosticReports/HuntingGame* "$OUT/" 2>/dev/null || true
+            ls -la "$OUT"; exit 0
+          fi
           # The home screen, to see the Liquid Glass app icon itself, light and dark.
           xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
           for MODE in light dark; do
@@ -105,10 +119,12 @@ jobs:
           xcrun simctl ui "$UDID" content_size large
           xcrun simctl ui "$UDID" increase_contrast enabled || true
           shoot increase-contrast
+          cp ~/Library/Logs/DiagnosticReports/HuntingGame* "$OUT/" 2>/dev/null || true
           ls -la "$OUT"
 
       # The Customize screen doubles as the App Review screenshot of every cosmetic purchase.
       - name: Upload the in-app purchase review screenshot
+        if: inputs.scenarios == ''
         env:
           KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -122,5 +138,8 @@ jobs:
         if: always()
         with:
           name: iphone-screens
-          path: ${{ runner.temp }}/shots/*.png
+          path: |
+            ${{ runner.temp }}/shots/*.png
+            ${{ runner.temp }}/shots/*.txt
+            ${{ runner.temp }}/shots/*.ips
           if-no-files-found: warn
