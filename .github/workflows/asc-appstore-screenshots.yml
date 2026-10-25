@@ -1,0 +1,27 @@
+name: ASC App Store screenshots
+
+# Replaces the iPhone App Store screenshots of the version being prepared with the mock-ups in
+# site/assets/appstore-screenshots-1.2 (see scripts/asc-appstore-screenshots.mjs). Set dry_run
+# to only list what's currently there.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only list the current screenshot sets"
+        required: false
+        default: ""
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: App Store Connect
+        env:
+          KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          API_KEY_B64: ${{ secrets.APP_STORE_CONNECT_API_KEY_B64 }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          echo "$API_KEY_B64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          KEY_PATH="$RUNNER_TEMP/AuthKey.p8" node scripts/asc-appstore-screenshots.mjs site/assets/appstore-screenshots-1.2
