@@ -76,8 +76,13 @@ jobs:
           xcrun simctl bootstatus "$UDID" -b >/dev/null
           xcrun simctl install "$UDID" "$APP"
           xcrun simctl status_bar "$UDID" override --time 9:41 --batteryState charged --batteryLevel 100 --cellularBars 4 || true
+          # The setup scenario draws the play area around the simulator's location; grant it up
+          # front so no permission prompt covers the screenshot.
+          xcrun simctl location "$UDID" set 37.7749,-122.4194 || true
+          xcrun simctl privacy "$UDID" grant location-always "$BUNDLE" || true
+          xcrun simctl privacy "$UDID" grant motion "$BUNDLE" || true
           shoot() {  # $1 = variant label
-            for S in auth rules hud-hunter hud-runner summary cosmetics; do
+            for S in auth rules hud-hunter hud-runner summary cosmetics invite setup game-over how-to; do
               xcrun simctl terminate "$UDID" "$BUNDLE" 2>/dev/null || true
               xcrun simctl launch "$UDID" "$BUNDLE" -UIScenario "$S" >/dev/null
               sleep 7

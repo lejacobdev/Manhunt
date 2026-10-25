@@ -5,7 +5,12 @@ import SwiftUI
 struct HowToPlayView: View {
     var onFinish: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
-    @State private var page = 0
+    @State private var page: Int
+
+    init(startPage: Int = 0, onFinish: @escaping () -> Void = {}) {
+        self.onFinish = onFinish
+        _page = State(initialValue: startPage)
+    }
 
     private struct Page {
         let title: String

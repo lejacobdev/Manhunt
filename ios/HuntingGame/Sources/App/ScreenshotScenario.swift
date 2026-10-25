@@ -13,6 +13,10 @@ enum ScreenshotScenario: String, CaseIterable {
     case hudRunner = "hud-runner"
     case summary
     case cosmetics
+    case invite
+    case setup
+    case gameOver = "game-over"
+    case howTo = "how-to"
 
     static var current: ScreenshotScenario? {
         let args = ProcessInfo.processInfo.arguments
@@ -36,6 +40,15 @@ enum ScreenshotScenario: String, CaseIterable {
         case .cosmetics:
             NavigationStack { CosmeticsView(isPreview: true) }
                 .onAppear { Task { @MainActor in CosmeticsStore.shared.loadPreview(Self.sampleCosmetics) } }
+        case .invite:
+            InviteSheet(code: "K7Q2", hostName: "jacob")
+        case .setup:
+            ScenarioSetup()
+        case .gameOver:
+            ScenarioGame(role: .hunter, gameOver: true)
+                .environment(\.launchMatch, LaunchMatchAction { _, _ in })
+        case .howTo:
+            HowToPlayView(startPage: 1)
         }
     }
 
@@ -72,9 +85,34 @@ enum ScreenshotScenario: String, CaseIterable {
     }
 }
 
+/// The host's match setup: quick setups on top, the play area drawn around the simulator's location.
+private struct ScenarioSetup: View {
+    @StateObject private var viewModel: GameLobbyViewModel = {
+        let session: GameSession = ScreenshotScenario.decode("""
+        {"id":"s1","code":"K7Q2","status":"LOBBY","mode":"STANDARD","hostId":"u-me","startedAt":null,"endedAt":null,
+         "settings":{"durationMinutes":20,"boundsPolygon":[],"jailEnabled":false,"radarIntervalSeconds":30,"headStartSeconds":60}}
+        """)
+        let player: GamePlayer = ScreenshotScenario.decode("""
+        {"id":"p-me","sessionId":"s1","userId":"u-me","role":"HUNTER","squad":null,"isCaught":false,"arrestCode":"4821","hearts":5}
+        """)
+        return GameLobbyViewModel(session: session, player: player)
+    }()
+    @StateObject private var locationManager = LocationManager()
+
+    var body: some View {
+        LobbySetupSheet(viewModel: viewModel, locationManager: locationManager)
+            .onAppear {
+                locationManager.requestAuthorizationAndStart()
+                let c = ScreenshotScenario.center
+                viewModel.useCircle(around: Coordinate(lat: c.lat, lng: c.lng), radiusMeters: 300)
+            }
+    }
+}
+
 /// The live match screen with a believable mid-match state.
 private struct ScenarioGame: View {
     let role: PlayerRole
+    var gameOver = false
 
     var body: some View {
         GameView(gamePlayer: player, session: session, isPreview: true)
@@ -113,6 +151,10 @@ private struct ScenarioGame: View {
         socket.zone = ScreenshotScenario.decode("""
         {"center":{"lat":\(c.lat),"lng":\(c.lng)},"radiusMeters":520,"fullRadiusMeters":940,"finalRadiusMeters":75,"progress":0.24}
         """)
+        if gameOver {
+            socket.gameOverReason = "ALL_RUNNERS_RESOLVED"
+            socket.rematch = ("8YH7NG", "mira")
+        }
         if role == .hunter {
             socket.radar = ScreenshotScenario.decode("""
             {"runners":[],"runnerBearings":[

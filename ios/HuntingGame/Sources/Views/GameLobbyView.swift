@@ -366,7 +366,8 @@ struct GameLobbyView: View {
 /// The host's full setup menu — duration/radar, the play area (only drawable once, before
 /// it's saved), jail, and gambling. Opened from the lobby's "Settings" button rather than
 /// shown inline, so the waiting room itself stays a simple summary everyone can read.
-private struct LobbySetupSheet: View {
+/// Internal rather than private only so the simulator screenshot scenarios can show it.
+struct LobbySetupSheet: View {
     @ObservedObject var viewModel: GameLobbyViewModel
     @ObservedObject var locationManager: LocationManager
     @ObservedObject private var socket = SocketService.shared
