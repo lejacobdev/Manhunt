@@ -63,6 +63,13 @@ struct AddFriendSheet: View {
         ZStack {
             QRScannerView(
                 onScan: { value in
+                    // Someone scanned a lobby's invite code here instead: take them to that game.
+                    if value.contains("/j/") || value.hasPrefix("\(FriendLink.scheme)://\(JoinLink.host)"),
+                       let code = JoinLink.code(from: value) {
+                        DeepLinkRouter.shared.pendingJoin = PendingJoin(code: code)
+                        dismiss()
+                        return
+                    }
                     guard let handle = FriendLink.parse(value) else {
                         errorMessage = "That isn't a Hunting Game friend code."
                         return

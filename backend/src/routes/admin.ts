@@ -163,6 +163,8 @@ adminRouter.get('/reports', async (req, res) => {
     },
     orderBy: { createdAt: 'desc' },
     take: 200,
+    // Ids only — the images themselves are fetched one at a time when a report is opened.
+    include: { attachments: { select: { id: true, mime: true }, orderBy: { createdAt: 'asc' } } },
   });
 
   // Report has no relation to User on purpose (so a report outlives the account it was
@@ -188,6 +190,17 @@ adminRouter.get('/reports', async (req, res) => {
       totalAgainstReported: countById.get(r.reportedUserId) ?? 0,
     })),
   });
+});
+
+/** One screenshot a reporter attached. Admin-only like everything on this router; never cached by a proxy. */
+adminRouter.get('/reports/:id/attachments/:attachmentId', async (req, res) => {
+  const attachment = await prisma.reportAttachment.findFirst({
+    where: { id: req.params.attachmentId, reportId: req.params.id },
+  });
+  if (!attachment) return res.status(404).json({ error: 'Screenshot not found.' });
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  return res.type(attachment.mime).send(Buffer.from(attachment.data));
 });
 
 const respondSchema = z.object({ message: z.string().min(1).max(1000) });

@@ -174,8 +174,8 @@ struct PublicProfileView: View {
         .toolbar { reportBlockToolbarContent }
         .task { await viewModel.load() }
         .sheet(isPresented: $showReportSheet) {
-            ReportSheet(displayName: displayName) { category, detail in
-                await submitReport(category: category, detail: detail)
+            ReportSheet(displayName: displayName) { category, detail, screenshots in
+                await submitReport(category: category, detail: detail, screenshots: screenshots)
             }
         }
         .confirmationDialog("Block \(displayName)?", isPresented: $showBlockConfirm, titleVisibility: .visible) {
@@ -222,9 +222,9 @@ struct PublicProfileView: View {
     }
 
     /// Returns an error message for the sheet to show, or nil once it's filed.
-    private func submitReport(category: ReportCategory, detail: String?) async -> String? {
+    private func submitReport(category: ReportCategory, detail: String?, screenshots: [Data]) async -> String? {
         do {
-            try await APIClient.shared.reportUser(id: userId, category: category.rawValue, detail: detail)
+            try await APIClient.shared.reportUser(id: userId, category: category.rawValue, detail: detail, screenshots: screenshots)
             return nil
         } catch {
             return error.localizedDescription

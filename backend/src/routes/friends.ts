@@ -188,6 +188,21 @@ friendsRouter.get('/blocked', async (req: AuthedRequest, res) => {
   return res.json({ blocked });
 });
 
+const MAX_ATTACHMENTS = 3;
+const MAX_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+// base64 is 4/3 the size of what it encodes; the bound is checked again on the decoded bytes.
+const MAX_ATTACHMENT_BASE64 = Math.ceil((MAX_ATTACHMENT_BYTES * 4) / 3) + 4;
+
+/** The decoded image, or a reason it was refused. The declared type has to match the bytes. */
+function decodeAttachment(a: { mime: string; data: string }): Buffer | string {
+  const bytes = Buffer.from(a.data, 'base64');
+  if (bytes.length === 0 || bytes.length > MAX_ATTACHMENT_BYTES) return 'Each screenshot has to be under 2 MB.';
+  const isJpeg = bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  const isPng = bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if ((a.mime === 'image/jpeg' && !isJpeg) || (a.mime === 'image/png' && !isPng)) return 'Only photos and screenshots can be attached.';
+  return bytes;
+}
+
 const reportSchema = z
   .object({
     category: z.enum([
@@ -203,6 +218,11 @@ const reportSchema = z
     /// Optional context on top of the category, except for OTHER where the category on its
     /// own conveys nothing at all.
     detail: z.string().max(500).optional(),
+    /// Screenshots as evidence (1.2+): base64 JPEG or PNG, already downscaled by the app.
+    attachments: z
+      .array(z.object({ mime: z.enum(['image/jpeg', 'image/png']), data: z.string().min(1).max(MAX_ATTACHMENT_BASE64) }))
+      .max(MAX_ATTACHMENTS)
+      .optional(),
   })
   .superRefine((data, ctx) => {
     if (data.category === 'OTHER' && !data.detail?.trim()) {
@@ -235,18 +255,32 @@ friendsRouter.post('/:userId/report', async (req: AuthedRequest, res) => {
     return res.status(400).json({ error: 'Cannot report yourself.' });
   }
 
+  const attachments: { mime: string; data: Buffer }[] = [];
+  for (const a of parsed.data.attachments ?? []) {
+    const decoded = decodeAttachment(a);
+    if (typeof decoded === 'string') return res.status(400).json({ error: decoded });
+    attachments.push({ mime: a.mime, data: decoded });
+  }
+
   const detail = parsed.data.detail?.trim() || null;
   const report = await prisma.report.create({
-    data: { reporterId, reportedUserId, category: parsed.data.category, reason: detail },
+    data: {
+      reporterId,
+      reportedUserId,
+      category: parsed.data.category,
+      reason: detail,
+      attachments: attachments.length ? { create: attachments } : undefined,
+    },
   });
   console.log(
     `[REPORT] ${parsed.data.category} — user ${reporterId} reported user ${reportedUserId}` +
       (detail ? ` — "${detail}"` : '') +
+      (attachments.length ? ` — ${attachments.length} screenshot(s)` : '') +
       ` (report ${report.id})`
   );
   // Email the moderator. Fire-and-forget on purpose — the report is already saved, and a mail
   // problem must never fail the request of someone reporting a threat.
-  notifyNewReport(report);
+  notifyNewReport({ ...report, attachmentCount: attachments.length });
   emitAdminEvent('report', { reportId: report.id, category: report.category });
   return res.status(201).json({ report });
 });

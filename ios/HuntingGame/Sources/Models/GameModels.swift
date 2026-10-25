@@ -43,6 +43,17 @@ enum GameMode: String, Codable, CaseIterable, Identifiable, Hashable {
     }
 }
 
+/// What a join link shows before you commit (GET /games/:code/preview).
+struct GamePreview: Decodable, Identifiable, Equatable {
+    let code: String
+    let mode: GameMode
+    let status: GameStatus
+    let hostUsername: String?
+    let playerCount: Int
+    let isMember: Bool
+    var id: String { code }
+}
+
 enum GameStatus: String, Codable {
     case lobby = "LOBBY"
     case active = "ACTIVE"

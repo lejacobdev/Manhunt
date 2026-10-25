@@ -9,7 +9,7 @@
 
 export type CosmeticCategory = 'mapStyle' | 'radarSkin' | 'marker' | 'banner' | 'badge';
 
-export type UnlockStat = 'matchesPlayed' | 'wins' | 'catchesMade' | 'minutesPlayed' | 'powerUpsCollected';
+export type UnlockStat = 'matchesPlayed' | 'wins' | 'catchesMade' | 'minutesPlayed' | 'powerUpsCollected' | 'playersRecruited';
 
 export interface CosmeticItem {
   id: string;
@@ -76,6 +76,7 @@ export const COSMETICS: CosmeticItem[] = [
   { id: 'badge.none', category: 'badge', name: 'None', description: 'No badge.', unlock: { kind: 'free' } },
   { id: 'badge.tracker', category: 'badge', name: 'Tracker', description: 'For 50 catches.', unlock: { kind: 'play', stat: 'catchesMade', goal: 50, label: 'Make 50 catches' } },
   { id: 'badge.marathon', category: 'badge', name: 'Marathon', description: 'For 10 hours of play.', unlock: { kind: 'play', stat: 'minutesPlayed', goal: 600, label: 'Play for 10 hours' } },
+  { id: 'badge.recruiter', category: 'badge', name: 'Recruiter', description: 'For hosting 3 players in their first ever match.', unlock: { kind: 'play', stat: 'playersRecruited', goal: 3, label: 'Bring 3 new players' } },
   { id: 'badge.veteran', category: 'badge', name: 'Veteran', description: 'For 100 matches.', unlock: { kind: 'play', stat: 'matchesPlayed', goal: 100, label: 'Play 100 matches' } },
   { id: 'badge.supporter', category: 'badge', name: 'Supporter', description: 'Thanks for supporting Hunting Game.', unlock: { kind: 'supporter' } },
 ];

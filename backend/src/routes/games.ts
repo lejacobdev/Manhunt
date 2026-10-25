@@ -5,6 +5,8 @@ import { gameService, GameSettings } from '../services/GameService';
 import { overpassSpawner } from '../services/OverpassSpawner';
 import { prisma } from '../lib/prisma';
 import { zodErrorMessage } from '../utils/validation';
+import { PlayerRole, Prisma } from '@prisma/client';
+import { pushService } from '../services/PushService';
 // Circular import (server.ts imports this router) — safe because `io` and
 // the caches are only read inside route handlers, which run long after both
 // modules have finished loading, never at module top level.
@@ -90,14 +92,148 @@ gamesRouter.post('/:code/join', async (req: AuthedRequest, res) => {
     return res.status(400).json({ error: 'Squad name is required to join a SQUAD mode game.' });
   }
 
+  // In a rematch everyone starts where they were last time (the host can still reassign), so
+  // the group doesn't have to rebuild its teams by hand. Applies to every app version, since the
+  // older ones always ask to join as a runner.
+  const previous = await previousLineup(session.settings as unknown as GameSettings, req.user!.userId);
   const player = await gameService.joinSession(
     session.id,
     req.user!.userId,
-    parsed.data.role,
-    parsed.data.squad
+    previous?.role ?? parsed.data.role,
+    parsed.data.squad || previous?.squad || undefined
   );
   return res.status(201).json({ player, session });
 });
+
+/** The role and squad a player started the previous match with, when this lobby is its rematch. */
+async function previousLineup(settings: GameSettings, userId: string): Promise<{ role: PlayerRole; squad: string | null } | null> {
+  if (!settings.rematchOf) return null;
+  const before = await prisma.gamePlayer.findFirst({
+    where: { sessionId: settings.rematchOf, userId },
+    select: { id: true, role: true, squad: true, sessionId: true },
+  });
+  if (!before) return null;
+  // In Infection a turned runner ends the match as a hunter; they started as a runner.
+  const turned = before.role === 'HUNTER'
+    ? await prisma.gameEvent.findFirst({ where: { sessionId: before.sessionId, type: 'INFECTED', payload: { path: ['playerId'], equals: before.id } }, select: { id: true } })
+    : null;
+  return { role: turned ? 'RUNNER' : before.role, squad: before.squad };
+}
+
+/**
+ * What the join prompt shows before someone commits: whose game it is, the mode, how many are in.
+ * Deliberately nothing about where — the play area stays private to the players.
+ */
+gamesRouter.get('/:code/preview', async (req: AuthedRequest, res) => {
+  const session = await gameService.getSessionByCode(req.params.code.toUpperCase());
+  if (!session) return res.status(404).json({ error: 'There is no game with that code.' });
+  const host = session.players.find((p) => p.userId === session.hostId)?.user;
+  return res.json({
+    code: session.code,
+    mode: session.mode,
+    status: session.status,
+    hostUsername: host?.username ?? null,
+    playerCount: session.players.length,
+    isMember: session.players.some((p) => p.userId === req.user!.userId),
+  });
+});
+
+// One rematch per match: two players tapping at the same moment must land in the same lobby.
+const rematchLocks = new Map<string, Promise<unknown>>();
+
+/**
+ * Starts the next match with the same group: a new lobby with the same settings and play area,
+ * the caller as its host in their previous role, and an invite to everyone else who played (the
+ * ordinary invite, so it reaches every app version, plus a live `rematch_ready` for whoever is
+ * still on the results screen). Asking again returns the same lobby.
+ */
+gamesRouter.post('/:code/rematch', async (req: AuthedRequest, res) => {
+  const userId = req.user!.userId;
+  const old = await gameService.getSessionByCode(req.params.code);
+  if (!old) return res.status(404).json({ error: 'Game not found.' });
+  if (!old.players.some((p) => p.userId === userId)) {
+    return res.status(403).json({ error: 'You are not a member of this game.' });
+  }
+  if (old.status !== 'ENDED') return res.status(409).json({ error: 'This match is still going.' });
+
+  while (rematchLocks.has(old.id)) await rematchLocks.get(old.id)!.catch(() => undefined);
+  const work = createOrJoinRematch(old.id, userId);
+  rematchLocks.set(old.id, work);
+  try {
+    const result = await work;
+    if ('error' in result) return res.status(result.status ?? 400).json({ error: result.error });
+    return res.status(result.created ? 201 : 200).json({ session: result.session, player: result.player });
+  } finally {
+    rematchLocks.delete(old.id);
+  }
+});
+
+async function createOrJoinRematch(oldSessionId: string, userId: string) {
+  const old = await prisma.gameSession.findUnique({ where: { id: oldSessionId }, include: { players: { include: { user: true } } } });
+  if (!old) return { status: 404 as number, error: 'Game not found.' };
+  const oldSettings = old.settings as unknown as GameSettings;
+
+  if (oldSettings.rematchCode) {
+    const existing = await gameService.getSessionByCode(oldSettings.rematchCode);
+    if (existing) {
+      const mine = existing.players.find((p) => p.userId === userId);
+      if (mine) return { created: false, session: existing, player: mine };
+      if (existing.status !== 'LOBBY') return { status: 409 as number, error: 'The rematch has already started.' };
+      const previous = await previousLineup(existing.settings as unknown as GameSettings, userId);
+      const player = await gameService.joinSession(existing.id, userId, previous?.role ?? 'RUNNER', previous?.squad ?? undefined);
+      return { created: false, session: existing, player };
+    }
+  }
+
+  const session = await gameService.createSession({
+    hostId: userId,
+    durationMinutes: oldSettings.durationMinutes,
+    boundsPolygon: oldSettings.boundsPolygon,
+    mode: old.mode,
+    jailEnabled: oldSettings.jailEnabled,
+    jailPolygon: oldSettings.jailPolygon,
+    jailArrivalSeconds: oldSettings.jailArrivalSeconds,
+    bailOutSeconds: oldSettings.bailOutSeconds,
+    gamblingEnabled: oldSettings.gamblingEnabled,
+    antiCheatEnabled: oldSettings.antiCheatEnabled,
+    headStartSeconds: oldSettings.headStartSeconds,
+    radarIntervalSeconds: oldSettings.radarIntervalSeconds,
+    rematchOf: old.id,
+  });
+  await prisma.gameSession.update({
+    where: { id: old.id },
+    data: { settings: { ...oldSettings, rematchCode: session.code } as unknown as Prisma.InputJsonValue },
+  });
+  const previous = await previousLineup(session.settings as unknown as GameSettings, userId);
+  const player = await gameService.joinSession(session.id, userId, previous?.role ?? 'RUNNER', previous?.squad ?? undefined);
+
+  const host = old.players.find((p) => p.userId === userId)?.user;
+  const others = old.players.filter((p) => p.userId !== userId).map((p) => p.userId);
+  // Nobody gets an invite from someone they've blocked, or who has blocked them.
+  const blocks = await prisma.friendship.findMany({
+    where: { status: 'BLOCKED', OR: [{ senderId: userId, receiverId: { in: others } }, { receiverId: userId, senderId: { in: others } }] },
+    select: { senderId: true, receiverId: true },
+  });
+  const blocked = new Set(blocks.map((b) => (b.senderId === userId ? b.receiverId : b.senderId)));
+  for (const toUserId of others.filter((id) => !blocked.has(id))) {
+    const invite = await prisma.gameInvite.upsert({
+      where: { sessionId_toUserId: { sessionId: session.id, toUserId } },
+      create: { sessionId: session.id, fromUserId: userId, toUserId, status: 'PENDING' },
+      update: { status: 'PENDING', fromUserId: userId, respondedAt: null },
+    });
+    io.to(`user:${toUserId}`).emit('game_invite', {
+      id: invite.id, sessionCode: session.code, mode: session.mode, fromUserId: userId, fromUsername: host?.username ?? 'A player', createdAt: invite.createdAt,
+    });
+    void pushService.notify(toUserId, {
+      title: 'Rematch!',
+      body: `${host?.username ?? 'A player'} started a rematch. Tap to join.`,
+      data: { type: 'game_invite', inviteId: invite.id, sessionCode: session.code },
+    });
+  }
+  io.to(old.code).emit('rematch_ready', { code: session.code, hostUsername: host?.username ?? null });
+  const full = await gameService.getSessionByCode(session.code);
+  return { created: true, session: full ?? session, player };
+}
 
 /**
  * Records that this player explicitly agreed to share their live location for this one

@@ -97,7 +97,7 @@ struct GameLobbyView: View {
                 Text("You can rejoin from Mission Control while this game is still in the lobby or running.")
             }
             .sheet(isPresented: $showFriends) {
-                FriendsView(inviteSessionCode: viewModel.session.code)
+                InviteSheet(code: viewModel.session.code, hostName: nil)
             }
             .sheet(isPresented: $showSettings) {
                 LobbySetupSheet(viewModel: viewModel, locationManager: locationManager)
@@ -127,6 +127,15 @@ struct GameLobbyView: View {
                     locationManager.stop()
                 }
             }
+        }
+    }
+
+    /// The setup sheet needs this device's position for its map, so the first visit asks first.
+    private func openSettings() {
+        if playAreaLocationConsented {
+            showSettings = true
+        } else {
+            showPlayAreaConsent = true
         }
     }
 
@@ -219,6 +228,29 @@ struct GameLobbyView: View {
             }
             .padding(.vertical, 2)
             .glassCard(cornerRadius: ADATheme.cardCornerRadius)
+
+            // Most lobbies that never start are a host waiting alone, so say what to do next.
+            if socket.players.count < 2 {
+                Button {
+                    showFriends = true
+                } label: {
+                    HStack(alignment: .top, spacing: 10) {
+                        Image(systemName: "person.badge.plus")
+                            .foregroundColor(ADATheme.runnerGreen)
+                        Text("Manhunt needs at least 2 players. Show your friends the QR code, or send them the invite link. It works even if they don't have the app yet.")
+                            .tacticalFont(.ui, size: 12, weight: .medium)
+                            .foregroundColor(.white.opacity(0.8))
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(14)
+                    .glassCard(cornerRadius: ADATheme.cardCornerRadius, tint: ADATheme.runnerGreen)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .tacticalTransition(.opacity)
+            }
         }
         .padding(.horizontal)
         .animation(ADATheme.controlSpring, value: socket.players.map(\.id))
@@ -235,11 +267,7 @@ struct GameLobbyView: View {
                 if viewModel.isHost {
                     Spacer()
                     Button {
-                        if playAreaLocationConsented {
-                            showSettings = true
-                        } else {
-                            showPlayAreaConsent = true
-                        }
+                        openSettings()
                     } label: {
                         HStack(spacing: 4) { Image(systemName: "gearshape.fill"); Text("SETTINGS") }
                     }
@@ -296,9 +324,18 @@ struct GameLobbyView: View {
             Button {
                 showFriends = true
             } label: {
-                HStack { Image(systemName: "person.2.fill"); Text("INVITE FRIENDS") }
+                HStack { Image(systemName: "qrcode"); Text("INVITE PLAYERS") }
             }
             .buttonStyle(TacticalGhostButtonStyle(tint: .white))
+
+            if viewModel.isHost && !viewModel.isReadyToStart {
+                Button {
+                    openSettings()
+                } label: {
+                    HStack { Image(systemName: "slider.horizontal.3"); Text("SET UP THE MATCH") }
+                }
+                .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
+            }
 
             if viewModel.isHost {
                 Button {
@@ -315,7 +352,7 @@ struct GameLobbyView: View {
                 .opacity(viewModel.isReadyToStart ? 1.0 : 0.4)
 
                 if !viewModel.isReadyToStart {
-                    Text("Draw the play area in Settings before starting.")
+                    Text("Pick a quick setup, or draw the play area, before starting.")
                         .tacticalFont(.telemetry, size: 11)
                         .foregroundColor(ADATheme.tacticalAmber.opacity(0.8))
                         .multilineTextAlignment(.center)
@@ -343,6 +380,8 @@ private struct LobbySetupSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 14) {
+                    quickSetup
+
                     VStack(alignment: .leading, spacing: 8) {
                         Text("GAME MODE")
                             .tacticalFont(.telemetry, size: 12)
@@ -451,6 +490,8 @@ private struct LobbySetupSheet: View {
                                 .stroke(ADATheme.borderGlass, lineWidth: 1)
                         )
                         .padding(.horizontal)
+
+                        circleControls
 
                         HStack {
                             Button("CLEAR") { viewModel.boundaryPoints.removeAll() }
@@ -599,6 +640,77 @@ private struct LobbySetupSheet: View {
             }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private var hostCoordinate: Coordinate? {
+        locationManager.currentLocation.map { Coordinate(lat: $0.coordinate.latitude, lng: $0.coordinate.longitude) }
+    }
+
+    /// One tap fills in a sensible match; everything stays editable below.
+    private var quickSetup: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("QUICK SETUP")
+                .tacticalFont(.telemetry, size: 12)
+                .foregroundColor(.white.opacity(0.7))
+            ForEach(LobbyPreset.allCases) { preset in
+                Button {
+                    viewModel.apply(preset, around: hostCoordinate)
+                    HapticsEngine.shared.lightTap()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: preset.icon)
+                            .tacticalFont(.symbol, size: 15, weight: .bold)
+                            .foregroundColor(ADATheme.spatialCyan)
+                            .frame(width: 28)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(preset.title)
+                                .tacticalFont(.ui, size: 14, weight: .bold)
+                                .foregroundColor(.white)
+                            Text(preset.subtitle + (hostCoordinate == nil ? "" : " · area around you"))
+                                .tacticalFont(.ui, size: 11, weight: .medium)
+                                .tacticalText(.secondary)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .tacticalText(.tertiary)
+                    }
+                    .padding(12)
+                    .glassCard(cornerRadius: ADATheme.controlCornerRadius)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(ScaleButtonStyle(scale: 0.98))
+                .accessibilityHint("Sets the duration, radar ping and head start\(hostCoordinate == nil ? "" : ", and a play area around you").")
+            }
+            if hostCoordinate == nil {
+                Text("Allow location to have the play area drawn around you too.")
+                    .tacticalFont(.ui, size: 11, weight: .medium)
+                    .tacticalText(.tertiary)
+            }
+        }
+        .padding(16)
+        .glassCard(cornerRadius: ADATheme.cardCornerRadius)
+        .padding(.horizontal)
+    }
+
+    /// Lays a round play area around the host instead of tapping out points.
+    @ViewBuilder
+    private var circleControls: some View {
+        if let center = hostCoordinate {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("OR USE A CIRCLE AROUND YOU")
+                    .tacticalFont(.telemetry, size: 10)
+                    .tacticalText(.secondary)
+                HStack(spacing: 8) {
+                    ForEach([150.0, 300.0, 500.0], id: \.self) { radius in
+                        Button("\(Int(radius)) M") { viewModel.useCircle(around: center, radiusMeters: radius) }
+                            .buttonStyle(TacticalGhostButtonStyle(tint: ADATheme.spatialCyan))
+                            .accessibilityLabel("Circle with a \(Int(radius)) metre radius around you")
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+        }
     }
 
     /// Closing the sheet commits the host's edits rather than dropping them — SAVE SETTINGS

@@ -17,8 +17,8 @@ const BUNDLE_ID = process.env.APNS_BUNDLE_ID || 'com.huntinggame.app';
 
 /** Grants every play-unlock this player has earned, and returns their stats for progress bars. */
 async function grantPlayUnlocks(userId: string) {
-  const profile = await computeProfile(userId);
-  const stats = (profile?.stats ?? {}) as unknown as Record<string, number>;
+  const [profile, playersRecruited] = await Promise.all([computeProfile(userId), countPlayersRecruited(userId)]);
+  const stats: Record<string, number> = { ...((profile?.stats ?? {}) as unknown as Record<string, number>), playersRecruited };
   const earned = COSMETICS.filter((c) => c.unlock.kind === 'play' && (stats[c.unlock.stat] ?? 0) >= c.unlock.goal);
   if (earned.length) {
     await prisma.userCosmetic.createMany({
@@ -27,6 +27,24 @@ async function grantPlayUnlocks(userId: string) {
     });
   }
   return stats;
+}
+
+/**
+ * How many people played their very first finished match in a game this player hosted — the
+ * Recruiter badge. Counted from match history rather than from invite links, which can't survive
+ * an App Store install.
+ */
+async function countPlayersRecruited(userId: string): Promise<number> {
+  const rows = await prisma.$queryRaw<{ n: bigint }[]>`
+    SELECT COUNT(DISTINCT p."userId") AS n
+    FROM "GamePlayer" p
+    JOIN "GameSession" s ON s.id = p."sessionId"
+    WHERE s."hostId" = ${userId} AND s.status = 'ENDED' AND s."startedAt" IS NOT NULL AND p."userId" <> ${userId}
+      AND s."startedAt" = (
+        SELECT MIN(s2."startedAt") FROM "GamePlayer" p2 JOIN "GameSession" s2 ON s2.id = p2."sessionId"
+        WHERE p2."userId" = p."userId" AND s2.status = 'ENDED' AND s2."startedAt" IS NOT NULL
+      )`;
+  return Number(rows[0]?.n ?? 0);
 }
 
 async function ownedIds(userId: string): Promise<Set<string>> {

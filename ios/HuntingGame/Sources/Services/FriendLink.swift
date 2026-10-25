@@ -69,6 +69,47 @@ enum FriendLink {
     }
 }
 
+/// A lobby's invite link. `https://api.lejacob.dev/j/K7Q2` is what gets shared: with the app
+/// installed it opens straight here as a Universal Link (see the associated-domains entitlement and
+/// the server's apple-app-site-association); without it, it opens a web page that shows the code
+/// and the App Store link. That page's button comes back in as `huntinggame://join?code=K7Q2`.
+enum JoinLink {
+    static let host = "join"
+
+    static func shareURL(code: String) -> URL {
+        FriendLink.webBase.appendingPathComponent("j").appendingPathComponent(code.uppercased())
+    }
+
+    /// The game code in any of the link's forms, or a code typed or scanned on its own.
+    static func code(from raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        if let components = URLComponents(string: trimmed), let scheme = components.scheme {
+            if scheme == FriendLink.scheme, components.host == host {
+                return clean(components.queryItems?.first(where: { $0.name == "code" })?.value)
+            }
+            if scheme == "https" || scheme == "http" {
+                let parts = components.path.split(separator: "/").map(String.init)
+                if let index = parts.firstIndex(of: "j"), parts.count > index + 1 { return clean(parts[index + 1]) }
+            }
+            return nil
+        }
+        return clean(trimmed)
+    }
+
+    private static func clean(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let code = value.uppercased().filter { $0.isLetter || $0.isNumber }
+        return (4...12).contains(code.count) ? code : nil
+    }
+}
+
+/// A join link waiting to be acted on.
+struct PendingJoin: Identifiable, Equatable {
+    let code: String
+    var id: String { code }
+}
+
 /// Carries a friend handle from wherever it was opened (a scanned code, or the app being
 /// launched by the deep link itself) to whichever screen is in a position to act on it.
 /// A published property rather than a direct call because the link can arrive while the
@@ -78,11 +119,19 @@ final class DeepLinkRouter: ObservableObject {
     static let shared = DeepLinkRouter()
 
     @Published var pendingFriend: FriendLink.Handle?
+    /// A game someone was invited to by link. Held until the player is signed in and on
+    /// Mission Control, which then asks them to confirm.
+    @Published var pendingJoin: PendingJoin?
 
     private init() {}
 
     func handle(_ url: URL) {
-        guard let handle = FriendLink.parse(url.absoluteString) else { return }
+        let raw = url.absoluteString
+        if url.path.split(separator: "/").first == "j" || url.host == JoinLink.host {
+            if let code = JoinLink.code(from: raw) { pendingJoin = PendingJoin(code: code) }
+            return
+        }
+        guard let handle = FriendLink.parse(raw) else { return }
         pendingFriend = handle
     }
 }

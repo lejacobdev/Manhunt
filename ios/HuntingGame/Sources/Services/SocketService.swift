@@ -34,6 +34,8 @@ final class SocketService: ObservableObject {
     @Published var winningSquad: String?
     @Published var isConnected: Bool = false
     @Published var gameOverReason: String?
+    /// Someone started the next match with this group (`rematch_ready`): its code and host.
+    @Published var rematch: (code: String, hostUsername: String?)?
     /// The runner's own incoming "did you get caught?" popup.
     @Published var incomingCatchRequest: CatchRequest?
     /// Hunter-side "was it an accident?" prompt, after a runner taps No.
@@ -162,6 +164,7 @@ final class SocketService: ObservableObject {
         pendingDispute = nil
         winningSquad = nil
         gameOverReason = nil
+        rematch = nil
         incomingCatchRequest = nil
         pendingDenyConfirm = nil
         lastGambleResult = nil
@@ -568,6 +571,11 @@ final class SocketService: ObservableObject {
             guard let dict = data.first as? [String: Any] else { return }
             self?.winningSquad = dict["winningSquad"] as? String
             self?.gameOverReason = dict["reason"] as? String
+        }
+
+        socket.on("rematch_ready") { [weak self] data, _ in
+            guard let dict = data.first as? [String: Any], let code = dict["code"] as? String else { return }
+            self?.rematch = (code, dict["hostUsername"] as? String)
         }
 
         socket.on("catch_dispute") { [weak self] data, _ in

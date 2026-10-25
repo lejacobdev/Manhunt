@@ -26,6 +26,14 @@ struct LobbyView: View {
     /// An invite whose join was held back by the rules gate, resumed once they accept.
     @State private var pendingInvite: GameInvite?
     @State private var showRulesGate = false
+    /// A game opened from an invite link, waiting for the player to confirm.
+    @State private var linkJoin: PendingJoin?
+    /// Held back by the rules gate, resumed once they accept.
+    @State private var pendingLinkJoin: PendingJoin?
+    /// The match a confirmed link join opened, presented once its sheet has finished closing.
+    @State private var linkJoinResult: (player: GamePlayer, session: GameSession)?
+    @State private var showHowToPlay = false
+    @AppStorage("hasSeenHowToPlay") private var hasSeenHowToPlay = false
 
     private enum PlayAction { case host, join }
 
@@ -164,15 +172,27 @@ struct LobbyView: View {
                     joinSection
                     hostSection
 
-                    Button {
-                        showHistory = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "clock.arrow.circlepath")
-                            Text("HISTORY")
+                    HStack(spacing: 10) {
+                        Button {
+                            showHowToPlay = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "questionmark.circle")
+                                Text("HOW TO PLAY")
+                            }
                         }
+                        .buttonStyle(TacticalGhostButtonStyle(tint: .white))
+
+                        Button {
+                            showHistory = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "clock.arrow.circlepath")
+                                Text("HISTORY")
+                            }
+                        }
+                        .buttonStyle(TacticalGhostButtonStyle(tint: .white))
                     }
-                    .buttonStyle(TacticalGhostButtonStyle(tint: .white))
                     .padding(.horizontal)
 
                     if let error = viewModel.errorMessage {
@@ -195,6 +215,36 @@ struct LobbyView: View {
         .sheet(isPresented: $showHistory) {
             MatchHistoryView()
         }
+        .sheet(isPresented: $showHowToPlay) {
+            HowToPlayView(onFinish: { hasSeenHowToPlay = true })
+        }
+        .sheet(item: $linkJoin, onDismiss: {
+            if let result = linkJoinResult {
+                linkJoinResult = nil
+                launchedGame = result
+            }
+        }) { pending in
+            JoinLinkSheet(code: pending.code) { preview, squad in
+                do {
+                    linkJoinResult = preview.isMember
+                        ? try await APIClient.shared.rejoinGame(code: preview.code)
+                        : try await APIClient.shared.joinGame(code: preview.code, role: .runner, squad: squad)
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }
+        }
+        // A link can arrive before this screen exists (it launched the app) or at any time after.
+        .onAppear {
+            takePendingJoin()
+            // New players get the walkthrough once, unless a link brought them here to join.
+            if !hasSeenHowToPlay && linkJoin == nil && pendingLinkJoin == nil {
+                hasSeenHowToPlay = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { showHowToPlay = true }
+            }
+        }
+        .onChange(of: deepLinkRouter.pendingJoin) { _ in takePendingJoin() }
         .sheet(item: $joiningInvite) { invite in
             InviteJoinSheet(invite: invite) { role, squad in
                 guard let session = try? await presence.respondToInvite(invite, accept: true) else { return }
@@ -210,6 +260,7 @@ struct LobbyView: View {
             // the match is (or becomes) active, so rejoining an already-running match
             // and entering a fresh lobby both funnel through the same entry point.
             GameLobbyView(gamePlayer: launch.player, session: launch.session)
+                .environment(\.launchMatch, LaunchMatchAction { player, session in relaunch(player, session) })
         }
         .sheet(isPresented: $showRulesGate) {
             RulesView(
@@ -218,17 +269,46 @@ struct LobbyView: View {
                     showRulesGate = false
                     if let action = pendingPlayAction { perform(action) }
                     if let invite = pendingInvite { joiningInvite = invite }
+                    if let join = pendingLinkJoin {
+                        // After the rules sheet has gone, so the two don't collide.
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { linkJoin = join }
+                    }
                     pendingPlayAction = nil
                     pendingInvite = nil
+                    pendingLinkJoin = nil
                 },
                 onDecline: {
                     showRulesGate = false
                     pendingPlayAction = nil
                     pendingInvite = nil
+                    pendingLinkJoin = nil
                     viewModel.errorMessage = "You need to accept the game rules before you can host or join a match."
                 }
             )
             .preferredColorScheme(.dark)
+        }
+    }
+
+    /// Picks up a join link from the router, through the rules gate like any other join.
+    private func takePendingJoin() {
+        guard let join = deepLinkRouter.pendingJoin else { return }
+        deepLinkRouter.pendingJoin = nil
+        selectedTab = .play
+        if hasAcceptedRules {
+            linkJoin = join
+        } else {
+            pendingLinkJoin = join
+            showRulesGate = true
+        }
+    }
+
+    /// Swaps the match on screen for another (a rematch). The old one is closed first and the new
+    /// one opened once it's gone, so the old screen's disconnect can't land on the new connection.
+    private func relaunch(_ player: GamePlayer, _ session: GameSession) {
+        launchedGame = nil
+        Task {
+            try? await Task.sleep(nanoseconds: 900_000_000)
+            launchedGame = (player, session)
         }
     }
 

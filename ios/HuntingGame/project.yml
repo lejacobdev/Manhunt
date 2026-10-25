@@ -34,7 +34,7 @@ settings:
     # testflight.yml) rather than editing this file before every release. App Store
     # Connect rejects re-uploading the same version+build pair, so the workflow passes
     # a fresh CURRENT_PROJECT_VERSION (the run number) on every build.
-    MARKETING_VERSION: "1.1.0"
+    MARKETING_VERSION: "1.2.0"
     CURRENT_PROJECT_VERSION: "1"
 
 packages:
@@ -121,6 +121,13 @@ targets:
           # capability fails the archive rather than the runtime.
           com.apple.developer.applesignin:
             - Default
+          # Universal Links: invite links (https://api.lejacob.dev/j/CODE) and friend links
+          # (/u/name/tag) open the app directly when it's installed, and the web page only when
+          # it isn't. Needs the ASSOCIATED_DOMAINS capability on the App ID (list-profiles.yml
+          # -f enable_capability=ASSOCIATED_DOMAINS) and the server's
+          # /.well-known/apple-app-site-association listing this app.
+          com.apple.developer.associated-domains:
+            - applinks:api.lejacob.dev
     settings:
       base:
         # Set explicitly rather than relying on the `entitlements:` block above to wire it

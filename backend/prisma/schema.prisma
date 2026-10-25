@@ -177,6 +177,9 @@ model Report {
   /// here and were backfilled to OTHER.
   reason         String?
   createdAt      DateTime       @default(now())
+  /// Screenshots the reporter attached as evidence (1.2+). Stored in the database rather than
+  /// on disk so they're in every backup and go wherever the report goes.
+  attachments    ReportAttachment[]
 
   @@index([reportedUserId])
   @@index([category])
@@ -189,6 +192,20 @@ model Report {
 /// answer. Not relations, so deleting either the admin or the target leaves the trail.
 /// Admin-managed additions to the built-in username filter. `isAllowlist` entries are the
 /// opposite: innocent words that contain a blocked term and should be let through.
+/// One screenshot attached to a report. Images only (JPEG or PNG, checked by their magic bytes),
+/// at most three per report and 2 MB each; only admins can read them back.
+model ReportAttachment {
+  id        String   @id @default(uuid())
+  reportId  String
+  mime      String
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+}
+
 model BlockedTerm {
   id          String   @id @default(uuid())
   term        String   @unique

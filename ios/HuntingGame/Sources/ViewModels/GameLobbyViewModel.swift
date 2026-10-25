@@ -1,6 +1,63 @@
 import Foundation
 import Combine
 
+/// One-tap match setups for the host, so a first game doesn't start with a page of sliders.
+enum LobbyPreset: String, CaseIterable, Identifiable {
+    case smallGroup, party, quick
+
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .smallGroup: return "Small group"
+        case .party: return "Party"
+        case .quick: return "Quick game"
+        }
+    }
+    var subtitle: String {
+        switch self {
+        case .smallGroup: return "2–4 players · 20 min"
+        case .party: return "6+ players · 45 min · jail"
+        case .quick: return "10 min · live radar"
+        }
+    }
+    var icon: String {
+        switch self {
+        case .smallGroup: return "person.2.fill"
+        case .party: return "person.3.fill"
+        case .quick: return "bolt.fill"
+        }
+    }
+    var durationMinutes: Int {
+        switch self {
+        case .smallGroup: return 20
+        case .party: return 45
+        case .quick: return 10
+        }
+    }
+    var radarIntervalSeconds: Int {
+        switch self {
+        case .smallGroup: return 30
+        case .party: return 60
+        case .quick: return 0
+        }
+    }
+    var headStartSeconds: Int {
+        switch self {
+        case .smallGroup: return 60
+        case .party: return 90
+        case .quick: return 30
+        }
+    }
+    var radiusMeters: Double {
+        switch self {
+        case .smallGroup: return 200
+        case .party: return 400
+        case .quick: return 150
+        }
+    }
+    var jail: Bool { self == .party }
+}
+
 /// Drives the pre-match waiting room: everyone who joined sits here (live roster, current
 /// settings) until the host starts the match, at which point `GameLobbyView` swaps to the
 /// real `GameView`. The host can also edit settings and invite friends from here, without
@@ -97,6 +154,47 @@ final class GameLobbyViewModel: ObservableObject {
         guard isHost else { return }
         boundaryPoints = []
         isRedrawingBoundary = true
+    }
+
+    /// Host-only: replaces the play area with a circle around `center` — a one-tap alternative to
+    /// drawing it point by point. Saved with the rest of the settings.
+    func useCircle(around center: Coordinate, radiusMeters: Double) {
+        guard isHost else { return }
+        if isBoundarySet { isRedrawingBoundary = true }
+        boundaryPoints = Self.circle(around: center, radiusMeters: radiusMeters)
+    }
+
+    /// Host-only: fills in a whole setup at once. With the host's position it also lays out a
+    /// circular play area (and, for a party, a small jail in the middle of it).
+    func apply(_ preset: LobbyPreset, around center: Coordinate?) {
+        guard isHost else { return }
+        durationMinutes = Double(preset.durationMinutes)
+        radarPingStep = Double(RadarPing.steps.firstIndex(of: preset.radarIntervalSeconds) ?? 0)
+        headStartSeconds = Double(preset.headStartSeconds)
+        if let center {
+            useCircle(around: center, radiusMeters: preset.radiusMeters)
+            jailEnabled = preset.jail
+            if preset.jail {
+                jailPoints = Self.circle(around: center, radiusMeters: 20, points: 8)
+                jailArrivalSeconds = 120
+                bailOutSeconds = 30
+            }
+        } else {
+            jailEnabled = false
+        }
+    }
+
+    /// A ring of points `radiusMeters` from `center`, close enough to a circle on a map.
+    static func circle(around center: Coordinate, radiusMeters: Double, points: Int = 24) -> [Coordinate] {
+        let metersPerDegreeLat = 111_320.0
+        let metersPerDegreeLng = max(1, 111_320.0 * cos(center.lat * .pi / 180))
+        return (0..<points).map { i in
+            let angle = Double(i) / Double(points) * 2 * .pi
+            return Coordinate(
+                lat: center.lat + radiusMeters * sin(angle) / metersPerDegreeLat,
+                lng: center.lng + radiusMeters * cos(angle) / metersPerDegreeLng
+            )
+        }
     }
 
     func start() {

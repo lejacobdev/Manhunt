@@ -61,6 +61,7 @@ struct MatchSummaryView: View {
     var preloaded: MatchSummary? = nil
     @State private var errorMessage: String?
     @State private var showReplay = false
+    @State private var shareImage: UIImage?
 
     var body: some View {
         NavigationStack {
@@ -78,6 +79,18 @@ struct MatchSummaryView: View {
                         }
                         .buttonStyle(GlowButtonStyle(tint: ADATheme.spatialCyan))
                         .padding(.horizontal)
+                        if let shareImage {
+                            // A story-sized card of this result, with the App Store link on it.
+                            ShareLink(
+                                item: Image(uiImage: shareImage),
+                                message: Text("Real-life manhunt on Hunting Game: \(ShareCardView.appStoreURL)"),
+                                preview: SharePreview("My Hunting Game result", image: Image(uiImage: shareImage))
+                            ) {
+                                HStack { Image(systemName: "square.and.arrow.up"); Text("SHARE MY RESULT") }
+                            }
+                            .buttonStyle(TacticalGhostButtonStyle(tint: .white))
+                            .padding(.horizontal)
+                        }
                     } else if let errorMessage {
                         Text(errorMessage)
                             .tacticalFont(.ui, size: 13, weight: .medium)
@@ -107,14 +120,20 @@ struct MatchSummaryView: View {
         .preferredColorScheme(.dark)
     }
 
+    private func renderShareCard() {
+        guard let summary, summary.endReason != nil else { return }
+        shareImage = ShareCardView.image(for: summary, myUserId: myUserId)
+    }
+
     private func load() async {
-        if let preloaded { summary = preloaded; return }
+        if let preloaded { summary = preloaded; renderShareCard(); return }
         // The last fixes and the end of the match are written as it ends; a moment's grace
         // means the summary opened straight from the game-over screen is complete.
         for attempt in 0..<3 {
             do {
                 let loaded = try await APIClient.shared.matchSummary(code: sessionCode)
                 summary = loaded
+                renderShareCard()
                 if loaded.endReason != nil || attempt == 2 { return }
             } catch {
                 errorMessage = error.localizedDescription

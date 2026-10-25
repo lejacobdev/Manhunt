@@ -239,6 +239,14 @@ final class APIClient {
     struct ReportBody: Encodable {
         let category: String
         let detail: String?
+        /// Screenshots as evidence, already downscaled (see ReportSheet). Omitted when empty.
+        let attachments: [ReportAttachment]?
+    }
+
+    struct ReportAttachment: Encodable {
+        let mime: String
+        /// Base64 image bytes.
+        let data: String
     }
 
     /// `category` is a `ReportCategory` raw value — the wire contract with the backend enum.
@@ -250,10 +258,11 @@ final class APIClient {
         let _: EmptyResponse? = try? await post("/push/diagnostic", body: Body(stage: stage, detail: detail))
     }
 
-    func reportUser(id: String, category: String, detail: String?) async throws {
+    func reportUser(id: String, category: String, detail: String?, screenshots: [Data] = []) async throws {
+        let attachments = screenshots.map { ReportAttachment(mime: "image/jpeg", data: $0.base64EncodedString()) }
         let _: EmptyResponse = try await post(
             "/friends/\(id)/report",
-            body: ReportBody(category: category, detail: detail)
+            body: ReportBody(category: category, detail: detail, attachments: attachments.isEmpty ? nil : attachments)
         )
     }
 
@@ -323,6 +332,19 @@ final class APIClient {
         struct Body: Encodable { let role: String; let squad: String? }
         struct Response: Decodable { let player: GamePlayer; let session: GameSession }
         let resp: Response = try await post("/games/\(code)/join", body: Body(role: role.rawValue, squad: squad))
+        return (resp.player, resp.session)
+    }
+
+    /// Who's hosting a lobby and how many are in it, for the prompt a join link opens.
+    func gamePreview(code: String) async throws -> GamePreview {
+        try await get("/games/\(code.uppercased())/preview")
+    }
+
+    /// The next match with the same group and settings. Whoever asks first hosts it; everyone
+    /// after them lands in the same lobby, in the role they had last match.
+    func rematch(code: String) async throws -> (player: GamePlayer, session: GameSession) {
+        struct Response: Decodable { let player: GamePlayer; let session: GameSession }
+        let resp: Response = try await post("/games/\(code)/rematch", body: EmptyBody())
         return (resp.player, resp.session)
     }
 

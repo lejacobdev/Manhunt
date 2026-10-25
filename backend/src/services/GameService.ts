@@ -27,6 +27,8 @@ export interface CreateSessionInput {
   gamblingEnabled?: boolean;
   antiCheatEnabled?: boolean;
   headStartSeconds?: number;
+  radarIntervalSeconds?: number;
+  rematchOf?: string;
 }
 
 const POWER_UP_TYPES: PowerUpType[] = [
@@ -57,6 +59,10 @@ export interface GameSettings {
   /** Seconds after the start during which hunters' radar is dark and nobody can be caught,
    *  so runners can scatter. Absent on older sessions, which means none. */
   headStartSeconds?: number;
+  /** Set on a rematch lobby: the session it continues, so players start in their old roles. */
+  rematchOf?: string;
+  /** Set on a finished session once someone starts its rematch, so everyone lands in the same one. */
+  rematchCode?: string;
 }
 
 /** A new match's head start unless the host changes it. */
@@ -82,10 +88,11 @@ export class GameService {
       bailOutSeconds: input.bailOutSeconds ?? DEFAULT_BAIL_OUT_SECONDS,
       gamblingEnabled: input.gamblingEnabled ?? false,
       antiCheatEnabled: input.antiCheatEnabled ?? false,
-      radarIntervalSeconds: 0,
+      radarIntervalSeconds: input.radarIntervalSeconds ?? 0,
       // Only apps that know about the head start ask for one; a match hosted from 1.0.x has none,
       // so its players are never shown a dark radar the old app can't explain.
       headStartSeconds: input.headStartSeconds ?? 0,
+      ...(input.rematchOf ? { rematchOf: input.rematchOf } : {}),
     };
 
     const session = await prisma.gameSession.create({

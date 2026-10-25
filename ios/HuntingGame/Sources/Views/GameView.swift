@@ -1,5 +1,6 @@
 import SwiftUI
 import MapKit
+import StoreKit
 
 struct GameView: View {
     @StateObject private var viewModel: GameViewModel
@@ -9,6 +10,10 @@ struct GameView: View {
     @ObservedObject private var socket = SocketService.shared
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.launchMatch) private var launchMatch
+    @Environment(\.requestReview) private var requestReview
+    @State private var isStartingRematch = false
+    @State private var rematchError: String?
     @State private var now = Date()
     @State private var focusedPlayerId: String?
     @State private var showReplay = false
@@ -152,10 +157,17 @@ struct GameView: View {
         // moment to write the final results, then tell Game Center; that is what turns an
         // achievement earned in this match into a banner while the player is still looking.
         .onChange(of: socket.gameOverReason) { reason in
-            guard reason != nil else { return }
+            guard reason != nil, !isPreview else { return }
             Task {
                 try? await Task.sleep(nanoseconds: 2_500_000_000)
                 await GameCenterManager.shared.syncFromServer(force: true)
+            }
+            // Right after a win is when someone's happiest with the game.
+            if ReviewPrompt.shouldAsk(afterWin: iWon) {
+                Task {
+                    try? await Task.sleep(nanoseconds: 3_000_000_000)
+                    requestReview()
+                }
             }
         }
         .animation(ADATheme.ambientSpring, value: viewModel.catchTargetId)
@@ -623,6 +635,10 @@ struct GameView: View {
                 .tacticalFont(.ui, size: 13, weight: .medium)
                 .tacticalText(.secondary)
 
+            if launchMatch != nil {
+                rematchButton
+            }
+
             HStack(spacing: 14) {
                 Button("EXIT") { dismiss() }
                     .buttonStyle(TacticalGhostButtonStyle(tint: .white.opacity(0.6)))
@@ -645,6 +661,57 @@ struct GameView: View {
             // The summary first — who caught whom, distances, power-ups — with the replay inside it.
             MatchSummaryView(sessionCode: viewModel.roomCode, myUserId: AuthSession.shared.currentUser?.id)
         }
+    }
+
+    /// Play again with the same group, settings and play area. If someone already started the
+    /// rematch this joins it; otherwise this player hosts it and everyone else gets an invite.
+    private var rematchButton: some View {
+        VStack(spacing: 6) {
+            if let rematch = socket.rematch {
+                Text("\(rematch.hostUsername?.uppercased() ?? "SOMEONE") STARTED A REMATCH")
+                    .tacticalFont(.telemetry, size: 11)
+                    .foregroundColor(ADATheme.runnerGreen)
+                    .multilineTextAlignment(.center)
+            }
+            Button {
+                Task { await startRematch() }
+            } label: {
+                if isStartingRematch {
+                    ProgressView().tint(.black)
+                } else {
+                    HStack {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Text(socket.rematch == nil ? "REMATCH" : "JOIN REMATCH")
+                    }
+                }
+            }
+            .buttonStyle(GlowButtonStyle(tint: ADATheme.runnerGreen, isLoading: isStartingRematch))
+            .disabled(isStartingRematch || isPreview)
+            if let rematchError {
+                Text(rematchError)
+                    .tacticalFont(.telemetry, size: 11)
+                    .foregroundColor(ADATheme.hunterRedText)
+                    .multilineTextAlignment(.center)
+            }
+        }
+    }
+
+    private func startRematch() async {
+        isStartingRematch = true
+        defer { isStartingRematch = false }
+        do {
+            let (player, session) = try await APIClient.shared.rematch(code: viewModel.roomCode)
+            launchMatch?(player, session)
+        } catch {
+            rematchError = error.localizedDescription
+        }
+    }
+
+    /// Whether this player's side won — drives the review prompt.
+    private var iWon: Bool {
+        if let squad = socket.winningSquad { return squad == viewModel.mySquad }
+        guard let winner = gameOverWinner else { return false }
+        return winner == viewModel.role
     }
 
     /// nil for an inconclusive end (the host cut it short, or an unrecognized reason) —

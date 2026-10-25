@@ -18,7 +18,16 @@ async function api(method, p, body) {
   return t ? JSON.parse(t) : null;
 }
 const versions = (await api('GET', `/v1/apps/${APP_ID}/appStoreVersions?filter[platform]=IOS&limit=10`)).data;
-const editable = versions.filter((v) => ['PREPARE_FOR_SUBMISSION', 'DEVELOPER_REJECTED', 'REJECTED', 'METADATA_REJECTED'].includes(v.attributes.appStoreState));
+let editable = versions.filter((v) => ['PREPARE_FOR_SUBMISSION', 'DEVELOPER_REJECTED', 'REJECTED', 'METADATA_REJECTED'].includes(v.attributes.appStoreState));
+// The app's own version (project.yml) gets an App Store version to write into if it has none yet.
+const marketing = fs.readFileSync('ios/HuntingGame/project.yml', 'utf8').match(/MARKETING_VERSION:\s*"([^"]+)"/)?.[1];
+if (marketing && !versions.some((v) => v.attributes.versionString === marketing)) {
+  const created = await api('POST', '/v1/appStoreVersions', {
+    data: { type: 'appStoreVersions', attributes: { platform: 'IOS', versionString: marketing }, relationships: { app: { data: { type: 'apps', id: APP_ID } } } },
+  });
+  console.log(`Created App Store version ${marketing}`);
+  editable = [created.data];
+}
 if (!editable.length) { console.log('No version is open for editing:', versions.map((v) => `${v.attributes.versionString}=${v.attributes.appStoreState}`).join(', ')); process.exit(1); }
 for (const v of editable) {
   const locs = (await api('GET', `/v1/appStoreVersions/${v.id}/appStoreVersionLocalizations`)).data;

@@ -1,37 +1,20 @@
-Hunting Game 1.1 is our biggest update yet.
+Hunting Game 1.2: Squad Up. Getting your group into a match is now much easier.
 
-MAJOR UPDATES
+INVITE ANYONE IN SECONDS
+- Every lobby has a QR code and an invite link. Friends scan it with their camera or tap the link, and they're in the lobby.
+- No app yet? The link shows them where to get it and the code to type in.
 
-Liquid Glass design
-• The whole app is rebuilt on Apple's Liquid Glass on iOS 26 — tab bar, match HUD, cards and buttons — keeping the tactical look you know.
-• A new app icon made of real Liquid Glass, with dark, clear and tinted styles for your home screen.
-• Redesigned screens: a leaderboard podium with your own rank always pinned at the bottom, a new profile with achievement progress rings, and cleaner friends, lobby and roster lists.
-• Much better accessibility: text grows to over 200% with your iPhone's text size, stronger contrast that rises further with Increase Contrast, Reduce Motion support, and VoiceOver labels everywhere — the radar even reads out where the nearest player is.
+REMATCH
+- One tap after a match starts the next one with the same group, settings and play area.
+- Everyone gets an invite and starts in the role they had last time.
 
-Power-ups, rebuilt
-• Every power-up takes effect the moment you use it and ends exactly on time.
-• Thermal Vision shows every runner within 300 m on your map as a heat signature, invisible runners included.
-• Ghost Decoy sends a fake copy of you walking away from where you were heading — hunters can't tell it from the real you until they reach it.
-• EMP Jammer knocks out the radar of every hunter within 200 m for 60 seconds.
-• Invisibility hides you from the other side's radar or compass for 60 seconds.
-• You only see and pick up the power-ups your side can use.
+QUICK SETUP
+- Pick Small Group, Party or Quick Game and the match is set up for you, including a play area around where you're standing.
+- Or lay down a 150, 300 or 500 m circle around you instead of drawing the area point by point.
 
-New ways to play
-• Radar ping: hosts can set the radar to live, or to ping anywhere from every 10 seconds to every 10 minutes. Between pings, radar and compass go quiet — and Thermal Vision keeps tracking live.
-• Runner head start: runners scatter first while the hunters' radar stays dark.
-• Hearts are now lives in every mode: each catch costs a heart, and you keep playing until your last one.
-• Answer catch requests straight from your lock screen.
-• A match summary after every game: who caught whom, distance run, power-ups used, highlights and a timeline.
-• The shrinking zone now scales to the length of your match.
-• Customize: map styles, radar skins, map markers, profile banners and badges. Unlock looks by playing, or support the game with optional packs. Looks only — nothing for sale changes who wins.
-
-Fairer matches
-• No answer to a catch within 20 seconds counts as caught.
-• Disagree about a catch? The hunter can insist, and the host decides.
-• Runners freed from jail get 30 seconds before they can be caught again.
-• The jail never costs hearts, and Safe Zone Flares no longer work there.
-• Infection ends as soon as everyone has been turned.
-• Squad mode now has a real winner: the last squad with a runner still free.
-
-MINOR UPDATES
-• Many bug fixes and smaller improvements throughout.
+ALSO NEW
+- How to Play: a short walkthrough of the radar, catches, hearts, jail and power-ups.
+- Share your result: a story-ready card for Instagram, Snapchat or Messages.
+- Reports can include up to three screenshots as evidence.
+- New Recruiter badge: host the first match of three new players.
+- Bug fixes and improvements.

@@ -68,6 +68,7 @@ enum CosmeticStyle {
         switch id {
         case "badge.tracker": return ("TRACKER", "scope", ADATheme.hunterRedText)
         case "badge.marathon": return ("MARATHON", "figure.run", ADATheme.runnerGreen)
+        case "badge.recruiter": return ("RECRUITER", "person.badge.plus", ADATheme.tacticalAmber)
         case "badge.veteran": return ("VETERAN", "shield.lefthalf.filled", ADATheme.spatialCyan)
         case "badge.supporter": return ("SUPPORTER", "heart.fill", Color(hex: "#FFD66B"))
         default: return nil

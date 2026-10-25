@@ -78,6 +78,8 @@ interface ReportRow {
   category: string;
   reason: string | null;
   createdAt: Date;
+  /** Screenshots attached as evidence — they're viewed in the admin panel, not mailed. */
+  attachmentCount?: number;
 }
 
 async function sendAlert(report: ReportRow): Promise<void> {
@@ -132,6 +134,7 @@ async function sendAlert(report: ReportRow): Promise<void> {
     '',
     'What the reporter wrote:',
     report.reason ? `  "${report.reason}"` : '  (no details given)',
+    ...(report.attachmentCount ? ['', `Screenshots: ${report.attachmentCount} attached (open the report in the admin panel to see them).`] : []),
     '',
     `Review and respond: ${adminUrl}   ->  Reports`,
   ];

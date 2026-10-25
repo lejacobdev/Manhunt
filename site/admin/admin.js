@@ -415,10 +415,22 @@ function eventSummary(e) {
 
 // ---------- reports
 
+function showShot(src) {
+  document.getElementById("shot-viewer")?.remove();
+  const el = document.createElement("div");
+  el.id = "shot-viewer";
+  el.className = "shot-viewer";
+  el.dataset.act = "close-shot";
+  el.setAttribute("role", "dialog");
+  el.setAttribute("aria-label", "Screenshot, tap to close");
+  el.innerHTML = `<img src="${src}" alt="Screenshot">`;
+  document.body.appendChild(el);
+}
+
 function reportRow(r, i) {
   return `<div class="row clickable ${STATE.selected === i && route() === "reports" ? "selected" : ""}" data-act="open-report" data-id="${esc(r.id)}" data-index="${i ?? ""}">
     <span class="chip ${URGENT.has(r.category) ? "urgent" : r.status === "OPEN" ? "open" : r.status === "RESOLVED" ? "green" : ""}">${pretty(r.category)}</span>
-    <div class="grow"><div class="title">${handle(r.reported)}${r.totalAgainstReported > 1 ? ` <span class="chip red">${r.totalAgainstReported} reports</span>` : ""}</div>
+    <div class="grow"><div class="title">${handle(r.reported)}${r.totalAgainstReported > 1 ? ` <span class="chip red">${r.totalAgainstReported} reports</span>` : ""}${r.attachments?.length ? ` <span class="chip">${r.attachments.length} screenshot${r.attachments.length === 1 ? "" : "s"}</span>` : ""}</div>
       <div class="meta">by ${handle(r.reporter)}${r.reason ? " · " + esc(r.reason) : ""}</div></div>
     <span class="meta">${ago(r.createdAt)}</span></div>`;
 }
@@ -457,6 +469,7 @@ async function openReport(id) {
       <dt>Filed by</dt><dd>${r.reporter ? `<a href="#" data-act="open-user" data-id="${esc(r.reporter.id)}">${handle(r.reporter)}</a>` : handle(null)}</dd>
       <dt>Against them</dt><dd>${r.totalAgainstReported} report${r.totalAgainstReported === 1 ? "" : "s"} in total</dd></dl></div>
     <div class="section"><div class="label">What they said</div><div class="quote">${r.reason ? esc(r.reason) : '<span class="hint">No detail — the category was the whole report.</span>'}</div></div>
+    ${r.attachments?.length ? `<div class="section"><div class="label">Screenshots · ${r.attachments.length}</div><div class="shots" id="report-shots">${r.attachments.map((a, i) => `<button class="shot" data-act="zoom-shot" aria-label="Screenshot ${i + 1}, enlarge"><span class="hint">Loading…</span></button>`).join("")}</div></div>` : ""}
     ${r.adminResponse ? `<div class="section"><div class="label">Our reply · ${fmt(r.respondedAt)}</div><div class="quote">${esc(r.adminResponse)}</div></div>` : ""}
     ${others.length ? `<div class="section"><div class="label">Other reports against this account</div><div class="list glass">${others.slice(0, 8).map((o) => `<div class="row"><span class="chip">${pretty(o.category)}</span><div class="grow meta">${esc(o.reason || "")}</div><span class="meta">${ago(o.createdAt)}</span></div>`).join("")}</div></div>` : ""}
     <div class="section actions">
@@ -467,6 +480,26 @@ async function openReport(id) {
       ${r.reported && !r.reported.isBanned ? `<button class="btn danger" data-act="ban" data-id="${esc(r.reported.id)}" data-name="${esc(r.reported.username + "#" + r.reported.userTag)}" data-reason="${esc(pretty(r.category))}">Ban <kbd>B</kbd></button>` : ""}
       ${r.category === "INAPPROPRIATE_USERNAME" && r.reported ? `<button class="btn" data-act="rename" data-id="${esc(r.reported.id)}" data-current="${esc(r.reported.username)}">Rename</button>` : ""}
     </div>`);
+  if (r.attachments?.length) loadShots(r);
+}
+
+// Screenshots need the admin token, so they're fetched as blobs rather than linked directly.
+let SHOT_URLS = [];
+async function loadShots(r) {
+  SHOT_URLS.forEach((u) => URL.revokeObjectURL(u));
+  SHOT_URLS = [];
+  const slots = document.querySelectorAll("#report-shots .shot");
+  await Promise.all(r.attachments.map(async (a, i) => {
+    try {
+      const res = await fetch(`${API}/admin/reports/${encodeURIComponent(r.id)}/attachments/${encodeURIComponent(a.id)}`, { headers: { Authorization: "Bearer " + TOKEN } });
+      if (!res.ok) throw new Error(String(res.status));
+      const url = URL.createObjectURL(await res.blob());
+      SHOT_URLS.push(url);
+      if (slots[i]) slots[i].innerHTML = `<img src="${url}" alt="Screenshot ${i + 1} attached to this report">`;
+    } catch {
+      if (slots[i]) slots[i].innerHTML = `<span class="hint">Couldn't load</span>`;
+    }
+  }));
 }
 async function setReportStatus(id, status) {
   await post(`/admin/reports/${id}/status`, { status });
@@ -737,6 +770,8 @@ const ACTIONS = {
   "toggle-banned": () => { STATE.userBanned = !STATE.userBanned; render(); },
   "open-session": (d) => openSession(d.id),
   "open-user": (d) => openUser(d.id),
+  "zoom-shot": (d, el) => { const img = el?.querySelector("img"); if (img) showShot(img.src); },
+  "close-shot": () => document.getElementById("shot-viewer")?.remove(),
   "open-report": (d) => { if (d.index !== "") STATE.selected = Number(d.index); openReport(d.id); },
   "report-status": (d) => setReportStatus(d.id, d.status),
   "reply-report": async (d) => {
@@ -831,6 +866,7 @@ document.addEventListener("change", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.target.matches?.("[data-enter]") && e.key === "Enter") { e.preventDefault(); ACTIONS[e.target.dataset.enter]().catch(fail); return; }
   if (document.querySelector("dialog[open]")) return;
+  if (e.key === "Escape" && document.getElementById("shot-viewer")) return document.getElementById("shot-viewer").remove();
   if (e.key === "Escape" && drawerOpen()) return closeDrawer();
   if (route() !== "reports" || e.target.matches?.("input, textarea, select") || e.metaKey || e.ctrlKey || e.altKey) return;
   const r = REPORTS[STATE.selected];

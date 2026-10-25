@@ -66,7 +66,13 @@ export const app = express();
 installAsyncRouteErrorForwarding();
 
 app.use(cors({ origin: process.env.CORS_ORIGIN ?? '*' }));
-app.use(express.json());
+// Reports can carry up to three screenshots (base64, ~2.7 MB each), so that one route gets a
+// larger body limit; everything else keeps the 100 kB default.
+const reportBodyParser = express.json({ limit: '9mb' });
+const defaultBodyParser = express.json();
+app.use((req, res, next) =>
+  (req.method === 'POST' && /^\/friends\/[^/]+\/report$/.test(req.path) ? reportBodyParser : defaultBodyParser)(req, res, next)
+);
 
 app.get('/health', (_req, res) => res.json({ ok: true, service: 'hunting-game-backend' }));
 
@@ -109,6 +115,22 @@ app.get('/dist/source.json', (_req, res) => {
         ],
       },
     ],
+  });
+});
+
+/**
+ * Universal Links: tells iOS that invite links (/j/CODE) and friend links (/u/name/tag) on this
+ * domain belong to the app, so with it installed they open straight into it and only fall back to
+ * those web pages without it. Apple's CDN fetches this; it must be served as JSON with no redirect.
+ */
+const APPLE_TEAM_ID = process.env.APPLE_TEAM_ID || process.env.APNS_TEAM_ID || '';
+app.get(['/.well-known/apple-app-site-association', '/apple-app-site-association'], (_req, res) => {
+  const appID = `${APPLE_TEAM_ID}.${process.env.APNS_BUNDLE_ID || 'com.huntinggame.app'}`;
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  res.json({
+    applinks: {
+      details: [{ appIDs: [appID], components: [{ '/': '/j/*', comment: 'Game invite links' }, { '/': '/u/*/*', comment: 'Friend links' }] }],
+    },
   });
 });
 
@@ -169,6 +191,83 @@ app.get('/u/:username/:tag', (req, res) => {
   <p>Opening Hunting Game&hellip; if nothing happens, tap "Add as friend".</p>
 </div>
 <script>location.replace(${JSON.stringify(deepLink)});</script>
+</body></html>`);
+});
+
+/**
+ * The link a lobby's Invite button shares (https://api.lejacob.dev/j/K7Q2). Same idea as the
+ * friend link above: an https URL every messenger and camera will open, which bounces into the
+ * app at huntinggame://join?code=… and otherwise shows how to get the app — with the code big
+ * enough to type in after installing, since a fresh install can't carry the link through.
+ * Shows only whose game it is and how many are in; never where it is. Unlike the friend page it
+ * doesn't jump into the app on its own: without the app installed Safari answers that with an
+ * "invalid address" error, and the people this page matters most to don't have it yet.
+ */
+app.get('/j/:code', async (req, res) => {
+  const code = req.params.code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+  const session = code
+    ? await prisma.gameSession.findUnique({
+        where: { code },
+        select: { status: true, mode: true, hostId: true, _count: { select: { players: true } } },
+      })
+    : null;
+  const host = session ? await prisma.user.findUnique({ where: { id: session.hostId }, select: { username: true } }) : null;
+  const escape = (value: string) =>
+    value.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+  const hostName = host ? escape(host.username) : null;
+  const mode = session ? { STANDARD: 'Standard Manhunt', INFECTION: 'Infection', SQUAD: 'Squad vs Squad' }[session.mode] ?? 'Standard Manhunt' : '';
+  const open = session?.status === 'LOBBY';
+  const deepLink = `huntinggame://join?code=${encodeURIComponent(code)}`;
+  const downloadUrl = process.env.APP_STORE_URL ?? 'https://apps.apple.com/app/id6809603844';
+  const title = !session
+    ? 'Hunting Game'
+    : open
+      ? `Join ${hostName ?? 'a'}${hostName ? "'s" : ''} manhunt on Hunting Game`
+      : 'This Hunting Game match has started';
+  const lead = !session
+    ? "This game code doesn't exist. Ask for a new link."
+    : open
+      ? `${mode} · ${session._count.players} player${session._count.players === 1 ? '' : 's'} in the lobby`
+      : session.status === 'ACTIVE'
+        ? 'This match is already running. Ask the host for the next one.'
+        : 'This match has ended. Ask for a rematch link.';
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('html').send(`<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title>
+<meta name="description" content="Real-life hide and seek with GPS radar. ${escape(lead)}">
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="Real-life hide and seek with GPS radar. ${escape(lead)}">
+<meta property="og:image" content="https://huntinggame.lejacob.dev/assets/og-card.png">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="apple-itunes-app" content="app-id=6809603844${open ? `, app-argument=${deepLink}` : ''}">
+<style>
+  :root { color-scheme: dark; }
+  body { margin:0; min-height:100vh; display:flex; align-items:center; justify-content:center;
+         background:#0b1114; color:#fff; font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  .card { max-width:22rem; margin:1.5rem; padding:2rem 1.75rem; text-align:center;
+          background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); border-radius:1.25rem; }
+  h1 { margin:0 0 .25rem; font-size:1.05rem; letter-spacing:.14em; text-transform:uppercase; color:#4dd0c7; }
+  .who { margin:.75rem 0 .25rem; font-size:1.3rem; font-weight:700; }
+  .lead { margin:0 0 1.25rem; color:#9fb0b5; font-size:.95rem; }
+  .code { margin:0 0 1.5rem; font:700 2.4rem/1 ui-monospace,SFMono-Regular,Menlo,monospace; letter-spacing:.2em; color:#3ddc84; }
+  a { display:block; padding:.85rem 1rem; border-radius:.75rem; text-decoration:none; font-weight:600; }
+  .primary { background:#3ddc84; color:#08130c; }
+  .secondary { margin-top:.75rem; color:#fff; border:1px solid rgba(255,255,255,.2); }
+  p { color:#9fb0b5; font-size:.85rem; margin:1.25rem 0 0; }
+</style></head><body>
+<div class="card">
+  <h1>Hunting Game</h1>
+  ${session && open ? `<div class="who">${hostName ? `${hostName} invited you` : "You're invited"}</div>` : ''}
+  <div class="lead">${escape(lead)}</div>
+  ${session && open ? `<div class="code" aria-label="Game code ${code.split('').join(' ')}">${code}</div>
+  <a class="primary" href="${deepLink}">I have the app: join</a>
+  <a class="secondary" href="${downloadUrl}">Get Hunting Game, free</a>
+  <p>New to Hunting Game? Install it, open it, and type the code <b>${code}</b> under Join a Game.</p>` : `<a class="primary" href="${downloadUrl}">Get Hunting Game, free</a>`}
+</div>
 </body></html>`);
 });
 
