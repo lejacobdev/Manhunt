@@ -122,16 +122,38 @@ app.get('/dist/source.json', (_req, res) => {
  * Universal Links: tells iOS that invite links (/j/CODE) and friend links (/u/name/tag) on this
  * domain belong to the app, so with it installed they open straight into it and only fall back to
  * those web pages without it. Apple's CDN fetches this; it must be served as JSON with no redirect.
+ *
+ * api.lejacob.dev is shared with the Student Athlete app (path-routed under /fitness), and a
+ * domain has exactly one of these files. Apache sends it here, and this adds whatever that app
+ * declares for itself (its backend serves its own copy at /fitness/.well-known/…), so neither app
+ * has to know the other's paths. The last good copy is kept if that backend is briefly down.
  */
 const APPLE_TEAM_ID = process.env.APPLE_TEAM_ID || process.env.APNS_TEAM_ID || '';
-app.get(['/.well-known/apple-app-site-association', '/apple-app-site-association'], (_req, res) => {
+const AASA_MERGE_URLS = (process.env.AASA_MERGE_URLS ?? 'https://api.lejacob.dev/fitness/.well-known/apple-app-site-association')
+  .split(',').map((u) => u.trim()).filter(Boolean);
+const mergedAASA = new Map<string, { details: unknown[]; fetchedAt: number }>();
+async function otherAppsLinks(): Promise<unknown[]> {
+  const details: unknown[] = [];
+  await Promise.all(AASA_MERGE_URLS.map(async (url) => {
+    const cached = mergedAASA.get(url);
+    if (!cached || Date.now() - cached.fetchedAt > 10 * 60_000) {
+      try {
+        const r = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        const body = (await r.json()) as { applinks?: { details?: unknown[] } };
+        if (r.ok && Array.isArray(body.applinks?.details)) mergedAASA.set(url, { details: body.applinks!.details!, fetchedAt: Date.now() });
+      } catch (err) {
+        console.warn(`[AASA] couldn't read ${url}${cached ? ', keeping the last copy' : ''}:`, err instanceof Error ? err.message : err);
+      }
+    }
+    details.push(...(mergedAASA.get(url)?.details ?? []));
+  }));
+  return details;
+}
+app.get(['/.well-known/apple-app-site-association', '/apple-app-site-association'], async (_req, res) => {
   const appID = `${APPLE_TEAM_ID}.${process.env.APNS_BUNDLE_ID || 'com.huntinggame.app'}`;
+  const ours = { appIDs: [appID], components: [{ '/': '/j/*', comment: 'Hunting Game invite links' }, { '/': '/u/*/*', comment: 'Hunting Game friend links' }] };
   res.setHeader('Cache-Control', 'public, max-age=3600');
-  res.json({
-    applinks: {
-      details: [{ appIDs: [appID], components: [{ '/': '/j/*', comment: 'Game invite links' }, { '/': '/u/*/*', comment: 'Friend links' }] }],
-    },
-  });
+  res.json({ applinks: { details: [ours, ...(await otherAppsLinks())] } });
 });
 
 app.use('/dist', express.static(path.join(__dirname, '..', 'dist-static')));

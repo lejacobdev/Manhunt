@@ -10,7 +10,7 @@ docker run -d --name hgtest-db --network hgtest -e POSTGRES_USER=t -e POSTGRES_P
 docker build -t hg-backend-test backend
 docker run -d --name hgtest-api --network hgtest -p 127.0.0.1:4555:4000 \
   -e DATABASE_URL="postgresql://t:t@hgtest-db:5432/t?schema=public" -e JWT_SECRET=test -e PORT=4000 \
-  -e APNS_TEAM_ID=TESTTEAM01 -e OVERPASS_API_URL=http://127.0.0.1:9/ hg-backend-test
+  -e APNS_TEAM_ID=TESTTEAM01 -e AASA_MERGE_URLS= -e OVERPASS_API_URL=http://127.0.0.1:9/ hg-backend-test
 cd backend/scripts/e2e && npm i socket.io-client@4
 node powerups.mjs   # ~75 s: every power-up, waits for buffs to expire
 node rules.mjs      # ~90 s: catches, disputes, jail, jailbreaks, modes, win conditions, privacy
