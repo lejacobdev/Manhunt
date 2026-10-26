@@ -88,22 +88,37 @@ gamesRouter.post('/:code/join', async (req: AuthedRequest, res) => {
   }
   const parsed = joinSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: zodErrorMessage(parsed.error) });
-  if (session.mode === 'SQUAD' && !parsed.data.squad) {
-    return res.status(400).json({ error: 'Squad name is required to join a SQUAD mode game.' });
-  }
-
   // In a rematch everyone starts where they were last time (the host can still reassign), so
   // the group doesn't have to rebuild its teams by hand. Applies to every app version, since the
   // older ones always ask to join as a runner.
   const previous = await previousLineup(session.settings as unknown as GameSettings, req.user!.userId);
-  const player = await gameService.joinSession(
-    session.id,
-    req.user!.userId,
-    previous?.role ?? parsed.data.role,
-    parsed.data.squad || previous?.squad || undefined
-  );
+  const role = previous?.role ?? parsed.data.role;
+  let squad = parsed.data.squad?.trim() || previous?.squad || undefined;
+  // Joining by code only shows the squad field when the player picks Squad themselves, so most
+  // never send one. Put them on a squad instead of refusing them.
+  if (session.mode === 'SQUAD' && !squad && role !== 'SPECTATOR') {
+    squad = await autoSquad(session.id);
+  }
+  const player = await gameService.joinSession(session.id, req.user!.userId, role, squad);
   return res.status(201).json({ player, session });
 });
+
+/** Squad mode, no name given: start a second squad if there's only one, else join the smallest. */
+async function autoSquad(sessionId: string): Promise<string> {
+  const players = await prisma.gamePlayer.findMany({
+    where: { sessionId, role: { not: 'SPECTATOR' }, squad: { not: null } },
+    select: { squad: true },
+  });
+  const sizes = new Map<string, number>();
+  for (const p of players) sizes.set(p.squad!, (sizes.get(p.squad!) ?? 0) + 1);
+  if (sizes.size >= 2) {
+    return [...sizes.entries()].sort((a, b) => a[1] - b[1])[0][0];
+  }
+  const taken = new Set([...sizes.keys()].map((s) => s.toLowerCase()));
+  let n = sizes.size + 1;
+  while (taken.has(`squad ${n}`)) n += 1;
+  return `Squad ${n}`;
+}
 
 /** The role and squad a player started the previous match with, when this lobby is its rematch. */
 async function previousLineup(settings: GameSettings, userId: string): Promise<{ role: PlayerRole; squad: string | null } | null> {

@@ -234,5 +234,21 @@ const outsider = await account('out');
   check(eq.status === 200 && eq.body.equipped.badge === 'badge.recruiter', 'and it can be worn');
 }
 
+// ------------------------------------------------------------------ Squad joins without a name
+{
+  const [host, a, b, c, d] = await Promise.all(['sqhost', 'sqa', 'sqb', 'sqc', 'sqd'].map(account));
+  const bounds = [m(-300, -300), m(-300, 300), m(300, 300), m(300, -300)];
+  const cr = await req('POST', '/games', { durationMinutes: 20, boundsPolygon: bounds, role: 'HUNTER', mode: 'SQUAD', squad: 'Wolves' }, host.token);
+  const code = cr.body.session.code;
+  const ja = await req('POST', `/games/${code}/join`, { role: 'RUNNER' }, a.token);
+  check(ja.status === 201 && ja.body.player.squad === 'Squad 2', 'joining a Squad game by code without a name starts the second squad', `${ja.status} ${ja.body.player?.squad ?? ja.body.error}`);
+  const jb = await req('POST', `/games/${code}/join`, { role: 'RUNNER' }, b.token);
+  check(jb.body.player?.squad === 'Wolves' || jb.body.player?.squad === 'Squad 2', 'the next one joins an existing squad', jb.body.player?.squad);
+  const jc = await req('POST', `/games/${code}/join`, { role: 'RUNNER', squad: '  Owls ' }, c.token);
+  check(jc.body.player?.squad === 'Owls', 'a squad name typed in is still used (trimmed)', jc.body.player?.squad);
+  const jd = await req('POST', `/games/${code}/join`, { role: 'RUNNER' }, d.token);
+  check(jd.body.player?.squad && jd.body.player.squad !== jb.body.player?.squad, 'and auto-assigned players go to a smallest squad, not the one with two', jd.body.player?.squad);
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nALL PASSED');
 process.exit(failures ? 1 : 0);
